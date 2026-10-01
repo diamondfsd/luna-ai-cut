@@ -57,9 +57,13 @@ function readmeForPlan(plan: DirectorLanPlanSummary): string {
   ]
   plan.shots.forEach((shot, shotIndex) => {
     lines.push('', `### ${shotIndex + 1}. ${shot.name}`, '')
-    for (const attribute of shot.attributes ?? []) {
-      lines.push(`- ${attribute.name}：${attribute.description.trim()}`)
+    for (const definition of plan.attributes ?? []) {
+      const description = shot.attributes?.find((attribute) =>
+        attribute.id === definition.id || attribute.name === definition.name
+      )?.description.trim() ?? ''
+      lines.push(`- ${definition.name}：${description || '—'}`)
     }
+    if (shot.remark.trim()) lines.push(`- 备注：${shot.remark.trim()}`)
     lines.push(`- 建议时长：${Math.round(shot.duration_ms / 1000)} 秒`)
     if (shot.takes.length === 0) lines.push('- 素材：暂无')
     shot.takes.forEach((take, takeIndex) => {
@@ -86,11 +90,13 @@ export function manifestForPlan(
     updated_at: plan.updated_at,
     revision: plan.revision ?? 0,
     exported_at: new Date().toISOString(),
+    attributes: plan.attributes ?? [],
     shots: plan.shots.map((shot, shotIndex) => ({
       id: shot.id,
       order: shotIndex + 1,
       name: shot.name,
       attributes: shot.attributes ?? [],
+      remark: shot.remark ?? '',
       visual_description: legacyShotAttribute(shot, ['画面说明', '画面', '目标', '拍摄目标'])
         || shot.visual_description
         || '',

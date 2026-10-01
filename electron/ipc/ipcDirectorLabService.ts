@@ -15,6 +15,7 @@ import type {
   DirectorLabPreviewResult,
   DirectorLabMediaMetadata,
   DirectorLabProbeRequest,
+  DirectorLanPlanAttribute,
 } from '../../src/shared/types'
 import { downloadToFileWithRetry } from '../media/fileDownloadService'
 import { lunaKaHttpClient } from '../network/lunaka_http_client'
@@ -224,6 +225,7 @@ interface LocalManifestShot {
   name?: unknown
   order?: unknown
   attributes?: unknown
+  remark?: unknown
   visual_description?: unknown
   movement_description?: unknown
   duration_ms?: unknown
@@ -237,6 +239,7 @@ interface LocalManifest {
   created_at?: unknown
   updated_at?: unknown
   revision?: unknown
+  attributes?: unknown
   shots?: unknown
 }
 
@@ -261,7 +264,8 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
     }
     const directory = path.dirname(manifestPath)
     let manifestChanged = false
-    const shots = await Promise.all((raw.shots as LocalManifestShot[]).map(async (shot, shotIndex) => {
+    const rawShots = raw.shots as LocalManifestShot[]
+    const shots = await Promise.all(rawShots.map(async (shot, shotIndex) => {
       const media = Array.isArray(shot.media) ? shot.media as LocalManifestMedia[] : []
       const takes = await Promise.all(media.map(async (item, takeIndex) => {
         const takeId = typeof item.id === 'string' ? item.id : `local-take-${shotIndex}-${takeIndex}`
@@ -371,6 +375,7 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         order: typeof shot.order === 'number' ? shot.order : shotIndex + 1,
         name: typeof shot.name === 'string' ? shot.name : `镜头 ${shotIndex + 1}`,
         attributes,
+        remark: typeof shot.remark === 'string' ? shot.remark : '',
         visual_description: legacyShotAttribute(
           { attributes },
           ['画面说明', '画面', '目标', '拍摄目标'],
@@ -383,6 +388,35 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         completed_takes: takes.filter((take) => take.available).length,
         takes,
       }
+    }))
+    const rawPlanAttributes = Array.isArray(raw.attributes)
+      ? raw.attributes
+          .filter((attribute): attribute is Record<string, unknown> =>
+            !!attribute
+            && typeof attribute === 'object'
+            && typeof attribute.name === 'string'
+            && attribute.name.trim().length > 0)
+      : []
+    const planAttributes: DirectorLanPlanAttribute[] = rawPlanAttributes.length > 0
+      ? rawPlanAttributes.map((attribute, index) => ({
+          id: typeof attribute.id === 'string' && attribute.id
+            ? attribute.id
+            : `${raw.plan_id}-attribute-${index}`,
+          name: (attribute.name as string).trim(),
+        }))
+      : (shots[0]?.attributes ?? []).map((attribute, index) => ({
+          id: attribute.id || `${raw.plan_id}-attribute-${index}`,
+          name: attribute.name,
+        }))
+    const normalizedShots = shots.map((shot) => ({
+      ...shot,
+      attributes: planAttributes.map((definition) => ({
+        id: definition.id,
+        name: definition.name,
+        description: shot.attributes.find((attribute) =>
+          attribute.id === definition.id || attribute.name === definition.name
+        )?.description ?? '',
+      })),
     }))
     if (manifestChanged) {
       const temporaryPath = `${manifestPath}.tmp`
@@ -401,13 +435,14 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision)
         ? raw.revision
         : 0,
-      shot_count: shots.length,
-      completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,
-      take_count: shots.reduce((total, shot) => total + shot.takes.length, 0),
+      attributes: planAttributes,
+      shot_count: normalizedShots.length,
+      completed_shot_count: normalizedShots.filter((shot) => shot.takes.some((take) => take.available)).length,
+      take_count: normalizedShots.reduce((total, shot) => total + shot.takes.length, 0),
       archive_url: '',
       source: 'local',
       local_directory: directory,
-      shots,
+      shots: normalizedShots,
     }
   } catch {
     return null

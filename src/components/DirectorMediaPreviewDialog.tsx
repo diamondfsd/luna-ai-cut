@@ -277,6 +277,12 @@ export function DirectorMediaPreviewDialog({
                 <p>{attribute.description}</p>
               </section>
             ))}
+            {shot.remark && (
+              <section className="lab-viewer-shot-section">
+                <span>备注</span>
+                <p>{shot.remark}</p>
+              </section>
+            )}
             {shot.duration_ms > 0 && (
               <div className="lab-viewer-shot-duration">
                 <Clock3 size={14} />

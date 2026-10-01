@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
-  ArrowRight,
   Box,
-  CalendarDays,
-  Camera,
-  Clock3,
-  CloudOff,
-  Film,
   FolderSync,
   FolderDown,
   FolderOpen,
@@ -29,10 +23,9 @@ import type {
   DirectorLanShot,
   DirectorLanTake,
 } from '../shared/types'
-import { Button, ButtonGroup, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '../ui'
-import { formatBytes } from '../lib/format'
+import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
+import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
 
 interface DirectorLabViewProps {
@@ -112,7 +105,7 @@ function normalizePlanAttributeDefinitions(
       id: typeof attribute.id === 'string' && attribute.id
         ? attribute.id
         : `${plan.id}-attribute-${index}`,
-      name: attribute.name.trim(),
+      name: (attribute.name as string).trim(),
     }))
   if (definitions.length > 0) return definitions
 
@@ -177,35 +170,6 @@ function normalizeRemotePlan(
   }
 }
 
-function takeLabel(take: DirectorLanTake, index: number): string {
-  return `${take.kind === 'photo' ? '照片' : '视频'} ${String(index + 1).padStart(2, '0')}`
-}
-
-function formatDurationMs(value: number | null | undefined): string {
-  if (!value || value <= 0) return '—'
-  const totalSeconds = Math.round(value / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  }
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
-function formatMediaTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date)
-}
-
 function formatPlanCreatedAt(value: string | null | undefined): string {
   if (!value) return '—'
   const date = new Date(value)
@@ -220,74 +184,10 @@ function formatPlanCreatedAt(value: string | null | undefined): string {
   }).format(date)
 }
 
-function earliestDate(values: Array<string | null | undefined>): string | null {
-  const timestamps = values
-    .map((value) => value ? Date.parse(value) : Number.NaN)
-    .filter((value) => Number.isFinite(value))
-  if (timestamps.length === 0) return null
-  return new Date(Math.min(...timestamps)).toISOString()
-}
-
-function shotMetadata(
-  shot: DirectorLanPlanSummary['shots'][number],
-  metadata: Record<string, DirectorLabMediaMetadata>,
-) {
-  const metadataForTakes = shot.takes.map((take) => ({
-    durationMs: metadata[take.id]?.durationMs ?? take.duration_ms ?? null,
-    capturedAt: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
-    width: metadata[take.id]?.width ?? take.width ?? null,
-    height: metadata[take.id]?.height ?? take.height ?? null,
-  }))
-  const durationMs = metadataForTakes.reduce((total, item) => total + (item.durationMs ?? 0), 0)
-  const resolution = metadataForTakes.find((item) => item.width && item.height)
-  return {
-    createdAt: earliestDate(shot.takes.map((take) => take.created_at)),
-    capturedAt: earliestDate(metadataForTakes.map((item) => item.capturedAt)),
-    durationMs: durationMs > 0 ? durationMs : null,
-    resolution: resolution?.width && resolution.height
-      ? `${resolution.width}×${resolution.height}`
-      : null,
-    metadataPending: shot.takes.some(
-      (take) => take.kind === 'video'
-        && take.available
-        && !metadata[take.id]
-        && take.duration_ms == null
-        && take.captured_at == null,
-    ),
-  }
-}
-
-function takeMetadata(
-  take: DirectorLanTake,
-  metadata: Record<string, DirectorLabMediaMetadata>,
-): DirectorLabMediaMetadata | null {
-  const observed = metadata[take.id]
-  if (observed) return observed
-  if (
-    take.duration_ms == null
-    && take.captured_at == null
-    && take.width == null
-    && take.height == null
-    && take.codec == null
-  ) {
-    return null
-  }
-  return {
-    takeId: take.id,
-    durationMs: take.duration_ms ?? null,
-    capturedAt: take.captured_at ?? null,
-    width: take.width ?? null,
-    height: take.height ?? null,
-    codec: take.codec ?? null,
-    error: null,
-  }
-}
-
 function buildAiPrompt(
   plan: DirectorLanPlanSummary,
   endpoint: string | null,
 ): string {
-  const remote = plan.source === 'remote' ? plan : plan.remote_plan
   const lines = [
     '你是处理 Luna咔导演计划素材的 AI。',
     '',
@@ -312,12 +212,12 @@ function buildAiPrompt(
       '',
     )
   }
-  if (remote && endpoint) {
+  if (endpoint) {
     lines.push(
       `手机服务地址：${endpoint}`,
       '远程读取方式：',
       `1. GET ${endpoint}/api/v1/director/plans`,
-      `2. GET ${endpoint}/api/v1/director/plans/${encodeURIComponent(remote.id)}`,
+      `2. GET ${endpoint}/api/v1/director/plans/${encodeURIComponent(plan.id)}`,
       '3. 使用计划中的 shots[].takes[]，每条 take 包含 stream_url、download_url、selected_range。',
       '4. stream_url 用于读取/播放，download_url 用于下载原文件；请求支持 HTTP Range。',
       '5. 需要整包时 GET archive_url；需要更新本地副本时，重新下载 active plan 并覆盖本地目录。',
@@ -343,14 +243,12 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
-  const [directorView, setDirectorView] = useState('shots')
   const [shotQuery, setShotQuery] = useState('')
   const [shotSort, setShotSort] = useState('order')
   const [editingPlanTitle, setEditingPlanTitle] = useState(false)
   const [planTitleDraft, setPlanTitleDraft] = useState('')
   const [planTitleBaseRevision, setPlanTitleBaseRevision] = useState(0)
   const [savingPlanTitle, setSavingPlanTitle] = useState(false)
-  const [activeTakeId, setActiveTakeId] = useState<string | null>(null)
   const [previewTakeId, setPreviewTakeId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState<string | null>(null)
@@ -367,10 +265,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   const takes = useMemo(
     () => activePlan?.shots.flatMap((shot) => shot.takes) ?? [],
     [activePlan],
-  )
-  const activeTake = useMemo(
-    () => takes.find((take) => take.id === activeTakeId) ?? takes[0] ?? null,
-    [activeTakeId, takes],
   )
   const previewTake = useMemo(
     () => takes.find((take) => take.id === previewTakeId) ?? null,
@@ -407,12 +301,14 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
 
   const mergePlans = useCallback((remotePlans: DirectorLanPlanSummary[]): void => {
     setPlans((current) => {
+      const currentById = new Map(current.map((plan) => [plan.id, plan]))
       const localById = new Map(
         current.filter((plan) => plan.source === 'local').map((plan) => [plan.id, plan]),
       )
       const remoteIds = new Set(remotePlans.map((plan) => plan.id))
       const mergedRemote = remotePlans.map((remote) => {
         const local = localById.get(remote.id)
+        const previous = currentById.get(remote.id)
         return local
           ? {
               ...remote,
@@ -420,7 +316,14 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
               update_available: (remote.revision ?? 0) > (local.revision ?? 0)
                 || Date.parse(remote.updated_at) > Date.parse(local.updated_at),
             }
-          : remote
+          : previous?.local_directory
+            ? {
+                ...remote,
+                local_directory: previous.local_directory,
+                update_available: Boolean(previous.update_available)
+                  || (remote.revision ?? 0) > (previous.revision ?? 0),
+              }
+            : remote
       })
       return [
         ...mergedRemote,
@@ -708,7 +611,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   async function savePlanTitleEdit(): Promise<void> {
     if (
       !activePlan
-      || activePlan.source !== 'remote'
       || !connectedEndpoint
       || !planTitleDraft.trim()
     ) return
@@ -731,10 +633,12 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           body: {
             expected_revision: planTitleBaseRevision,
             title: planTitleDraft.trim(),
+            attributes: activePlan.attributes,
             shots: activePlan.shots.map((shot) => ({
               id: shot.id,
               name: shot.name,
               duration_ms: shot.duration_ms,
+              remark: shot.remark,
               attributes: shot.attributes.map((attribute) => ({
                 id: attribute.id,
                 name: attribute.name,
@@ -838,48 +742,16 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       )}
 
       {!activePlan && plans.length > 0 && (
-        <section className="lab-plan-shell lab-plan-list-shell">
-          <header className="lab-plan-list-header">
-            <div>
-              <strong>全部计划</strong>
-              <span>{plans.length} 个计划</span>
-            </div>
-          </header>
-          <div className="lab-plan-list">
-            {plans.map((plan) => {
-              const availableShots = plan.shots.filter((shot) =>
-                shot.takes.some((take) => take.available)).length
-              return (
-                <button
-                  key={plan.id}
-                  className="lab-plan-list-item"
-                  type="button"
-                  onClick={() => {
-                    setActivePlanId(plan.id)
-                    setDirectorView('shots')
-                    setEditingPlanTitle(false)
-                  }}
-                >
-                  <span className="lab-plan-list-icon"><Film size={18} /></span>
-                  <span className="lab-plan-list-copy">
-                    <strong>{plan.title}</strong>
-                    <small>更新于 {formatPlanCreatedAt(plan.updated_at)}</small>
-                  </span>
-                  <span className="lab-plan-list-progress">
-                    <strong>{availableShots}/{plan.shot_count}</strong>
-                    <small>已有素材</small>
-                  </span>
-                  <span className="lab-plan-list-meta">
-                    <span>{plan.take_count} 段素材</span>
-                    {plan.local_directory && <span>本地副本</span>}
-                    {plan.update_available && <span>副本待更新</span>}
-                  </span>
-                  <ArrowRight size={16} />
-                </button>
-              )
-            })}
-          </div>
-        </section>
+        <DirectorLabPlanList
+          plans={plans}
+          onSelect={(planId) => {
+            setActivePlanId(planId)
+            setDirectorView('shots')
+            setShotQuery('')
+            setShotSort('order')
+            setEditingPlanTitle(false)
+          }}
+        />
       )}
 
       {activePlan && (
@@ -897,6 +769,8 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                       setActivePlanId(null)
                       setEditingPlanTitle(false)
                       setPreviewTakeId(null)
+                      setShotQuery('')
+                      setShotSort('order')
                     }}
                   />
                 </Tooltip>
@@ -1057,24 +931,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                   ]}
                   className="lab-shot-sort"
                 />
-                {directorView === 'shots' && (
-                  <ButtonGroup
-                    ariaLabel="分镜布局"
-                    value={shotLayout}
-                    onChange={setShotLayout}
-                    className="lab-shot-view-toggle"
-                    options={[
-                      {
-                        value: 'grid',
-                        label: <><LayoutGrid size={15} /><span className="lab-view-mode-label">网格</span></>,
-                      },
-                      {
-                        value: 'list',
-                        label: <><List size={15} /><span className="lab-view-mode-label">列表</span></>,
-                      },
-                    ]}
-                  />
-                )}
               </div>
             </div>
             <div className={`lab-director-content lab-director-content-${directorView}`}>
@@ -1082,7 +938,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                 <DirectorLabShotList
                   plan={activePlan}
                   shots={visibleShots}
-                  layout={shotLayout}
                   endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
                   refreshPlans={refreshRemotePlans}
                   onWriteStateChange={setPlanWritePending}
@@ -1103,6 +958,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                             {shot.attributes[0] && (
                               <small>{shot.attributes[0].name}：{shot.attributes[0].description}</small>
                             )}
+                            {shot.remark && <small>备注：{shot.remark}</small>}
                           </div>
                           <span>{shot.takes.length} 段素材</span>
                         </header>

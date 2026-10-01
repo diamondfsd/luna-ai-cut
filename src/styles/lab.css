@@ -182,10 +182,6 @@
   font-size: 11px;
 }
 
-.lab-plan-select {
-  width: min(360px, 100%);
-}
-
 .lab-director-actions {
   display: flex;
   align-items: center;
@@ -248,8 +244,7 @@
   border-top: 1px solid var(--hairline);
 }
 
-.lab-director-view-switch,
-.lab-shot-view-toggle {
+.lab-director-view-switch {
   flex: 0 0 auto;
   gap: 2px;
   border: 1px solid var(--hairline);
@@ -258,8 +253,7 @@
   padding: 2px;
 }
 
-.lab-director-view-switch .ui-btn-group-btn,
-.lab-shot-view-toggle .ui-btn-group-btn {
+.lab-director-view-switch .ui-btn-group-btn {
   height: 28px;
   border-radius: 6px;
   background: transparent;
@@ -267,13 +261,11 @@
   font-size: 12px;
 }
 
-.lab-director-view-switch .ui-btn-group-btn:hover,
-.lab-shot-view-toggle .ui-btn-group-btn:hover {
+.lab-director-view-switch .ui-btn-group-btn:hover {
   background: #e8e8ed;
 }
 
-.lab-director-view-switch .ui-btn-group-btn.active,
-.lab-shot-view-toggle .ui-btn-group-btn.active {
+.lab-director-view-switch .ui-btn-group-btn.active {
   background: var(--blue);
   color: #fff;
 }
@@ -299,26 +291,6 @@
 
 .lab-shot-sort {
   min-width: 145px;
-}
-
-.lab-shot-view-toggle {
-  background: var(--canvas);
-}
-
-.lab-shot-view-toggle .ui-btn-group-btn {
-  width: 30px;
-  height: 28px;
-  border-radius: 6px;
-  padding: 0;
-}
-
-.lab-view-mode-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
 }
 
 .lab-director-content {
@@ -618,10 +590,6 @@
     padding-left: 12px;
   }
 
-  .lab-plan-select {
-    width: 100%;
-  }
-
   .lab-shot-search {
     min-width: 180px;
     flex: 1 1 100%;
@@ -630,6 +598,7 @@
   .lab-material-board {
     padding: 10px;
   }
+
 }
 
 /* Director media viewer */

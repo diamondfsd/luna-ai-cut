@@ -159,6 +159,12 @@
   white-space: nowrap;
 }
 
+.lab-shot-attributes > .lab-shot-remark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .lab-shot-card-media {
   position: relative;
   display: grid;
@@ -227,13 +233,33 @@
 .lab-shot-edit-attribute {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  align-items: center;
+  align-content: start;
   gap: 5px;
 }
 
-.lab-shot-edit-attribute > .ui-input:first-child {
+.lab-shot-edit-attribute > span,
+.lab-shot-edit-remark > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.lab-shot-edit-remark {
+  display: grid;
   min-width: 0;
+  align-content: start;
+  gap: 5px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+}
+
+.lab-shot-edit-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
 }
 
 .lab-shot-edit-description {
@@ -241,83 +267,6 @@
   grid-column: 1 / -1;
   padding-block: 6px;
   resize: vertical;
-}
-
-.lab-shot-browser.is-list .lab-shot-grid {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  padding: 0 16px;
-}
-
-.lab-shot-browser.is-list .lab-shot-row {
-  display: grid;
-  min-height: 148px;
-  grid-template-columns: minmax(140px, 220px) minmax(0, 1fr);
-  grid-template-areas:
-    "media heading"
-    "media properties"
-    "media footer";
-  align-items: stretch;
-  column-gap: 16px;
-  row-gap: 6px;
-  overflow: visible;
-  border: 0;
-  border-bottom: 1px solid var(--hairline);
-  border-radius: 0;
-  background: transparent;
-  padding: 14px 0;
-}
-
-.lab-shot-browser.is-list .lab-shot-row:hover {
-  background: rgba(245, 245, 247, 0.7);
-}
-
-.lab-shot-browser.is-list .lab-shot-row-index {
-  top: 22px;
-  left: 10px;
-}
-
-.lab-shot-browser.is-list .lab-shot-row-copy {
-  display: contents;
-}
-
-.lab-shot-browser.is-list .lab-shot-row-heading {
-  grid-area: heading;
-}
-
-.lab-shot-browser.is-list .lab-shot-attributes,
-.lab-shot-browser.is-list .lab-shot-edit-attributes {
-  grid-area: properties;
-  align-content: start;
-}
-
-.lab-shot-browser.is-list .lab-shot-card-media {
-  height: 100%;
-  min-height: 120px;
-  grid-area: media;
-  border-radius: 8px;
-  aspect-ratio: auto;
-}
-
-.lab-shot-browser.is-list .lab-shot-card-footer {
-  grid-area: footer;
-}
-
-@media (max-width: 720px) {
-  .lab-shot-browser.is-list .lab-shot-row {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "media"
-      "heading"
-      "properties"
-      "footer";
-    row-gap: 8px;
-  }
-
-  .lab-shot-browser.is-list .lab-shot-card-media {
-    min-height: 0;
-    aspect-ratio: 16 / 9;
-  }
 }
 
 @media (max-width: 560px) {
@@ -338,7 +287,4 @@
     height: 26px;
   }
 
-  .lab-shot-browser.is-list .lab-shot-grid {
-    padding: 0 10px;
-  }
 }
