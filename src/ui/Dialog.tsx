@@ -46,6 +46,7 @@ export interface DialogProps {
   trigger?: ReactNode
   /** 弹窗标题 */
   title?: ReactNode
+  headerActions?: ReactNode
   /** 弹窗描述 */
   description?: ReactNode
   /** 主体内容 */
@@ -82,6 +83,7 @@ export function Dialog({
   defaultOpen,
   trigger,
   title,
+  headerActions,
   description,
   children,
   bodyClassName,
@@ -147,9 +149,12 @@ export function Dialog({
             if (!closeOnMaskClick) event.preventDefault()
           }}
         >
-          {!isFullscreen && title && (
+          {!isFullscreen && (title || description || headerActions) && (
             <DialogHeader>
-              <RadixDialog.Title className="ui-dialog-title">{title}</RadixDialog.Title>
+              {headerActions ? <div className="ui-dialog-header-row">
+                {title && <RadixDialog.Title className="ui-dialog-title">{title}</RadixDialog.Title>}
+                {headerActions}
+              </div> : title && <RadixDialog.Title className="ui-dialog-title">{title}</RadixDialog.Title>}
               {description && <RadixDialog.Description className="ui-dialog-description">{description}</RadixDialog.Description>}
             </DialogHeader>
           )}

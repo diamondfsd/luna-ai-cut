@@ -800,8 +800,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           </Tooltip>
           <h1>导演计划</h1>
         </div>
-        <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
-          onClick={() => setImportOpen(true)}>{activePlan ? '导入镜头' : '新建计划'}</Button>
+        {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
+          onClick={() => setImportOpen(true)}>新建计划</Button>}
         {connectedEndpoint && (
           <div className="lab-director-sync-actions">
             <Tooltip content={writeFailures.length ? writeFailures.map((failure) => `${failure.title}：${failure.message}`).join('\n') : syncStatusLabel}><span
@@ -969,6 +969,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           <div className="lab-director-workspace">
             <div className="lab-director-content">
               <DirectorLabShotList
+                onImportShots={() => setImportOpen(true)}
                 tools={
                   <div className="lab-director-tools">
                     <Input

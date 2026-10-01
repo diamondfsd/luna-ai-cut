@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import {
   Camera,
   CloudOff,
+  FileUp,
   Pencil,
   Plus,
   MoreHorizontal,
@@ -28,6 +29,7 @@ interface DirectorLabShotListProps {
   schema: DirectorPlanSchema | null
   shots: DirectorLanShot[]
   tools?: ReactNode
+  onImportShots: () => void
   phoneConnected: boolean
   refreshPlans: () => Promise<DirectorLanPlanSummary[]>
   onWriteStateChange: (planId: string, pending: boolean) => void
@@ -40,6 +42,7 @@ export function DirectorLabShotList({
   schema,
   shots,
   tools,
+  onImportShots,
   phoneConnected,
   refreshPlans,
   onWriteStateChange,
@@ -232,6 +235,8 @@ export function DirectorLabShotList({
     <div className="lab-shot-browser">
       <div className="lab-director-toolbar">
         {tools}
+        <Button variant="secondary" size="compact" icon={<FileUp size={15} />}
+          onClick={onImportShots}>导入镜头</Button>
         {schema && (
           <Button variant="secondary" size="compact" icon={<Plus size={15} />}
             disabled={mutating || editingShotId !== null} onClick={() => void addShot()}>新增镜头</Button>
