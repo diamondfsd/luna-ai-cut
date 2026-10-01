@@ -4,11 +4,3 @@
   flex-wrap: wrap;
   gap: 4px 12px;
 }
-
-.lab-material-sync {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 13px;
-}

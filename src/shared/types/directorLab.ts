@@ -78,6 +78,18 @@ export interface DirectorLabDownloadProgress {
   percent: number
 }
 
+export interface DirectorMaterialSyncProgress {
+  operationId: string
+  endpoint: string
+  planId: string
+  takeId: string
+  fileName: string
+  direction: 'upload' | 'download'
+  status: 'pending' | 'transferring' | 'done' | 'failed'
+  transferred: number
+  total: number | null
+}
+
 export interface DirectorLabApi {
   download(request: DirectorLabDownloadRequest): Promise<DirectorLabDownloadResult>
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
@@ -91,7 +103,8 @@ export interface DirectorLabApi {
   saveLocalPlan(plan: DirectorLanPlanSummary, expectedSignature?: string): Promise<DirectorLanPlanSummary>
   importMaterials(plan: DirectorLanPlanSummary, shotId: string): Promise<DirectorLanPlanSummary | null>
   deleteLocalMaterial(planId: string, takeId: string): Promise<DirectorLanPlanSummary>
-  syncMaterials(endpoint: string, planId: string): Promise<void>
+  syncMaterials(endpoint: string, planId: string, operationId?: string): Promise<void>
+  onMaterialSyncProgress(callback: (progress: DirectorMaterialSyncProgress) => void): () => void
   acknowledgeLocalPlan(remote: DirectorLanPlanSummary, signature: string): Promise<void>
   prepareThumbnail(url: string, positionMs?: number): Promise<DirectorLabPreviewResult>
   reconcileLocalPlan(plan: DirectorLanPlanSummary, resolveConflict?: boolean): Promise<boolean>
