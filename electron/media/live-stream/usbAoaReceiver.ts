@@ -6,6 +6,8 @@ import type {
   LiveStreamControlDelivery,
 } from '../../../src/shared/types'
 import { createUsbAccessoryShutdown } from './usbAccessoryLifecycle'
+import { UsbDiagnosticError, usbDeviceDetails, usbErrorDetails, usbFailureMessage } from './usbAoaDiagnostics'
+import { switchToUsbAccessory } from './usbAoaSwitch'
 import {
   consumeFrames,
   USB_STREAM_CONTROL_COMMAND,
@@ -112,26 +114,6 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function controlTransfer(
-  device: usb.Device,
-  bmRequestType: number,
-  bRequest: number,
-  wValue: number,
-  wIndex: number,
-  dataOrLength: number | Buffer,
-): Promise<Buffer | number | undefined> {
-  return new Promise((resolve, reject) => {
-    device.controlTransfer(
-      bmRequestType,
-      bRequest,
-      wValue,
-      wIndex,
-      dataOrLength,
-      (error, data) => error ? reject(error) : resolve(data),
-    )
-  })
-}
-
 function configuredVendorIds(): Set<number> | null {
   const raw = process.env.LUNA_AOA_VENDOR_IDS
   if (!raw) return null
@@ -170,6 +152,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private controlSequence = 0
   private readonly controlWrites = new Set<Promise<void>>()
   private readonly failedProbeDevices = new Set<string>()
+  private deviceSnapshot = ''
   private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
   constructor(onFrame: (frame: UsbMediaFrame) => void) {
@@ -200,6 +183,9 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   start(): void {
     if (this.running) return
     this.running = true
+    this.failedProbeDevices.clear()
+    this.deviceSnapshot = ''
+    logMainInfo('[USB AOA] 开始检测', { platform: process.platform, arch: process.arch, backend: 'libusb', scanIntervalMs: SCAN_INTERVAL_MS })
     this.statusValue = {
       ...this.statusValue,
       state: 'waiting',
@@ -232,14 +218,15 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     }
   }
 
-  private readonly handleAttach = (): void => {
-    logMainInfo('[USB AOA] 检测到 USB 设备接入')
+  private readonly handleAttach = (device: usb.Device): void => {
+    this.failedProbeDevices.clear()
+    logMainInfo('[USB AOA] 检测到 USB 设备接入', usbDeviceDetails(device))
     void this.scan()
   }
 
-  private readonly handleDetach = (): void => {
-    logMainWarn('[USB AOA] USB 设备已断开')
-    void this.disconnectAccessory('detached')
+  private readonly handleDetach = (device: usb.Device): void => {
+    logMainWarn('[USB AOA] USB 设备已断开', usbDeviceDetails(device))
+    if (this.session?.device === device) void this.disconnectAccessory('detached')
   }
 
   private isAccessoryDevice(device: usb.Device): boolean {
@@ -274,8 +261,16 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
 
   private async runScan(): Promise<void> {
     try {
+      const devices = usb.getDeviceList().map(usbDeviceDetails)
+      const snapshot = JSON.stringify(devices)
+      if (snapshot !== this.deviceSnapshot) {
+        this.deviceSnapshot = snapshot
+        logMainInfo('[USB AOA] 当前 USB 设备', { count: devices.length, devices })
+      }
       const accessory = this.findAccessory()
       if (accessory) {
+        logMainInfo('[USB AOA] 检测到配件模式设备', usbDeviceDetails(accessory))
+        this.statusValue = { ...this.statusValue, vendorId: accessory.deviceDescriptor.idVendor, productId: accessory.deviceDescriptor.idProduct }
         await this.connectAccessory(accessory)
         return
       }
@@ -286,23 +281,27 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         try {
           switched = await this.switchToAccessory(candidate)
         } catch (error) {
-          const { idVendor, idProduct } = candidate.deviceDescriptor
-          const key = `${idVendor}:${idProduct}`
+          const details = usbErrorDetails(error)
+          const key = JSON.stringify({ ...usbDeviceDetails(candidate), ...details })
           if (!this.failedProbeDevices.has(key)) {
             this.failedProbeDevices.add(key)
-            const detail = error instanceof Error ? error.message : String(error)
-            logMainInfo('[USB AOA] 跳过无法探测的 USB 设备', { vendorId: idVendor, productId: idProduct, error: detail })
+            logMainWarn('[USB AOA] 设备探测失败', { ...usbDeviceDetails(candidate), ...details })
           }
+          if (error instanceof UsbDiagnosticError && error.stage !== '打开原始设备' && error.stage !== '查询配件协议') throw error
           continue
         }
         if (!switched) continue
 
         const accessoryAfterSwitch = await this.waitForAccessory(5_000)
         if (accessoryAfterSwitch && this.running) await this.connectAccessory(accessoryAfterSwitch)
+        else if (this.running) {
+          logMainWarn('[USB AOA] 切换后未发现配件设备', { ...usbDeviceDetails(candidate), timeoutMs: 5_000 })
+          this.statusValue = { ...this.statusValue, state: 'error', message: '手机 USB 切换超时，请重新连接', error: '手机 USB 切换超时，请重新连接', controlReady: false }
+        }
         return
       }
 
-      if (this.running) {
+      if (this.running && this.statusValue.state !== 'error') {
         this.statusValue = {
           ...this.statusValue,
           state: 'waiting',
@@ -320,19 +319,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private async switchToAccessory(device: usb.Device): Promise<boolean> {
-    device.timeout = 2_000
-    device.open()
-    try {
-      let protocol: Buffer | number | undefined
-      try {
-        protocol = await controlTransfer(device, 0xc0, 51, 0, 0, 2)
-      } catch {
-        return false
-      }
-      if (!this.running || !Buffer.isBuffer(protocol) || protocol.length < 2) return false
-      const version = protocol.readUInt16LE(0)
-      if (version < 1) return false
-
+    return switchToUsbAccessory(device, () => this.running, (version) => {
       const { idVendor, idProduct } = device.deviceDescriptor
       this.statusValue = {
         ...this.statusValue,
@@ -343,29 +330,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         productId: idProduct,
         error: null,
       }
-      logMainInfo(`[USB AOA] 手机支持 AOA protocol ${version}`)
-
-      const strings = [
-        'LunaKa', // manufacturer
-        'Luna USB Video Demo', // model
-        'Luna USB video output', // description
-        '1.0', // version
-        'https://motionbridge.local/usb-video', // uri
-        'LunaKa', // serial
-      ]
-      for (let index = 0; index < strings.length; index += 1) {
-        if (!this.running) return false
-        await controlTransfer(device, 0x40, 52, 0, index, Buffer.from(`${strings[index]}\0`, 'utf8'))
-      }
-      if (this.running) await controlTransfer(device, 0x40, 53, 0, 0, Buffer.alloc(0))
-      return true
-    } finally {
-      try {
-        device.close()
-      } catch {
-        // Device may already be re-enumerating.
-      }
-    }
+      logMainInfo('[USB AOA] 手机支持配件协议，开始切换', { ...usbDeviceDetails(device), protocolVersion: version })
+    })
   }
 
   private async waitForAccessory(timeoutMs: number): Promise<usb.Device | null> {
@@ -418,7 +384,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       controlReady: true,
       error: null,
     }
-    logMainInfo('[USB AOA] Bulk 端点已打开')
+    logMainInfo('[USB AOA] Bulk 端点已打开', { ...usbDeviceDetails(device), interfaceNumber: interfaceInfo.interfaceNumber, inEndpoint: inEndpoint.address, outEndpoint: outEndpoint.address })
     inEndpoint.on('data', session.onData)
     inEndpoint.on('error', session.onError)
     inEndpoint.startPoll(3, TRANSFER_SIZE)
@@ -430,16 +396,21 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     inEndpoint: usb.InEndpoint
     outEndpoint: usb.OutEndpoint
   }> {
-    device.open()
+    let stage = '打开配件设备'
     let interfaceInfo: usb.Interface | undefined
     let claimed = false
     try {
+      device.open()
+      stage = '查找传输接口'
+      logMainInfo('[USB AOA] 配件设备已打开', { ...usbDeviceDetails(device), interfaces: device.interfaces?.map((item) => ({ interfaceNumber: item.interfaceNumber, endpoints: item.endpoints.map((endpoint) => ({ address: endpoint.address, direction: endpoint.direction, transferType: endpoint.transferType })) })) })
       interfaceInfo = device.interfaces?.find((item) =>
         item.endpoints.some((endpoint) => endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK),
       )
       if (!interfaceInfo) throw new Error('未找到 USB AOA Bulk 接口')
+      stage = '占用传输接口'
       interfaceInfo.claim()
       claimed = true
+      stage = '检查视频与控制端点'
 
       const inEndpoint = interfaceInfo.endpoints.find((endpoint) =>
         endpoint.direction === 'in' && endpoint.transferType === LIBUSB_TRANSFER_TYPE_BULK,
@@ -461,11 +432,14 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         })
       }
       try { device.close() } catch { /* Device may already be gone. */ }
-      throw error
+      throw new UsbDiagnosticError(stage, error)
     }
   }
 
   private handleFrame(frame: UsbMediaFrame): void {
+    if (frame.streamType === USB_STREAM_VIDEO && this.statusValue.videoFrames === 0) {
+      logMainInfo('[USB AOA] 收到首个视频帧', { bytes: frame.raw.length })
+    }
     const receivedAt = new Date().toISOString()
     const isVideo = frame.streamType === USB_STREAM_VIDEO
     const streamLabel = isVideo ? '视频' : '媒体'
@@ -553,12 +527,12 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   }
 
   private fail(error: unknown): void {
-    const detail = error instanceof Error ? error.message : String(error)
-    logMainWarn('[USB AOA] 接收失败', { error: detail })
+    const detail = error instanceof UsbDiagnosticError ? error.message : usbFailureMessage(error)
+    logMainWarn('[USB AOA] 接收失败', { vendorId: this.statusValue.vendorId, productId: this.statusValue.productId, ...usbErrorDetails(error) })
     this.statusValue = {
       ...this.statusValue,
       state: 'error',
-      message: 'USB AOA 接收失败',
+      message: detail,
       error: detail,
     }
     void this.disconnectAccessory('detached')

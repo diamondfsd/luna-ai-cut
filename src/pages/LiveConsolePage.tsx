@@ -105,7 +105,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
               <li>在手机 Luna 咔中连接相机。</li>
               <li>用 USB 线连接手机和电脑。</li>
               <li>直播画面会自动连接，等待预览区出现画面。</li>
-              <li>可调整水印和色彩；点击“直播模式”打开独立预览。</li>
+              <li>可调整水印和色彩；点击“打开直播窗口”打开独立预览。</li>
               <li>打开抖音直播伴侣，在场景中添加“窗口画面”，选择直播预览窗口。</li>
             </ol>
           </Dialog>
@@ -117,7 +117,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
               onClick={toggleLivePreviewWindow}
               disabled={busy}
             >
-              {windowLiveMode ? '退出直播模式' : '直播模式'}
+              {windowLiveMode ? '关闭直播窗口' : '打开直播窗口'}
             </Button>
           )}
           <Tooltip content="刷新状态">
