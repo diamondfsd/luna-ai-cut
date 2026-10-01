@@ -8,6 +8,7 @@ import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import {
   USB_STREAM_CONTROL_RESULT,
   USB_STREAM_VIDEO,
+  controlDelivery,
   type LiveMediaReceiver,
   type UsbAoaState,
   type UsbAoaStatus,
@@ -170,7 +171,12 @@ export async function sendLiveStreamControlCommand(command: LiveStreamControlCom
   const session = activeSession
   if (!session) throw new Error('手机 USB 尚未连接')
   const requestId = randomUUID()
-  await session.receiver.sendControl({ ...command, version: 1, requestId })
+  await session.receiver.sendControl({
+    ...command,
+    version: 1,
+    requestId,
+    delivery: controlDelivery(command),
+  })
   if ((command.type === 'zoom.preview' || command.type === 'zoom.set') && session.capabilities) {
     session.capabilities = {
       ...session.capabilities,

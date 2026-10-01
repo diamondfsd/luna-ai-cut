@@ -272,7 +272,7 @@ export function DirectorLabShotList({
                   )
                 )}
               </div>
-              {draft ? (
+              {draft && (
                 <div className="lab-shot-edit-attributes">
                   {plan.attributes.map((attribute) => (
                     <label className="lab-shot-edit-attribute" key={attribute.id}>
@@ -309,27 +309,6 @@ export function DirectorLabShotList({
                       onChange={(event) => setShotDraft({ ...draft, remark: event.target.value })}
                     />
                   </label>
-                </div>
-              ) : shot.attributes.length > 0 ? (
-                <div className="lab-shot-attributes">
-                  {shot.attributes.slice(0, 2).map((attribute) => (
-                    <p key={attribute.id}>
-                      <strong>{attribute.name}</strong>
-                      <span>{attribute.description || '—'}</span>
-                    </p>
-                  ))}
-                  {shot.attributes.length > 2 && (
-                    <small>+{shot.attributes.length - 2} 个属性</small>
-                  )}
-                  {shot.remark && (
-                    <small className="lab-shot-remark"><MessageSquare size={12} />{shot.remark}</small>
-                  )}
-                </div>
-              ) : (
-                <div className="lab-shot-attributes">
-                  {shot.remark
-                    ? <small className="lab-shot-remark"><MessageSquare size={12} />{shot.remark}</small>
-                    : <small>暂无说明</small>}
                 </div>
               )}
               <footer className="lab-shot-card-footer">

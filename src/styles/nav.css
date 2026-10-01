@@ -62,24 +62,6 @@
   white-space: nowrap;
 }
 
-.nav-icon-button {
-  display: inline-grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--parchment);
-  color: var(--muted);
-  cursor: pointer;
-  border: none;
-  transition: background 120ms, color 120ms;
-}
-
-.nav-icon-button:hover {
-  background: #e8e8ed;
-  color: var(--ink);
-}
-
 .status-dot {
   width: 7px;
   height: 7px;

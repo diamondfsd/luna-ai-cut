@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cx } from './utils'
 
-export type IconButtonVariant = 'circle' | 'light' | 'outline' | 'ghost'
+export type IconButtonVariant = 'circle' | 'light' | 'outline' | 'ghost' | 'nav'
 export type IconButtonSize = 'default' | 'compact' | 'mini'
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -11,12 +11,13 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    *  - light：深色背景上的圆形按钮，用于预览弹窗
    *  - outline：带蓝色边框的圆形图标按钮
    *  - ghost：透明圆形按钮，最小视觉干扰
+   *  - nav：顶栏中的紧凑圆形按钮
    */
   variant?: IconButtonVariant
   /** 尺寸：
    *  - default（默认）：44px
-   *  - compact：32px
-   *  - mini：28px
+   *  - compact：28px
+   *  - mini：24px
    */
   size?: IconButtonSize
   icon: ReactNode

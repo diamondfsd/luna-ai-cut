@@ -21,7 +21,6 @@ import type {
   DirectorLanPlanSummary,
   DirectorLanPlansResponse,
   DirectorLanShot,
-  DirectorLanTake,
 } from '../shared/types'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
@@ -254,7 +253,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   const [downloading, setDownloading] = useState<string | null>(null)
   const [downloadProgress, setDownloadProgress] = useState<DirectorLabDownloadProgress | null>(null)
   const [mediaMetadata, setMediaMetadata] = useState<Record<string, DirectorLabMediaMetadata>>({})
-  const [metadataLoading, setMetadataLoading] = useState(false)
   const metadataRequestRef = useRef(0)
   const pendingWritePlanIdsRef = useRef(new Set<string>())
 
@@ -380,16 +378,8 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   }, [])
 
   useEffect(() => {
-    setActiveTakeId((current) => {
-      if (current && takes.some((take) => take.id === current)) return current
-      return takes[0]?.id ?? null
-    })
-  }, [takes])
-
-  useEffect(() => {
     if (!activePlan) {
       setMediaMetadata({})
-      setMetadataLoading(false)
       return
     }
     const requests = activePlan.shots
@@ -399,10 +389,8 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     metadataRequestRef.current += 1
     const requestId = metadataRequestRef.current
     if (requests.length === 0) {
-      setMetadataLoading(false)
       return
     }
-    setMetadataLoading(true)
     void window.luna.directorLab.probeMedia(requests)
       .then((results) => {
         if (metadataRequestRef.current !== requestId) return
@@ -413,9 +401,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
         })
       })
       .catch(() => undefined)
-      .finally(() => {
-        if (metadataRequestRef.current === requestId) setMetadataLoading(false)
-      })
   }, [activePlan])
 
   useEffect(() => {
@@ -680,25 +665,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     await window.luna.openPath(activePlan.local_directory)
   }
 
-  async function openTakeDirectory(take: DirectorLanTake): Promise<void> {
-    if (!activePlan) return
-    if (take.stream_path && !/^https?:\/\//i.test(take.stream_path)) {
-      await window.luna.revealFile(take.stream_path)
-      return
-    }
-    const shotIndex = activePlan.shots.findIndex((shot) =>
-      shot.takes.some((item) => item.id === take.id))
-    const shot = activePlan.shots[shotIndex]
-    if (!activePlan.local_directory || !shot) return
-    const shotFolder = `${String(shot.order).padStart(2, '0')}_${shot.name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim()}`
-    await window.luna.openPath(`${activePlan.local_directory}/media/${shotFolder}`)
-  }
-
-  async function openTakeFile(take: DirectorLanTake): Promise<void> {
-    if (!take.stream_path || /^https?:\/\//i.test(take.stream_path)) return
-    await window.luna.openPath(take.stream_path)
-  }
-
   return (
     <div className="lab-page lab-director-page">
       <header className="lab-director-page-header">
@@ -746,7 +712,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           plans={plans}
           onSelect={(planId) => {
             setActivePlanId(planId)
-            setDirectorView('shots')
             setShotQuery('')
             setShotSort('order')
             setEditingPlanTitle(false)
@@ -898,16 +863,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           </section>
           <div className="lab-director-workspace">
             <div className="lab-director-toolbar">
-              <ButtonGroup
-                ariaLabel="素材视图"
-                value={directorView}
-                onChange={setDirectorView}
-                className="lab-director-view-switch"
-                options={[
-                  { value: 'shots', label: '分镜' },
-                  { value: 'media', label: `素材 ${takes.length}` },
-                ]}
-              />
               <div className="lab-director-tools">
                 <Input
                   aria-label="搜索镜头、属性或素材"
@@ -933,116 +888,15 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
                 />
               </div>
             </div>
-            <div className={`lab-director-content lab-director-content-${directorView}`}>
-              {directorView === 'shots' ? (
-                <DirectorLabShotList
-                  plan={activePlan}
-                  shots={visibleShots}
-                  endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
-                  refreshPlans={refreshRemotePlans}
-                  onWriteStateChange={setPlanWritePending}
-                  onOpenTake={(take) => {
-                    setActiveTakeId(take.id)
-                    setPreviewTakeId(take.id)
-                  }}
-                />
-              ) : (
-                <div className="lab-material-board">
-                  {visibleShots.map((shot) => {
-                    const stats = shotMetadata(shot, mediaMetadata)
-                    return (
-                      <section className="lab-material-shot" key={shot.id}>
-                        <header>
-                          <div>
-                            <strong>{String(shot.order).padStart(2, '0')} · {shot.name}</strong>
-                            {shot.attributes[0] && (
-                              <small>{shot.attributes[0].name}：{shot.attributes[0].description}</small>
-                            )}
-                            {shot.remark && <small>备注：{shot.remark}</small>}
-                          </div>
-                          <span>{shot.takes.length} 段素材</span>
-                        </header>
-                        {shot.takes.length > 0 && (
-                          <div className="lab-shot-stats">
-                            <span><CalendarDays size={13} />创建 {formatMediaTime(stats.createdAt)}</span>
-                            <span><Camera size={13} />拍摄 {formatMediaTime(stats.capturedAt)}</span>
-                            <span>
-                              <Clock3 size={13} />时长 {stats.metadataPending && metadataLoading
-                                ? '读取中'
-                                : formatDurationMs(stats.durationMs)}
-                            </span>
-                            {stats.resolution && <span className="lab-shot-resolution">{stats.resolution}</span>}
-                          </div>
-                        )}
-                        {shot.takes.length > 0 ? (
-                          <div className="lab-take-grid">
-                            {shot.takes.map((take, index) => {
-                              const takeDetails = takeMetadata(take, mediaMetadata)
-                              return (
-                                <ContextMenu key={take.id}>
-                                  <ContextMenuTrigger asChild>
-                                    <button
-                                      className={`lab-take-card${take.id === activeTake?.id ? ' active' : ''}`}
-                                      type="button"
-                                      onClick={() => {
-                                        setActiveTakeId(take.id)
-                                        setPreviewTakeId(take.id)
-                                      }}
-                                    >
-                                      <span className="lab-take-media">
-                                        {take.available && take.stream_url ? (
-                                          take.kind === 'video' ? (
-                                            <video src={take.stream_url} muted preload="metadata" />
-                                          ) : (
-                                            <img src={take.stream_url} alt="" loading="lazy" />
-                                          )
-                                        ) : (
-                                          <CloudOff size={20} />
-                                        )}
-                                      </span>
-                                      <span className="lab-take-copy">
-                                        <strong>{takeLabel(take, index)}</strong>
-                                        <small>
-                                          {take.kind === 'video'
-                                            ? formatDurationMs(takeDetails?.durationMs)
-                                            : '照片'}
-                                          {' · '}
-                                          {take.size_bytes ? formatBytes(take.size_bytes) : '文件缺失'}
-                                        </small>
-                                        <small>
-                                          {takeDetails?.capturedAt
-                                            ? `拍摄 ${formatMediaTime(takeDetails.capturedAt)}`
-                                            : `创建 ${formatMediaTime(take.created_at)}`}
-                                        </small>
-                                      </span>
-                                      <span className="lab-take-open">查看</span>
-                                    </button>
-                                  </ContextMenuTrigger>
-                                  <ContextMenuContent>
-                                    <ContextMenuItem onSelect={() => void openTakeFile(take)} disabled={!take.stream_path || /^https?:\/\//i.test(take.stream_path)}>
-                                      打开文件
-                                    </ContextMenuItem>
-                                    <ContextMenuItem onSelect={() => void openTakeDirectory(take)} disabled={!take.available}>
-                                      打开所在文件夹
-                                    </ContextMenuItem>
-                                  </ContextMenuContent>
-                                </ContextMenu>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="lab-shot-empty">暂无素材</div>
-                        )}
-                      </section>
-                    )
-                  })}
-                  {visibleShots.length === 0 && (
-                    <div className="lab-shot-empty">
-                      {activePlan.shots.length === 0 ? '暂无素材' : '没有匹配的素材'}
-                    </div>
-                  )}
-                </div>
-              )}
+            <div className="lab-director-content">
+              <DirectorLabShotList
+                plan={activePlan}
+                shots={visibleShots}
+                endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
+                refreshPlans={refreshRemotePlans}
+                onWriteStateChange={setPlanWritePending}
+                onOpenTake={(take) => setPreviewTakeId(take.id)}
+              />
             </div>
           </div>
         </section>
@@ -1056,7 +910,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           downloading={downloading === `take:${previewTake.id}`}
           downloadProgress={downloadProgress}
           onSelectTake={(take) => {
-            setActiveTakeId(take.id)
             setPreviewTakeId(take.id)
           }}
           onDownload={(take) => {

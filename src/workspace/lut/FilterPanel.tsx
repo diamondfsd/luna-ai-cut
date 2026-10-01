@@ -12,6 +12,7 @@ import { findDeviceRestoreLut, isDeviceRestoreLut, isTechnicalLut } from './rest
 import './FilterPanel.css'
 
 interface FilterPanelProps {
+  showRestore?: boolean
   restoreLut?: DeviceLutRestoreConfig | null
   restoreLutId: string | null
   onRestoreChange: (lutId: string | null) => void
@@ -25,7 +26,7 @@ interface FilterPanelProps {
   searchKey?: string
 }
 
-export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
+export function FilterPanel({ showRestore = true, restoreLut: restoreLutConfig, restoreLutId, onRestoreChange, activeLutId, onChange, intensity = 30, onIntensityChange, mediaPath, searchKey }: FilterPanelProps) {
   const [allLuts, setAllLuts] = useState<LutFileInfo[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [openCategory, setOpenCategory] = useState<string | null>(null)
@@ -165,7 +166,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
   return (
     <aside className="filter-sidebar">
       <div className="sidebar-inner">
-        <section className="lut-restore-row">
+        {showRestore && <section className="lut-restore-row">
           <span>
             <strong>LUT 还原</strong>
             <small>{lutsLoading
@@ -186,7 +187,7 @@ export function FilterPanel({ restoreLut: restoreLutConfig, restoreLutId, onRest
               onCheckedChange={handleRestoreChange}
             />
           )}
-        </section>
+        </section>}
 
         {/* 当前滤镜卡片 */}
         <section className="filter-current-card">

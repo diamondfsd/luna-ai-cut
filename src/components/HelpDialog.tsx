@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Code2, ExternalLink, FileText, GitFork, Heart, HelpCircle, Loader2, RefreshCw, Trash2, Zap, X as XIcon } from 'lucide-react'
 
 import type { HotUpdateCheckResult, UpdateInfo } from '../shared/types'
-import { Button, Dialog } from '../ui'
+import { Button, Dialog, IconButton } from '../ui'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog'
 import douyinQrCode from '../../public/my-douyin-qr-code.jpg'
 import wechatSupportCode from '../../public/wechat-start-code.png'
@@ -99,9 +99,12 @@ export function HelpDialog({ children }: HelpDialogProps) {
         open={open}
         onOpenChange={setOpen}
         trigger={children ?? (
-          <button className="nav-icon-button" title="帮助与反馈">
-            <HelpCircle size={15} />
-          </button>
+          <IconButton
+            variant="nav"
+            icon={<HelpCircle size={14} />}
+            aria-label="帮助与反馈"
+            title="帮助与反馈"
+          />
         )}
         title="帮助与反馈"
         description="管理应用版本，获取使用帮助，或自愿支持项目持续更新。"

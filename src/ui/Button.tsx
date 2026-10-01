@@ -16,9 +16,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    */
   variant?: ButtonVariant
   /** 尺寸：
-   *  - default（默认）：标准高度 36px
-   *  - compact：紧凑高度 32px
-   *  - mini：最小高度 28px，用于内联操作
+   *  - default（默认）：标准高度 34px
+   *  - compact：紧凑高度 30px
+   *  - mini：最小高度 26px，用于内联操作
    */
   size?: ButtonSize
   icon?: ReactNode

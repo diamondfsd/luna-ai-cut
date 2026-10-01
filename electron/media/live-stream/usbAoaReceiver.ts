@@ -1,7 +1,10 @@
 import usb from 'usb'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
-import type { LiveStreamControlCommand } from '../../../src/shared/types'
+import type {
+  LiveStreamControlCommand,
+  LiveStreamControlDelivery,
+} from '../../../src/shared/types'
 import { createUsbAccessoryShutdown } from './usbAccessoryLifecycle'
 import {
   consumeFrames,
@@ -29,6 +32,18 @@ const LIBUSB_TRANSFER_TYPE_BULK = 2
 export type UsbControlRequest = LiveStreamControlCommand & {
   version: 1
   requestId: string
+  delivery: LiveStreamControlDelivery
+}
+
+export function controlDelivery(command: LiveStreamControlCommand): LiveStreamControlDelivery {
+  if (command.type === 'gimbal.move' || command.type === 'zoom.preview') return 'best-effort'
+  if (
+    command.type === 'gimbal.stop'
+    || command.type === 'gimbal.center'
+    || command.type === 'gimbal.flip'
+    || command.type === 'tracking.stop'
+  ) return 'priority'
+  return 'transactional'
 }
 
 export interface LiveMediaReceiver {
@@ -153,7 +168,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private scanTimer: NodeJS.Timeout | null = null
   private pending = Buffer.alloc(0)
   private controlSequence = 0
-  private controlWriteTail = Promise.resolve()
+  private readonly controlWrites = new Set<Promise<void>>()
   private readonly failedProbeDevices = new Set<string>()
   private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
@@ -170,17 +185,16 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     if (!session) throw new Error('手机 USB 尚未连接')
     const frame = encodeControlFrame(request, this.controlSequence)
     this.controlSequence = (this.controlSequence + 1) & 0xff
-    const task = this.controlWriteTail
-      .catch(() => undefined)
-      .then(() => new Promise<void>((resolve, reject) => {
-        if (this.session !== session) {
-          reject(new Error('手机 USB 已断开'))
-          return
-        }
-        session.outEndpoint.transfer(frame, (error) => error ? reject(error) : resolve())
-      }))
-    this.controlWriteTail = task.catch(() => undefined)
-    return task
+    const write = new Promise<void>((resolve, reject) => {
+      if (this.session !== session) {
+        reject(new Error('手机 USB 已断开'))
+        return
+      }
+      session.outEndpoint.transfer(frame, (error) => error ? reject(error) : resolve())
+    })
+    this.controlWrites.add(write)
+    void write.finally(() => this.controlWrites.delete(write)).catch(() => undefined)
+    return write
   }
 
   start(): void {
@@ -371,7 +385,6 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     outEndpoint.timeout = 1_000
 
     this.pending = Buffer.alloc(0)
-    this.controlWriteTail = Promise.resolve()
     const session: ActiveAccessory = {
       device,
       interfaceInfo,
@@ -477,8 +490,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     ++this.generation
     const session = this.session
     this.session = null
-    const controlWrites = this.controlWriteTail
-    this.controlWriteTail = Promise.resolve()
+    const controlWrites = Promise.allSettled([...this.controlWrites]).then(() => undefined)
     this.statusValue = { ...this.statusValue, controlReady: false }
     this.pending = Buffer.alloc(0)
 
