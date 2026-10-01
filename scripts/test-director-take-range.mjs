@@ -22,7 +22,7 @@ assert.equal(edited.shots[0].takes[0].stream_url, plan.shots[0].takes[0].stream_
 assert.equal(edited.shots[0].takes[0].selected_range.note, '保留转身后的画面')
 assert.notEqual(directorPlanContentSignature(edited), directorPlanContentSignature(plan))
 assert.deepEqual(buildDirectorPlanUpdate(edited, 1).shots[0].take_ranges, [{
-  id: 'video-1', selected_range: { start_ms: 2000, end_ms: 7000, note: '保留转身后的画面' },
+  id: 'video-1', selected_range: { start_ms: 2000, end_ms: 7000, note: '保留转身后的画面' }, markers: [],
 }])
 assert.ok(!('take_ranges' in buildDirectorPlanUpdate(edited, 0, false).shots[0]))
 assert.deepEqual(buildDirectorPlanUpdate({ ...edited, pending_take_ids: ['video-1'] }, 1).shots[0].take_ranges, [])

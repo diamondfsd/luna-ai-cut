@@ -83,6 +83,9 @@ function readmeForPlan(plan: DirectorLanPlanSummary): string {
         lines.push(`- 选取范围：${take.selected_range.start_ms} - ${take.selected_range.end_ms} ms`)
         if (take.selected_range.note) lines.push(`- 片段备注：${take.selected_range.note}`)
       }
+      for (const marker of take.markers ?? []) {
+        lines.push(`- 亮点标签：${marker.start_ms}${marker.end_ms === null ? '' : ` - ${marker.end_ms}`} ms · ${marker.text}`)
+      }
     })
   })
   return `${lines.join('\n')}\n`
@@ -140,6 +143,7 @@ export function manifestForPlan(
           : null,
         available: take.available,
         selected_range: take.selected_range,
+        markers: take.markers ?? [],
       })),
     })),
   }, null, 2)
@@ -297,10 +301,12 @@ async function reconcileLocalDirectorPlanUnlocked(
     )
   let manifestNeedsUpdate = existing?.format !== 'luna-director-plan-v1'
     || existing.plan_id !== plan.id
+  const deletedLocalTakeIds = new Set(Array.isArray(existing?.deleted_local_take_ids)
+    ? existing!.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [])
   const shots = await Promise.all(plan.shots.map(async (shot) => ({
     ...shot,
     takes: await Promise.all(shot.takes.map(async (take, takeIndex) => {
-      if (Array.isArray(existing?.deleted_local_take_ids) && existing!.deleted_local_take_ids.includes(take.id)) {
+      if (deletedLocalTakeIds.has(take.id)) {
         return { ...take, available: false, stream_url: null, download_url: null, stream_path: null, download_path: null }
       }
       const relativePath = path.posix.join(
@@ -329,6 +335,10 @@ async function reconcileLocalDirectorPlanUnlocked(
           available = await localFileExists(absolutePath)
         }
       }
+      if (!available && previous?.available === true && typeof previous.path === 'string') {
+        deletedLocalTakeIds.add(take.id)
+        manifestNeedsUpdate = true
+      }
       if (available) {
         if (!previous || previous.available !== true || previous.path !== relativePath) {
           manifestNeedsUpdate = true
@@ -345,8 +355,7 @@ async function reconcileLocalDirectorPlanUnlocked(
   await writeDirectorPlanFilesUnlocked(directory, { ...plan, shots, pending_create: false,
     remote_origin: plan.remote_origin ?? existing?.remote_origin,
     pending_shot_ids: [], pending_take_ids: [], synced_revision: plan.revision ?? 0,
-    deleted_local_take_ids: Array.isArray(existing?.deleted_local_take_ids)
-      ? existing!.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [],
+    deleted_local_take_ids: [...deletedLocalTakeIds],
     synced_signature: directorPlanContentSignature(plan) }, { ...recoveredMetadata, ...metadata })
   return true
 }

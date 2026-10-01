@@ -4,6 +4,8 @@ import type { DirectorLanShot, DirectorLanTake } from '../shared/types'
 import type { DirectorTakeRange } from '../lib/directorTakeRange'
 import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
 import { DirectorShotInspector } from './DirectorShotInspector'
+import { DirectorTakeMarkerPanel } from './DirectorTakeMarkerPanel'
+import type { DirectorTakeMarker } from '../shared/types/directorLab'
 import { PreviewStage, type PreviewStageHandle } from './PreviewStage'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
@@ -22,9 +24,10 @@ interface Props {
   onAddMaterials: () => void
   phoneConnected: boolean
   onDeleteMaterial: (take: DirectorLanTake) => Promise<void>
+  onSaveMarkers: (markers: DirectorTakeMarker[]) => Promise<void>
 }
 
-export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, adding, onAddMaterials, phoneConnected, onDeleteMaterial }: Props) {
+export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, adding, onAddMaterials, phoneConnected, onDeleteMaterial, onSaveMarkers }: Props) {
   const playable = take.available && Boolean(take.stream_url)
   const isVideo = take.kind === 'video' && playable
   const stage = useRef<PreviewStageHandle>(null)
@@ -45,8 +48,7 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
   const desiredSeek = useRef<number | null>(null)
   const endPreview = useRef<number | null>(null)
   const seekFrame = useRef<number | null>(null)
-  const currentRange = useRef(range)
-  currentRange.current = range
+  const playbackRange = useRef(range)
   const baseline = useRef(JSON.stringify(take.selected_range))
   const selected: DirectorTakeRange = marked ? { start_ms: Math.round(range.start), end_ms: Math.round(range.end), ...(note.trim() ? { note: note.trim() } : {}) } : null
   const dirty = JSON.stringify(selected) !== baseline.current
@@ -110,10 +112,10 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
     if (!media.playing) return
     let frame: number
     const observe = () => {
-      if (rangePlayback.current && stage.current && stage.current.getCurrentTime() * 1000 >= currentRange.current.end) {
+      if (rangePlayback.current && stage.current && stage.current.getCurrentTime() * 1000 >= playbackRange.current.end) {
         rangePlayback.current = false
         if (stage.current.isPlaying()) stage.current.togglePlay()
-        stage.current.seek(Math.max(currentRange.current.start, currentRange.current.end - 1) / 1000)
+        stage.current.seek(Math.max(playbackRange.current.start, playbackRange.current.end - 1) / 1000)
         return
       }
       frame = requestAnimationFrame(observe)
@@ -122,11 +124,12 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
     return () => cancelAnimationFrame(frame)
   }, [media.playing])
 
-  const playRange = () => {
+  const playRange = (target = range) => {
     if (!stage.current || media.duration <= 0) return
     if (seekFrame.current !== null) { cancelAnimationFrame(seekFrame.current); seekFrame.current = null }
     if (stage.current.isPlaying()) stage.current.togglePlay()
-    stage.current.seek(range.start / 1000)
+    playbackRange.current = target
+    stage.current.seek(target.start / 1000)
     rangePlayback.current = true
     stage.current.togglePlay()
   }
@@ -194,6 +197,11 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
       </div>}
       </div>
       <DirectorShotInspector shot={shot} takes={takes} selectedId={take.id} disabled={saving || adding} onAddMaterials={onAddMaterials}
+        markerPanel={isVideo && <DirectorTakeMarkerPanel markers={take.markers ?? []} durationMs={Math.round(media.duration * 1000)}
+          range={range} disabled={saving || adding} getPosition={() => desiredSeek.current !== null && seekFrame.current !== null
+            ? desiredSeek.current * 1000 : (stage.current?.getCurrentTime() ?? media.currentTime) * 1000}
+          onPause={() => { if (stage.current?.isPlaying()) stage.current.togglePlay() }} onSave={onSaveMarkers}
+          onJump={marker => { if (marker.end_ms === null) seek(marker.start_ms / 1000); else playRange({ start: marker.start_ms, end: marker.end_ms }) }} />}
         onDeleteMaterial={onDeleteMaterial}
         onSelect={selectedTake => { if (selectedTake.id !== take.id) navigate(() => onSelectTake(selectedTake)) }} />
     </Dialog>

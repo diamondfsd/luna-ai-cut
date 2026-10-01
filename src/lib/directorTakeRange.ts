@@ -1,4 +1,5 @@
 import type { DirectorLanPlanSummary, DirectorLanTake } from '../shared/types/directorLab.ts'
+import { validateDirectorTakeMarkers } from './directorTakeMarkers.ts'
 
 export type DirectorTakeRange = DirectorLanTake['selected_range']
 
@@ -33,6 +34,9 @@ export function assertDirectorTakeRangesSaved(requested: DirectorLanPlanSummary,
     const actual = savedTakes.get(take.id)
     if (!actual || JSON.stringify(validateDirectorTakeRange(actual.selected_range)) !== JSON.stringify(validateDirectorTakeRange(take.selected_range))) {
       throw new Error('手机未保存片段标记，请更新手机端后重试')
+    }
+    if (JSON.stringify(validateDirectorTakeMarkers(actual.markers ?? [])) !== JSON.stringify(validateDirectorTakeMarkers(take.markers ?? []))) {
+      throw new Error('手机未保存亮点标签，请更新手机端后重试')
     }
   }
 }

@@ -22,6 +22,7 @@ import { lunaKaHttpClient } from '../network/lunaka_http_client'
 import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 import { discoverDirectorServices } from '../features/director-lab/directorLabDiscovery'
 import { registerDirectorLocalImport } from '../features/director-lab/directorLabLocalImport'
+import { validateDirectorTakeMarkers } from '../../src/lib/directorTakeMarkers'
 import { registerDirectorThumbnail } from '../features/director-lab/directorLabThumbnail'
 import { persistDirectorDownloads } from '../features/director-lab/directorLabDownloadStorage'
 import { directorPlanContentSignature } from '../../src/lib/directorPlanSync'
@@ -224,6 +225,7 @@ interface LocalManifestMedia {
   path?: unknown
   available?: unknown
   selected_range?: unknown
+  markers?: unknown
 }
 
 interface LocalManifestShot {
@@ -279,6 +281,8 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       return null
     }
     const directory = path.dirname(manifestPath)
+    const deletedLocalTakeIds = new Set(Array.isArray(raw.deleted_local_take_ids)
+      ? raw.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [])
     const rawShots = raw.shots as LocalManifestShot[]
     const shots = await Promise.all(rawShots.map(async (shot, shotIndex) => {
       const media = Array.isArray(shot.media) ? shot.media as LocalManifestMedia[] : []
@@ -287,6 +291,7 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         const relativePath = typeof item.path === 'string' ? item.path : null
         const absolutePath = relativePath ? localPathForManifestMedia(directory, relativePath) : null
         const available = absolutePath ? await fileExists(absolutePath) : false
+        if (!available && absolutePath && item.available === true) deletedLocalTakeIds.add(takeId)
         const fileUrl = available && absolutePath ? pathToFileURL(absolutePath).toString() : null
         const fileName = absolutePath ? path.basename(absolutePath) : `${shot.id ?? shotIndex}-${takeIndex}`
         const durationMs = typeof item.duration_ms === 'number' && Number.isFinite(item.duration_ms) && item.duration_ms > 0
@@ -332,6 +337,7 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
         }
         return {
           id: takeId,
+          markers: Array.isArray(item.markers) ? validateDirectorTakeMarkers(item.markers) : [],
           kind: item.type === 'photo' ? 'photo' as const : 'video' as const,
           created_at: typeof item.created_at === 'string'
             ? item.created_at
@@ -445,7 +451,7 @@ async function localPlanFromManifest(manifestPath: string): Promise<DirectorLabD
       pending_create: raw.pending_create === true,
       pending_shot_ids: Array.isArray(raw.pending_shot_ids) ? raw.pending_shot_ids.filter((id): id is string => typeof id === 'string') : [],
       pending_take_ids: Array.isArray(raw.pending_take_ids) ? raw.pending_take_ids.filter((id): id is string => typeof id === 'string') : [],
-      deleted_local_take_ids: Array.isArray(raw.deleted_local_take_ids) ? raw.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [],
+      deleted_local_take_ids: [...deletedLocalTakeIds],
       attributes: planAttributes,
       shot_count: shots.length,
       completed_shot_count: shots.filter((shot) => shot.takes.some((take) => take.available)).length,

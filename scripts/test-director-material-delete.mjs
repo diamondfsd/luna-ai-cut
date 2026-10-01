@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { deleteDirectorLocalMaterial } from '../electron/features/director-lab/directorLabMaterialDelete.ts'
 import { overlayDirectorLocalPlan, buildDirectorPlanUpdate } from '../src/lib/directorPlanSync.ts'
+import { writeDirectorPlanFiles, reconcileLocalDirectorPlan } from '../electron/features/director-lab/directorLabPlanStorage.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'director-material-delete-'))
 try {
@@ -50,6 +51,20 @@ try {
   await assert.rejects(deleteDirectorLocalMaterial(plan, 'unknown', async () => {}), /本地素材/)
   const remote = { ...plan, shots: [{ ...plan.shots[0], takes: [{ ...take, stream_url: 'https://phone/clip.mp4' }] }] }
   await assert.rejects(deleteDirectorLocalMaterial(remote, take.id, async () => {}), /本地素材/)
+  const externalDirectory = path.join(root, 'External deletion')
+  const externalTake = { ...otherTake, file_name: 'other.mp4', created_at: '', selected_range: null }
+  const externalPlan = { ...plan, id: 'external-plan', title: 'External deletion', pending_take_ids: [],
+    shots: [{ ...plan.shots[0], takes: [externalTake] }] }
+  await writeDirectorPlanFiles(externalDirectory, externalPlan)
+  let manifest = JSON.parse(await fs.readFile(path.join(externalDirectory, 'manifest.json'), 'utf8'))
+  const externalFile = path.join(externalDirectory, manifest.shots[0].media[0].path)
+  await fs.unlink(externalFile)
+  await reconcileLocalDirectorPlan(root, externalPlan)
+  manifest = JSON.parse(await fs.readFile(path.join(externalDirectory, 'manifest.json'), 'utf8'))
+  assert.deepEqual(manifest.deleted_local_take_ids, [externalTake.id])
+  assert.equal(manifest.shots[0].media[0].available, false)
+  assert.equal(await reconcileLocalDirectorPlan(root, externalPlan), false)
+  await assert.rejects(fs.stat(externalFile), { code: 'ENOENT' })
   console.log('director local material deletion checks passed')
 } finally {
   await fs.rm(root, { recursive: true, force: true })
