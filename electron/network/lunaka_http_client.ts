@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, session, webContents } from 'electron'
+import { app, ipcMain, session, webContents } from 'electron'
 import * as fs from 'node:fs/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
@@ -21,7 +21,7 @@ interface HttpResult {
   body: string
 }
 
-const STORE_FILE = 'lunaka-http-client.enc'
+const STORE_FILE = 'lunaka-http-client.json'
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024
 const AUTHORIZATION_PATH = '/api/v1/auth/authorize'
 const AUTHORIZATION_CHECK_PATH = '/api/v1/auth/check'
@@ -120,9 +120,6 @@ export class LunaKaHttpClient {
 
   private async _connect(base: URL): Promise<void> {
     await this.ensureLoaded()
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('当前系统未提供安全存储，无法保存手机授权')
-    }
     const key = this.keysByOrigin.get(base.origin)
     if (key) {
       const check = await this.performRequest(
@@ -261,6 +258,7 @@ export class LunaKaHttpClient {
       'authorization-denied': '手机端拒绝了此次授权请求',
       'authorization-request-throttled': '请求过于频繁，请稍后重试',
       'private-network-required': '只能连接同一局域网中的手机',
+      'revision-conflict': '导演计划已在其他端修改，请刷新后重新应用本次修改',
     }
     return new Error(messages[code] ?? `${fallback}：HTTP ${result.statusCode}`)
   }
@@ -305,17 +303,23 @@ export class LunaKaHttpClient {
   }
 
   private async loadCredentials(): Promise<void> {
-    if (!safeStorage.isEncryptionAvailable()) {
-      this.clientId = randomUUID()
-      return
-    }
     try {
-      const encrypted = await fs.readFile(path.join(app.getPath('userData'), STORE_FILE), 'utf8')
-      const data = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64'))) as Partial<StoredCredentials>
-      if (typeof data.clientId === 'string') this.clientId = data.clientId
+      const serialized = await fs.readFile(path.join(app.getPath('userData'), STORE_FILE), 'utf8')
+      const data = JSON.parse(serialized) as Partial<StoredCredentials>
+      if (
+        typeof data.clientId === 'string' &&
+        /^[A-Za-z0-9._:-]{8,128}$/.test(data.clientId)
+      ) {
+        this.clientId = data.clientId
+      }
       if (data.services && typeof data.services === 'object') {
         for (const [origin, key] of Object.entries(data.services)) {
-          if (typeof key === 'string') this.keysByOrigin.set(origin, key)
+          if (typeof key !== 'string' || key.length < 32 || key.length > 256) continue
+          try {
+            if (new URL(origin).origin === origin) this.keysByOrigin.set(origin, key)
+          } catch {
+            // Ignore malformed origins in the local credential file.
+          }
         }
       }
     } catch (error) {
@@ -328,7 +332,6 @@ export class LunaKaHttpClient {
   }
 
   private async persist(): Promise<void> {
-    if (!safeStorage.isEncryptionAvailable()) return
     const clientId = this.clientId
     if (!clientId) throw new Error('局域网客户端未初始化')
     const snapshot = JSON.stringify({
@@ -338,8 +341,11 @@ export class LunaKaHttpClient {
     const write = this.writeTask.catch(() => undefined).then(async () => {
       const filePath = path.join(app.getPath('userData'), STORE_FILE)
       const temporaryPath = `${filePath}.tmp`
-      const encrypted = safeStorage.encryptString(snapshot).toString('base64')
-      await fs.writeFile(temporaryPath, encrypted, { encoding: 'utf8', mode: 0o600 })
+      await fs.writeFile(temporaryPath, `${snapshot}\n`, {
+        encoding: 'utf8',
+        mode: 0o600,
+      })
+      if (process.platform !== 'win32') await fs.chmod(temporaryPath, 0o600)
       await fs.rename(temporaryPath, filePath)
     })
     this.writeTask = write
