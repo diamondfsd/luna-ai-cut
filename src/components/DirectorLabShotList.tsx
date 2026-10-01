@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import {
-  ArrowRight,
-  AlertCircle,
   Camera,
-  CheckCircle2,
-  Clock3,
   CloudOff,
-  Film,
-  Folder,
   Pencil,
   Plus,
   MoreHorizontal,
@@ -20,7 +14,7 @@ import type {
   DirectorLanTake,
   DirectorPlanSchema,
 } from '../shared/types'
-import { Button, Dialog, IconButton, Popover, PopoverTrigger, PopoverContent, PopoverClose, Tooltip, toast } from '../ui'
+import { Button, Dialog, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, IconButton, toast } from '../ui'
 import { DirectorShotEditorDialog, type DirectorShotDraft } from './DirectorShotEditorDialog'
 import '../styles/director-lab-shot-edit.css'
 
@@ -239,131 +233,60 @@ export function DirectorLabShotList({
         </div>
       )}
       <div className="lab-shot-grid">
-      {shots.map((shot) => {
-        const availableCount = shot.takes.filter((take) => take.available).length
-        const status = shot.takes.length === 0
-          ? 'pending'
-          : availableCount === 0
-            ? 'missing'
-            : availableCount === shot.takes.length
-              ? 'complete'
-              : 'partial'
-        const statusLabel = status === 'pending'
-          ? '待拍'
-          : status === 'missing'
-            ? '素材缺失'
-            : `${availableCount}/${shot.takes.length} 段可用`
-        const StatusIcon = status === 'complete'
-          ? CheckCircle2
-          : status === 'missing'
-            ? AlertCircle
-            : null
-        const thumbnailTake = shot.takes.find((take) =>
-          take.available && take.kind === 'photo' && take.stream_url)
-          ?? shot.takes.find((take) => take.available && take.stream_url)
+        {shots.map((shot) => {
+          const thumbnailTake = shot.takes.find((take) =>
+            take.available && take.kind === 'photo' && take.stream_url)
+            ?? shot.takes.find((take) => take.available && take.stream_url)
+          const canEdit = plan.source === 'remote' && endpoint && schema
 
-        return (
-          <article className="lab-shot-row" key={shot.id}>
-            <span className="lab-shot-row-index">{String(shot.order).padStart(2, '0')}</span>
-            {thumbnailTake ? (
-              <button
-                className="lab-shot-card-media"
-                type="button"
-                aria-label={`预览${shot.name}素材`}
-                onClick={() => onOpenTake(thumbnailTake)}
-              >
-                {thumbnailTake.kind === 'video' ? (
-                  <video src={thumbnailTake.stream_url ?? undefined} muted preload="metadata" />
-                ) : (
-                  <img src={thumbnailTake.stream_url ?? undefined} alt="" loading="lazy" />
-                )}
-                {thumbnailTake.kind === 'video' && <Film className="lab-shot-card-media-type" size={16} />}
-              </button>
-            ) : (
-              <div className="lab-shot-card-media is-empty">
-                {shot.takes.length > 0 ? <CloudOff size={20} /> : <Camera size={20} />}
-              </div>
-            )}
-            <div className="lab-shot-row-copy">
-              <div className="lab-shot-row-heading">
-                <strong>{shot.name}</strong>
-                <span className={`lab-shot-status is-${status}`}>
-                  {StatusIcon && <StatusIcon size={13} />}
-                  {statusLabel}
-                </span>
-                <span className="lab-shot-target">
-                  <Clock3 size={13} /> {(shot.duration_ms / 1000).toFixed(1)} 秒
-                </span>
-              </div>
-              {schema && (
-                <div className="lab-shot-field-values">
-                  {schema.shot_fields.map((field) => {
-                    const value = shot.attributes.find((attribute) =>
-                      attribute.id === `${shot.id}-attribute-${field.id}`)?.description
-                    return value ? <div key={field.id}><span>{field.label}</span><p>{value}</p></div> : null
-                  })}
-                  {shot.remark && <div><span>备注</span><p>{shot.remark}</p></div>}
+          return (
+            <article className="lab-shot-row" key={shot.id}>
+              {thumbnailTake ? (
+                <button
+                  className="lab-shot-card-media"
+                  type="button"
+                  aria-label={`预览${shot.name}素材`}
+                  onClick={() => onOpenTake(thumbnailTake)}
+                >
+                  {thumbnailTake.kind === 'video' ? (
+                    <video src={thumbnailTake.stream_url ?? undefined} muted preload="metadata" />
+                  ) : (
+                    <img src={thumbnailTake.stream_url ?? undefined} alt="" loading="lazy" />
+                  )}
+                </button>
+              ) : (
+                <div className="lab-shot-card-media is-empty">
+                  {shot.takes.length > 0 ? <CloudOff size={20} /> : <Camera size={20} />}
                 </div>
               )}
-              {shot.takes.length > 0 && (
-                <div className="lab-shot-take-strip">
-                  {shot.takes.map((take) => (
-                    <button
-                      key={take.id}
-                      type="button"
-                      aria-label={`查看${take.file_name}`}
-                      title={take.file_name}
-                      disabled={!take.available || !take.stream_url}
-                      onClick={() => onOpenTake(take)}
-                    >
-                      {take.available && take.stream_url ? (
-                        take.kind === 'video'
-                          ? <video src={take.stream_url} muted preload="metadata" />
-                          : <img src={take.stream_url} alt="" loading="lazy" />
-                      ) : <CloudOff size={16} />}
-                      {take.kind === 'video' && <Film size={12} className="lab-shot-take-type" />}
-                    </button>
-                  ))}
+              <div className="lab-shot-row-copy">
+                <div className="lab-shot-row-heading">
+                  <strong title={shot.name}>{shot.name}</strong>
+                  <span className="lab-shot-card-take-count">{shot.takes.length} 条素材</span>
                 </div>
-              )}
-              <footer className="lab-shot-card-footer">
-                <span className="lab-shot-card-take-count">
-                  <Folder size={14} /> {shot.takes.length} 条素材
-                </span>
-                {plan.source === 'remote' && endpoint && schema && (
-                  <div className="lab-shot-card-actions">
-                    <Button variant="utility" size="mini" icon={<Pencil size={13} />}
-                      disabled={editingShotId !== null || mutating} onClick={() => beginShotEdit(shot)}>编辑</Button>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <IconButton variant="ghost" size="mini" icon={<MoreHorizontal size={15} />}
-                          aria-label={`${shot.name}更多操作`} disabled={editingShotId !== null || mutating} />
-                      </PopoverTrigger>
-                      <PopoverContent>
-                        <PopoverClose asChild>
-                          <Button variant="danger" size="compact" icon={<Trash2 size={14} />}
-                            onClick={() => setDeleteCandidate(shot)}>删除镜头</Button>
-                        </PopoverClose>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                )}
-                {thumbnailTake && (
-                  <Tooltip content="查看素材">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <IconButton
                       variant="ghost"
                       size="compact"
-                      icon={<ArrowRight size={15} />}
-                      aria-label={`查看${shot.name}素材`}
-                      onClick={() => onOpenTake(thumbnailTake)}
+                      icon={<MoreHorizontal size={16} />}
+                      aria-label={`${shot.name}更多操作`}
+                      disabled={!canEdit || editingShotId !== null || mutating}
                     />
-                  </Tooltip>
-                )}
-              </footer>
-            </div>
-          </article>
-        )
-      })}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onSelect={() => beginShotEdit(shot)}>
+                      <Pencil size={14} />编辑
+                    </DropdownMenuItem>
+                    <DropdownMenuItem destructive onSelect={() => setDeleteCandidate(shot)}>
+                      <Trash2 size={14} />删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </article>
+          )
+        })}
       </div>
       <DirectorShotEditorDialog draft={shotDraft} schema={schema} saving={mutating} conflict={editConflict}
         onChange={setShotDraft} onClose={() => { setEditingShotId(null); setShotDraft(null) }} onSave={() => void saveShotEdit()} />
