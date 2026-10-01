@@ -3,6 +3,7 @@ import { Download, Video } from 'lucide-react'
 
 import { Accordion, Button, SegmentedControl, Switch } from '../ui'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
+import { useLiveUsage } from '../hooks/useLiveUsage'
 import type { WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { DEFAULT_PIPELINE, type EditPipeline } from '../workspace/shared/editPipeline'
 import { DetailPanel } from '../workspace/color/DetailPanel'
@@ -61,6 +62,19 @@ export function LiveControlPanel({
   const active = Boolean(status.startedAt) && status.state !== 'stopping'
   const streaming = status.usbState === 'streaming'
   const controlReady = status.controlReady && status.receiverConnected
+  const usage = useLiveUsage({
+    session: status.startedAt,
+    streaming,
+    watermark: watermarkSettings.enabled,
+    lut: Boolean(lutPath) && lutIntensity > 0,
+    color: Object.entries(liveColor).some(([key, value]) => (
+      value !== DEFAULT_PIPELINE.color[key as keyof EditPipeline['color']]
+    )),
+    watermarkSignature: JSON.stringify(watermarkSettings),
+    lutSignature: JSON.stringify([lutPath, lutIntensity]),
+    colorSignature: JSON.stringify(liveColor),
+  })
+  const recordUsageFrame = usage.recordFrame
 
   useEffect(() => () => {
     if (focusTimerRef.current !== null) window.clearTimeout(focusTimerRef.current)
@@ -120,6 +134,7 @@ export function LiveControlPanel({
   }, [previewAspectRatio])
 
   const handlePreviewFrame = useCallback((dimensions: { width: number; height: number }) => {
+    recordUsageFrame()
     const aspectRatio = dimensions.width / dimensions.height
     setPreviewAspectRatio(aspectRatio)
     setPreviewDimensions((current) => (
@@ -127,7 +142,7 @@ export function LiveControlPanel({
     ))
     setPreviewReady(true)
     setPreviewError(null)
-  }, [])
+  }, [recordUsageFrame])
 
   const handlePreviewError = useCallback((message: string) => {
     setPreviewReady(false)
@@ -284,7 +299,10 @@ export function LiveControlPanel({
               { value: 'color', label: '调色' },
             ]}
             value={activeSettingsPanel}
-            onChange={setActiveSettingsPanel}
+            onChange={(panel) => {
+              usage.opened(panel)
+              setActiveSettingsPanel(panel)
+            }}
           />
         </div>
         <div className="live-settings-scroll">

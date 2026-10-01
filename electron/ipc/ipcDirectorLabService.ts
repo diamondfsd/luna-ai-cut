@@ -23,15 +23,14 @@ import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 import { discoverDirectorServices } from '../features/director-lab/directorLabDiscovery'
 import { registerDirectorLocalImport } from '../features/director-lab/directorLabLocalImport'
 import { registerDirectorThumbnail } from '../features/director-lab/directorLabThumbnail'
+import { persistDirectorDownloads } from '../features/director-lab/directorLabDownloadStorage'
 import {
   legacyShotAttribute,
   mediaFileName,
   mediaFolder,
   planDirectory,
-  planWithDownloadedTake,
   reconcileLocalDirectorPlan,
   safePathPart,
-  writeDirectorPlanFiles,
 } from '../features/director-lab/directorLabPlanStorage'
 import { getFfmpegPath, getFfprobePath } from '../platform/ffmpeg/pipeline'
 
@@ -109,14 +108,15 @@ async function downloadPlan(
 ): Promise<DirectorLabDownloadPlanResult> {
   const { plan, operationId = `plan-${Date.now()}`, metadata = {} } = validateDownloadPlanRequest(value)
   const settings = await getSettings()
-  const directory = path.join(
+  const local = (await listLocalPlans()).find((item) => item.id === plan.id)
+  const directory = local?.local_directory ?? path.join(
     getDirectorPlanDir(settings),
-    planDirectory(plan.title),
+    `${planDirectory(plan.title)}_${safePathPart(plan.id, 'plan')}`,
   )
   await fs.mkdir(directory, { recursive: true })
   const media = plan.shots.flatMap((shot) => shot.takes
     .map((take, index) => ({ shot, take, index }))
-    .filter(({ take }) => take.available && take.download_url))
+    .filter(({ take }) => take.available && take.download_url?.startsWith('http')))
   let completedFiles = 0
   sendDownloadProgress(sender, {
     operationId,
@@ -128,22 +128,24 @@ async function downloadPlan(
     percent: 0,
   })
   let fileCount = 0
+  const downloaded = new Map<string, string>()
   for (const shot of plan.shots) {
     for (let index = 0; index < shot.takes.length; index += 1) {
       const take = shot.takes[index]
-      if (!take.available || !take.download_url) continue
+      if (!take.available || !take.download_url?.startsWith('http')) continue
       const folder = mediaFolder(shot.order, shot.name)
       const destination = path.join(
         directory,
         folder,
         mediaFileName(index + 1, take.file_name),
       )
-      await downloadToFileWithRetry({
+      if (!await fileExists(destination)) await downloadToFileWithRetry({
         name: take.file_name,
         bytes: take.size_bytes,
         sourceUrl: take.download_url,
         headers: await lunaKaHttpClient.authorizationHeadersFor(take.download_url),
       }, destination)
+      downloaded.set(take.id, destination)
       fileCount += 1
       completedFiles += 1
       sendDownloadProgress(sender, {
@@ -167,7 +169,7 @@ async function downloadPlan(
     totalFiles: media.length,
     percent: 100,
   })
-  await writeDirectorPlanFiles(directory, plan, metadata)
+  await persistDirectorDownloads(directory, plan, downloaded, metadata, listLocalPlans)
   sendDownloadProgress(sender, {
     operationId,
     planId: plan.id,
@@ -683,6 +685,9 @@ export function register(): void {
     const operationId = request.operationId ?? `take-${Date.now()}`
     const settings = await getSettings()
     const fileName = safePathPart(request.fileName, 'director-media')
+    const local = request.plan ? (await listLocalPlans()).find((item) => item.id === request.plan!.id) : null
+    const planPath = local?.local_directory ?? path.join(getDirectorPlanDir(settings), request.plan
+      ? `${planDirectory(request.planTitle)}_${safePathPart(request.plan.id, 'plan')}` : planDirectory(request.planTitle))
     const planEntry = request.plan && request.takeId
       ? request.plan.shots.flatMap((shot) => shot.takes.map((take, index) => ({ shot, take, index })))
         .find((entry) => entry.take.id === request.takeId)
@@ -691,8 +696,7 @@ export function register(): void {
     const shotName = planEntry?.shot.name ?? request.shotName ?? 'shot'
     const takeIndex = (planEntry?.index ?? Math.max(0, Math.round((request.takeIndex ?? 1) - 1))) + 1
     const directory = path.join(
-      getDirectorPlanDir(settings),
-      planDirectory(request.planTitle),
+      planPath,
       mediaFolder(shotOrder, shotName),
     )
     const destination = path.join(directory, mediaFileName(takeIndex, fileName))
@@ -713,9 +717,7 @@ export function register(): void {
       headers: await lunaKaHttpClient.authorizationHeadersFor(request.url),
     }, destination)
     if (request.plan && request.takeId) {
-      const localPlan = planWithDownloadedTake(request.plan, request.takeId)
-      const planPath = path.join(getDirectorPlanDir(settings), planDirectory(localPlan.title))
-      await writeDirectorPlanFiles(planPath, localPlan, request.metadata)
+      await persistDirectorDownloads(planPath, request.plan, new Map([[request.takeId, downloadedPath]]), request.metadata ?? {}, listLocalPlans)
     }
     sendDownloadProgress(event.sender, {
       operationId,

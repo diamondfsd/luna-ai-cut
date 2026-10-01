@@ -95,6 +95,11 @@
       {
         "from": "node_modules/7zip-bin/win/x64/7za.exe",
         "to": "tools/7za.exe"
+      },
+      {
+        "from": "resources/ios-usb/win-x64",
+        "to": "ios-usb",
+        "filter": ["*.exe", "*.dll", "licenses/**/*"]
       }
     ],
     "target": [

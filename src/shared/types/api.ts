@@ -32,6 +32,7 @@ import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segm
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { CameraVideoStreamApi } from './cameraVideoStream'
 import type { LivePreviewWindowSettings, LiveStreamApi, LiveWindowResolution } from './liveStream'
+import type { LiveUsageMessage } from './liveUsage'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
@@ -150,6 +151,7 @@ export interface LunaApi {
   lunaKaHttpClient: LunaKaHttpClientApi
   startupReady(): void
   trackPageOpened(path: string): void
+  trackLiveUsage(message: LiveUsageMessage): void
   setFullScreen(enabled: boolean): Promise<void>
   setLiveWindowMode(enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number): Promise<void>
   onLiveWindowModeEnd(callback: () => void): () => void

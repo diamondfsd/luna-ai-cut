@@ -1,10 +1,12 @@
-.lab-plan-import-dialog {
+.ui-dialog-content.lab-plan-import-dialog {
   width: min(680px, calc(100vw - 40px));
 }
 
-.lab-plan-import-text {
+.lab-plan-import-dialog .lab-plan-import-text {
   display: block;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: min(420px, 50vh);
   min-height: 180px;
   resize: vertical;

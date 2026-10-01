@@ -5,6 +5,7 @@ import { finished } from 'node:stream/promises'
 import { join } from 'node:path'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import type { LiveUsageAnalytics } from '../../infrastructure/liveUsageAnalytics'
 import {
   USB_STREAM_CONTROL_RESULT,
   USB_STREAM_VIDEO,
@@ -55,6 +56,11 @@ const IDLE_USB_STATUS: UsbAoaStatus = {
 let activeSession: ActiveSession | null = null
 let operation: Promise<LiveStreamStatus> | null = null
 let lastCapturePath: string | null = null
+let liveUsage: LiveUsageAnalytics | null = null
+
+export function setLiveUsageAnalytics(analytics: LiveUsageAnalytics): void {
+  liveUsage = analytics
+}
 
 function statusState(usbState: UsbAoaState): LiveStreamState {
   const session = activeSession
@@ -171,12 +177,18 @@ export async function sendLiveStreamControlCommand(command: LiveStreamControlCom
   const session = activeSession
   if (!session) throw new Error('手机 USB 尚未连接')
   const requestId = randomUUID()
-  await session.receiver.sendControl({
-    ...command,
-    version: 1,
-    requestId,
-    delivery: controlDelivery(command),
-  })
+  try {
+    await session.receiver.sendControl({
+      ...command,
+      version: 1,
+      requestId,
+      delivery: controlDelivery(command),
+    })
+    liveUsage?.control(session.startedAt, command.type, false)
+  } catch (error) {
+    liveUsage?.control(session.startedAt, command.type, true)
+    throw error
+  }
   if ((command.type === 'zoom.preview' || command.type === 'zoom.set') && session.capabilities) {
     session.capabilities = {
       ...session.capabilities,
@@ -225,6 +237,7 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
       startedAt: new Date().toISOString(),
     }
     activeSession = session
+    liveUsage?.start(session.startedAt)
     receiver.start()
     logMainInfo('[直播流] USB AOA 接收已启动')
     return getLiveStreamStatus()
@@ -241,6 +254,7 @@ export function stopLiveStream(): Promise<LiveStreamStatus> {
     const session = activeSession
     if (session) {
       session.state = 'stopping'
+      liveUsage?.stop(session.startedAt)
       await session.receiver.stop()
       await stopLiveStreamCapture()
       await session.livePreview.stop()

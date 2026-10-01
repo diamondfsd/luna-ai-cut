@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
 import { join } from 'node:path'
@@ -20,7 +21,8 @@ const PROXY_HOST = process.env.USB_VIDEO_IOS_PROXY_HOST ?? '127.0.0.1'
 const PROXY_PORT = Number(process.env.USB_VIDEO_IOS_PROXY_PORT ?? 4185)
 const PROXY_ENABLED = process.env.USB_VIDEO_IOS_PROXY !== '0'
 const CONNECT_RETRY_MS = 1_500
-const CONNECTION_CONFIRM_MS = 400
+const CONNECTION_TIMEOUT_MS = 10_000
+const DETECTION_UNAVAILABLE_MESSAGE = process.platform === 'win32' ? '请检查苹果设备服务' : 'iPhone USB 检测不可用'
 
 function proxyBinary(): string | null {
   const configured = process.env.USB_VIDEO_IPROXY_BIN
@@ -31,6 +33,7 @@ function proxyBinary(): string | null {
   const candidates = [
     configured,
     bundled,
+    ...(process.platform === 'win32' ? [join(process.cwd(), 'resources', 'ios-usb', 'win-x64', 'iproxy.exe')] : []),
     '/opt/homebrew/bin/iproxy',
     '/usr/local/bin/iproxy',
     '/usr/bin/iproxy',
@@ -50,6 +53,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   private socket: Socket | null = null
   private connecting = false
   private reconnectTimer: NodeJS.Timeout | null = null
+  private connectionTimer: NodeJS.Timeout | null = null
   private pending = Buffer.alloc(0)
   private controlSequence = 0
 
@@ -71,7 +75,6 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     }
     this.deviceDiscovery.start((result) => this.applyDeviceDiscovery(result))
     this.startProxy()
-    this.scheduleConnect(0)
   }
 
   async stop(): Promise<void> {
@@ -86,14 +89,32 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     const proxy = this.proxy
     this.proxy = null
     if (proxy && !proxy.killed) {
-      proxy.kill('SIGTERM')
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer)
+          proxy.off('close', finish)
+          resolve()
+        }
+        const timer = setTimeout(() => {
+          proxy.kill('SIGKILL')
+          finish()
+        }, 1_000)
+        proxy.once('close', finish)
+        proxy.kill('SIGTERM')
+      })
     }
     this.statusValue = idleUsbStatus('iOS USB 接收器已停止', 'ios-tcp')
   }
 
   async sendControl(request: UsbControlRequest): Promise<void> {
     const socket = this.socket
-    if (!socket || socket.destroyed || !socket.writable) throw new Error('iOS USB 尚未连接')
+    if (!this.running || !this.statusValue.controlReady || !socket || socket.destroyed || !socket.writable) {
+      throw new Error('iPhone 尚未连接')
+    }
+    await this.writeControl(socket, request)
+  }
+
+  private async writeControl(socket: Socket, request: UsbControlRequest): Promise<void> {
     const frame = encodeControlFrame(request, this.controlSequence)
     this.controlSequence = (this.controlSequence + 1) & 0xff
     await new Promise<void>((resolve, reject) => {
@@ -102,10 +123,11 @@ export class IosTcpReceiver implements LiveMediaReceiver {
   }
 
   private startProxy(): void {
-    if (this.proxy) return
+    if (!this.running || this.proxy) return
     const binary = proxyBinary()
     if (!binary) {
-      this.setStatus('waiting', '未找到 iproxy，暂时无法连接 iOS', '缺少 iproxy')
+      this.setStatus('waiting', '无法连接 iPhone', '连接工具不可用')
+      this.scheduleConnect(CONNECT_RETRY_MS)
       return
     }
     try {
@@ -114,90 +136,110 @@ export class IosTcpReceiver implements LiveMediaReceiver {
         windowsHide: true,
       })
       this.proxy = proxy
+      proxy.once('spawn', () => {
+        if (this.running && this.proxy === proxy) this.scheduleConnect(0)
+      })
       proxy.stdout.on('data', (chunk) => logMainInfo('[iOS USB] iproxy', { output: String(chunk).trim() }))
       proxy.stderr.on('data', (chunk) => logMainWarn('[iOS USB] iproxy', { output: String(chunk).trim() }))
       proxy.once('error', (error) => {
-        if (this.proxy === proxy) this.proxy = null
-        if (this.running) this.setStatus('waiting', '无法启动 iOS USB 转发', error.message)
+        logMainWarn('[iOS USB] 转发启动失败', { error: error.message })
+        this.handleProxyExit(proxy, '无法启动 iPhone 连接')
       })
-      proxy.once('exit', () => {
-        if (this.proxy === proxy) this.proxy = null
-        if (this.running) this.scheduleConnect(CONNECT_RETRY_MS)
+      proxy.once('exit', (code, signal) => {
+        logMainInfo('[iOS USB] 转发已退出', { code, signal })
+        this.handleProxyExit(proxy, null)
       })
       logMainInfo('[iOS USB] 已启动 iproxy', { binary, port: PROXY_PORT, devicePort: DEVICE_PORT })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      this.setStatus('waiting', '无法启动 iOS USB 转发', message)
+      logMainWarn('[iOS USB] 转发启动失败', { error: message })
+      this.setStatus('waiting', '无法连接 iPhone', '无法启动 iPhone 连接')
+      this.scheduleConnect(CONNECT_RETRY_MS)
     }
+  }
+
+  private handleProxyExit(proxy: ChildProcess, error: string | null): void {
+    if (this.proxy !== proxy || !this.running) return
+    this.proxy = null
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+    this.closeSocket()
+    this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', error)
+    this.scheduleConnect(CONNECT_RETRY_MS)
   }
 
   private scheduleConnect(delayMs: number): void {
     if (!this.running || this.socket || this.connecting || this.reconnectTimer) return
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
-      this.connect()
+      if (!this.proxy) this.startProxy()
+      else this.connect()
     }, delayMs)
   }
 
   private connect(): void {
     if (!this.running || this.socket || this.connecting) return
     this.connecting = true
-    let confirmed = false
     const socket = createConnection({ host: PROXY_HOST, port: PROXY_PORT })
-    let confirmationTimer: NodeJS.Timeout | null = null
-
-    const confirm = () => {
-      if (confirmed || socket.destroyed || socket !== this.socket) return
-      confirmed = true
-      this.statusValue = {
-        ...this.statusValue,
-        state: 'connected',
-        message: 'iPhone USB 通道已连接，等待音视频',
-        deviceLabel: 'Luna iPhone USB',
-        controlReady: true,
-        error: null,
-      }
-    }
+    this.socket = socket
+    this.pending = Buffer.alloc(0)
+    const isCurrent = () => this.running && this.socket === socket && !socket.destroyed
+    this.connectionTimer = setTimeout(() => {
+      if (!isCurrent()) return
+      this.closeSocket()
+      this.setStatus('waiting', '等待 iPhone 画面', null)
+      this.scheduleConnect(CONNECT_RETRY_MS)
+    }, CONNECTION_TIMEOUT_MS)
 
     socket.once('connect', () => {
+      if (!isCurrent()) return
       this.connecting = false
-      this.socket = socket
-      this.pending = Buffer.alloc(0)
-      confirmationTimer = setTimeout(confirm, CONNECTION_CONFIRM_MS)
+      void this.writeControl(socket, {
+        version: 1,
+        requestId: randomUUID(),
+        delivery: 'transactional',
+        type: 'capabilities.get',
+      }).catch((error: unknown) => {
+        if (!isCurrent()) return
+        logMainWarn('[iOS USB] 连接确认失败', { error: String(error) })
+        this.closeSocket()
+        this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
+        this.scheduleConnect(CONNECT_RETRY_MS)
+      })
     })
     socket.on('data', (chunk) => {
-      if (!confirmed) {
-        if (confirmationTimer) clearTimeout(confirmationTimer)
-        confirm()
-      }
+      if (!isCurrent()) return
       const received = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       this.pending = consumeFrames(
         Buffer.concat([this.pending, received]),
-        (frame) => this.handleFrame(frame),
+        (frame) => {
+          if (!isCurrent()) return
+          if (this.connectionTimer) clearTimeout(this.connectionTimer)
+          this.connectionTimer = null
+          this.handleFrame(frame)
+        },
         (reason) => logMainWarn(`[iOS USB] 丢弃无效 UCD2 帧：${reason}`),
       )
     })
     socket.once('error', (error) => {
-      if (confirmationTimer) clearTimeout(confirmationTimer)
-      this.connecting = false
-      if (this.socket === socket) {
-        this.closeSocket()
-        this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', error.message)
-      }
+      if (!this.running || this.socket !== socket) return
+      logMainWarn('[iOS USB] 连接失败', { error: error.message })
+      this.closeSocket()
+      this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
       this.scheduleConnect(CONNECT_RETRY_MS)
     })
     socket.once('close', () => {
-      if (confirmationTimer) clearTimeout(confirmationTimer)
-      this.connecting = false
-      if (this.socket === socket) this.closeSocket()
-      if (this.running) {
-        this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
-        this.scheduleConnect(CONNECT_RETRY_MS)
-      }
+      if (!this.running || this.socket !== socket) return
+      this.closeSocket()
+      this.setStatus('waiting', '等待 iOS 设备通过 USB 连接', null)
+      this.scheduleConnect(CONNECT_RETRY_MS)
     })
   }
 
   private closeSocket(): void {
+    if (this.connectionTimer) clearTimeout(this.connectionTimer)
+    this.connectionTimer = null
+    this.connecting = false
     const socket = this.socket
     this.socket = null
     this.pending = Buffer.alloc(0)
@@ -218,7 +260,8 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       message: connected || this.statusValue.error
         ? this.statusValue.message
         : detected ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
-          : unavailable ? 'iPhone USB 检测不可用' : '等待 iOS 设备通过 USB 连接',
+          : unavailable ? DETECTION_UNAVAILABLE_MESSAGE
+            : '等待 iOS 设备通过 USB 连接',
     }
   }
 
@@ -227,8 +270,10 @@ export class IosTcpReceiver implements LiveMediaReceiver {
     const isVideo = frame.streamType === 0x20
     this.statusValue = {
       ...this.statusValue,
-      state: 'streaming',
+      state: isVideo || this.statusValue.state === 'streaming' ? 'streaming' : 'connected',
       transport: 'ios-tcp',
+      deviceLabel: 'Luna iPhone USB',
+      vendorId: 0x05ac,
       message: isVideo ? '正在接收 iPhone USB 视频流' : '正在接收 iPhone USB 控制数据',
       frames: this.statusValue.frames + 1,
       bytes: this.statusValue.bytes + frame.raw.length,
@@ -250,7 +295,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
       message: state === 'waiting' && this.iosDeviceCount > 0 && !error
         ? '已识别 iPhone，等待 Luna 咔启动 USB 画面'
         : state === 'waiting' && this.statusValue.deviceDetectionUnavailable && !error
-          ? 'iPhone USB 检测不可用'
+          ? DETECTION_UNAVAILABLE_MESSAGE
           : message,
       deviceLabel: state === 'idle' ? null : this.iosDeviceCount > 0 ? 'iPhone USB' : this.statusValue.deviceLabel,
       vendorId: state === 'idle' ? null : this.iosDeviceCount > 0 ? 0x05ac : this.statusValue.vendorId,
