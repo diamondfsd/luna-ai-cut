@@ -157,6 +157,9 @@ interface ExistingManifestMedia {
 interface ExistingManifest {
   format?: unknown
   plan_id?: unknown
+  title?: unknown
+  updated_at?: unknown
+  revision?: unknown
   shots?: Array<{ media?: ExistingManifestMedia[] }>
 }
 
@@ -169,12 +172,42 @@ async function localFileExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function findPlanDirectoryById(rootDirectory: string, planId: string): Promise<string | null> {
+  let entries: import('node:fs').Dirent[]
+  try {
+    entries = await fs.readdir(rootDirectory, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const directory = path.join(rootDirectory, entry.name)
+    try {
+      const manifest = JSON.parse(
+        await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'),
+      ) as ExistingManifest
+      if (manifest.plan_id === planId) return directory
+    } catch {
+      // Ignore directories that do not contain a readable director plan.
+    }
+  }
+  return null
+}
+
 export async function reconcileLocalDirectorPlan(
   rootDirectory: string,
   plan: DirectorLanPlanSummary,
   metadata: Record<string, DirectorLabMediaMetadata> = {},
 ): Promise<boolean> {
-  const directory = path.join(rootDirectory, planDirectory(plan.title))
+  let directory = path.join(rootDirectory, planDirectory(plan.title))
+  const existingDirectory = await findPlanDirectoryById(rootDirectory, plan.id)
+  if (existingDirectory && path.resolve(existingDirectory) !== path.resolve(directory)) {
+    try {
+      await fs.rename(existingDirectory, directory)
+    } catch {
+      directory = existingDirectory
+    }
+  }
   const manifestPath = path.join(directory, 'manifest.json')
   let existing: ExistingManifest | null = null
   try {
@@ -205,6 +238,21 @@ export async function reconcileLocalDirectorPlan(
   }
 
   let hasLocalMedia = false
+  const remoteRevision = plan.revision ?? 0
+  const localRevision = typeof existing?.revision === 'number' && Number.isSafeInteger(existing.revision)
+    ? existing.revision
+    : 0
+  const remoteUpdatedAt = Date.parse(plan.updated_at)
+  const localUpdatedAt = typeof existing?.updated_at === 'string'
+    ? Date.parse(existing.updated_at)
+    : Number.NaN
+  const remoteIsNewer = remoteRevision > localRevision
+    || (
+      remoteRevision === localRevision
+      && Number.isFinite(remoteUpdatedAt)
+      && Number.isFinite(localUpdatedAt)
+      && remoteUpdatedAt > localUpdatedAt
+    )
   let manifestNeedsUpdate = existing?.format !== 'luna-director-plan-v1'
     || existing.plan_id !== plan.id
   const shots = await Promise.all(plan.shots.map(async (shot) => ({
@@ -227,7 +275,7 @@ export async function reconcileLocalDirectorPlan(
     })),
   })))
 
-  if (!hasLocalMedia || !manifestNeedsUpdate) return false
+  if (!hasLocalMedia || (!manifestNeedsUpdate && !remoteIsNewer)) return false
   await writeDirectorPlanFiles(directory, { ...plan, shots }, { ...recoveredMetadata, ...metadata })
   return true
 }

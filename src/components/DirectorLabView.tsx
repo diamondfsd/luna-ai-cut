@@ -22,6 +22,7 @@ import type {
   DirectorLanPlansResponse,
   DirectorLanShot,
 } from '../shared/types'
+import { useDirectorPlanSync } from '../hooks/useDirectorPlanSync'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
@@ -342,6 +343,13 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     else pendingWritePlanIdsRef.current.delete(planId)
   }, [])
 
+  const isPlanWritePending = useCallback((planId: string): boolean =>
+    pendingWritePlanIdsRef.current.has(planId), [])
+
+  const handleSyncConflict = useCallback((plan: DirectorLanPlanSummary): void => {
+    toast.error(`“${plan.title}”两端都有新修改，已保留本地副本`)
+  }, [])
+
   useEffect(() => window.luna.directorLab.onDownloadProgress(setDownloadProgress), [])
 
   const refreshLocalPlans = useCallback(async (): Promise<DirectorLanPlanSummary[]> => {
@@ -376,6 +384,16 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       ].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
     })
   }, [])
+
+  const { status: syncStatus, synchronize } = useDirectorPlanSync({
+    endpoint: connectedEndpoint,
+    requestRemotePlans: refreshRemotePlans,
+    mergeRemotePlans: mergePlans,
+    mergeLocalPlans: mergeLocalPlanCopies,
+    isPlanWritePending,
+    setPlanWritePending,
+    onConflict: handleSyncConflict,
+  })
 
   useEffect(() => {
     if (!activePlan) {
@@ -425,7 +443,41 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
   useEffect(() => {
     if (!connectedEndpoint) return
     let disposed = false
-    const unsubscribe = window.luna.lunaKaHttpClient.onChannelMessage((event) => {
+    let reconnectTimer: number | null = null
+    let reconnectAttempt = 0
+    let connecting = false
+    let endpointOrigin: string
+    try {
+      endpointOrigin = new URL(connectedEndpoint).origin
+    } catch {
+      return
+    }
+
+    const scheduleReconnect = (): void => {
+      if (disposed || reconnectTimer != null) return
+      const delay = Math.min(30_000, 1_000 * (2 ** reconnectAttempt))
+      reconnectAttempt += 1
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null
+        void connect()
+      }, delay)
+    }
+
+    const connect = async (): Promise<void> => {
+      if (disposed || connecting) return
+      connecting = true
+      try {
+        await window.luna.lunaKaHttpClient.connectChannel(connectedEndpoint)
+        reconnectAttempt = 0
+        void synchronize()
+      } catch {
+        scheduleReconnect()
+      } finally {
+        connecting = false
+      }
+    }
+
+    const unsubscribeMessage = window.luna.lunaKaHttpClient.onChannelMessage((event) => {
       if (event.endpoint !== new URL(connectedEndpoint).origin || disposed) return
       const message = event.message as {
         type?: unknown
@@ -441,19 +493,26 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
       if (message.name === 'director.plan.deleted') {
         setActivePlanId((current) => current === planId ? null : current)
       }
-      void requestPlans(connectedEndpoint)
-        .then((payload) => {
-          if (!disposed) mergePlans(payload.plans)
-        })
-        .catch(() => undefined)
+      void synchronize()
     })
-    void window.luna.lunaKaHttpClient.connectChannel(connectedEndpoint).catch(() => undefined)
+    const unsubscribeStatus = window.luna.lunaKaHttpClient.onChannelStatus((event) => {
+      if (event.endpoint !== endpointOrigin || disposed) return
+      if (event.state === 'open') {
+        reconnectAttempt = 0
+        void synchronize()
+      } else {
+        scheduleReconnect()
+      }
+    })
+    void connect()
     return () => {
       disposed = true
-      unsubscribe()
+      if (reconnectTimer != null) window.clearTimeout(reconnectTimer)
+      unsubscribeMessage()
+      unsubscribeStatus()
       void window.luna.lunaKaHttpClient.disconnectChannel(connectedEndpoint).catch(() => undefined)
     }
-  }, [connectedEndpoint, mergePlans])
+  }, [connectedEndpoint, synchronize])
 
   const loadPlans = useCallback(async (value: string): Promise<boolean> => {
     let normalized: string
@@ -467,11 +526,6 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     try {
       const payload = await requestPlans(normalized)
       mergePlans(payload.plans)
-      void Promise.all(payload.plans.map((plan) => window.luna.directorLab.reconcileLocalPlan(plan)))
-        .then(async (reconciled) => {
-          if (reconciled.some(Boolean)) mergeLocalPlanCopies(await refreshLocalPlans())
-        })
-        .catch(() => undefined)
       setConnectedEndpoint(normalized)
       setActivePlanId((current) => payload.plans.some((plan) => plan.id === current)
         ? current
@@ -484,7 +538,7 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     } finally {
       setLoading(false)
     }
-  }, [mergeLocalPlanCopies, mergePlans, refreshLocalPlans])
+  }, [mergePlans])
 
   const discover = useCallback(async (): Promise<boolean> => {
     setLoading(true)
@@ -665,6 +719,14 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
     await window.luna.openPath(activePlan.local_directory)
   }
 
+  const syncStatusLabel = syncStatus === 'syncing'
+    ? '同步中'
+    : syncStatus === 'conflict'
+      ? '有冲突'
+      : syncStatus === 'offline'
+        ? '等待连接'
+        : '已同步'
+
   return (
     <div className="lab-page lab-director-page">
       <header className="lab-director-page-header">
@@ -681,16 +743,24 @@ export function DirectorLabView({ onBack }: DirectorLabViewProps) {
           <h1>导演计划</h1>
         </div>
         {connectedEndpoint && (
-          <Tooltip content="刷新导演计划">
-            <IconButton
-              variant="outline"
-              size="compact"
-              icon={<RefreshCw size={15} />}
-              aria-label="刷新导演计划"
-              disabled={loading}
-              onClick={() => void loadPlans(connectedEndpoint)}
-            />
-          </Tooltip>
+          <div className="lab-director-sync-actions">
+            <span
+              className={`lab-sync-status is-${syncStatus}`}
+              aria-live="polite"
+            >
+              {syncStatusLabel}
+            </span>
+            <Tooltip content="刷新导演计划">
+              <IconButton
+                variant="outline"
+                size="compact"
+                icon={<RefreshCw size={15} />}
+                aria-label="刷新导演计划"
+                disabled={loading}
+                onClick={() => void loadPlans(connectedEndpoint)}
+              />
+            </Tooltip>
+          </div>
         )}
       </header>
 
