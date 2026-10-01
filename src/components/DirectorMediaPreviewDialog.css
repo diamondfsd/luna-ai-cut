@@ -4,6 +4,19 @@
   gap: 20px;
   padding: 20px;
   color: var(--muted-dark);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.director-range-body > .lab-director-inspector {
+  padding: 0 0 0 16px;
+  border-left: 1px solid var(--hairline);
+}
+
+.lab-director-inspector > .director-take-list {
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .lab-viewer-shot-heading,

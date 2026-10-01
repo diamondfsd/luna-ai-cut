@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Upload } from 'lucide-react'
 import type { DirectorLanShot, DirectorLanTake } from '../shared/types'
 import type { DirectorTakeRange } from '../lib/directorTakeRange'
 import { Button, Dialog, Input, LoadingIndicator, toast } from '../ui'
-import { DirectorTakeList } from './DirectorTakeList'
+import { DirectorShotInspector } from './DirectorShotInspector'
 import { PreviewStage, type PreviewStageHandle } from './PreviewStage'
 import { TrimStrip } from '../workspace/trim/TrimStrip'
 import { useTrimThumbnails } from '../workspace/trim/useTrimThumbnails'
 import './DirectorVideoRangeEditor.css'
+import './DirectorShotDetailDialog.css'
 
 interface Props {
   take: DirectorLanTake
@@ -16,9 +18,14 @@ interface Props {
   onSave: (range: DirectorTakeRange) => Promise<void>
   onSelectTake: (take: DirectorLanTake) => void
   onClose: () => void
+  adding: boolean
+  onAddMaterials: () => void
+  phoneConnected: boolean
 }
 
-export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose }: Props) {
+export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, onSelectTake, onClose, adding, onAddMaterials, phoneConnected }: Props) {
+  const playable = take.available && Boolean(take.stream_url)
+  const isVideo = take.kind === 'video' && playable
   const stage = useRef<PreviewStageHandle>(null)
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +37,9 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
   const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null)
   const initialized = useRef(false)
   const sourceLoader = useRef(source)
+  sourceLoader.current = source
+  const takeSnapshot = useRef(take)
+  takeSnapshot.current = take
   const rangePlayback = useRef(false)
   const desiredSeek = useRef<number | null>(null)
   const endPreview = useRef<number | null>(null)
@@ -43,6 +53,18 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
 
   useEffect(() => {
     let cancelled = false
+    const nextTake = takeSnapshot.current
+    setUrl(null)
+    setError(null)
+    setMedia({ currentTime: 0, duration: 0, playing: false })
+    setRange({ start: nextTake.selected_range?.start_ms ?? 0, end: nextTake.selected_range?.end_ms ?? 0 })
+    setNote(nextTake.selected_range?.note ?? '')
+    setMarked(nextTake.kind === 'video' && Boolean(nextTake.selected_range))
+    baseline.current = JSON.stringify(nextTake.selected_range)
+    initialized.current = false
+    rangePlayback.current = false
+    if (seekFrame.current !== null) { cancelAnimationFrame(seekFrame.current); seekFrame.current = null }
+    if (!nextTake.available || !nextTake.stream_url) return
     const timeout = window.setTimeout(() => {
       if (!cancelled) setError('素材读取超时，请检查本地文件或手机连接后重新打开。')
     }, 60_000)
@@ -50,13 +72,13 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
       if (!cancelled) setError(reason instanceof Error ? reason.message : '素材读取失败')
     }).finally(() => window.clearTimeout(timeout))
     return () => { cancelled = true; window.clearTimeout(timeout) }
-  }, [])
+  }, [take.id, take.stream_url, take.available])
 
   useEffect(() => {
-    if (!url || media.duration > 0) return
+    if (!url || !isVideo || media.duration > 0) return
     const timeout = window.setTimeout(() => setError('素材无法播放，请检查文件是否存在、是否损坏或格式是否受支持。'), 15_000)
     return () => window.clearTimeout(timeout)
-  }, [url, media.duration])
+  }, [url, media.duration, isVideo])
 
   useEffect(() => {
     if (initialized.current || !Number.isFinite(media.duration) || media.duration <= 0) return
@@ -134,13 +156,11 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
 
   return <>
     <Dialog open onOpenChange={open => { if (!open) onClose() }} title={take.file_name}
-      headerActions={<Button variant="primary" size="compact" disabled={!dirty || saving || media.duration <= 0} onClick={() => void save()}>{saving ? '保存中' : '保存'}</Button>}
+      headerActions={isVideo && <Button variant="primary" size="compact" disabled={!dirty || saving || adding || media.duration <= 0} onClick={() => void save()}>{saving ? '保存中' : '保存'}</Button>}
       tone="dark" className="director-range-dialog" bodyClassName="director-range-body" closeOnMaskClick={false}>
-      {takes.length > 1 && <DirectorTakeList takes={takes} selectedId={take.id} disabled={saving}
-        onSelect={selectedTake => { if (selectedTake.id !== take.id) navigate(() => onSelectTake(selectedTake)) }} />}
       <div className="director-range-main">
-      <div className="director-range-preview" tabIndex={0} aria-label="素材预览" onKeyDown={event => {
-        if (media.duration <= 0 || event.ctrlKey || event.metaKey || event.altKey) return
+      <div className={`director-range-preview${!playable ? ' lab-shot-empty-preview' : ''}`} tabIndex={0} aria-label="素材预览" onKeyDown={event => {
+        if (!isVideo || media.duration <= 0 || event.ctrlKey || event.metaKey || event.altKey) return
         if (event.key.toLowerCase() === 'i') { event.preventDefault(); setRange(current => ({ ...current, start: Math.min(Math.round(media.currentTime * 1000), current.end - 1) })); setMarked(true) }
         else if (event.key.toLowerCase() === 'o') { event.preventDefault(); setRange(current => ({ ...current, end: Math.max(Math.round(media.currentTime * 1000), current.start + 1) })); setMarked(true) }
         else if (event.code === 'Space') { event.preventDefault(); if (stage.current?.isPlaying()) stage.current.togglePlay(); else playRange() }
@@ -148,10 +168,13 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
           event.preventDefault(); seek(Math.min(media.duration, Math.max(0, media.currentTime + (event.key === 'ArrowRight' ? 1 : -1) / 30)))
         }
       }}>
-        {error ? <span role="alert">{error}</span> : !url ? <LoadingIndicator label="正在读取素材" />
-          : <PreviewStage ref={stage} url={url} isLivePhoto={false} hideControls onPlayStateChange={setMedia} />}
+        {!playable ? <>
+          <Button variant="primary" icon={<Upload size={18} />} disabled={adding} onClick={onAddMaterials}>{adding ? '添加中' : '添加素材'}</Button>
+          {!phoneConnected && <p role="status">手机未连接，且本地没有可用素材。请连接手机同步素材，或添加本地素材。</p>}
+        </> : error ? <span role="alert">{error}</span> : !url ? <LoadingIndicator label="正在读取素材" />
+          : <PreviewStage key={take.id} ref={stage} url={url} isLivePhoto={false} hideControls onPlayStateChange={setMedia} />}
       </div>
-      <div className="director-range-controls">
+      {isVideo && <div className="director-range-controls">
         <TrimStrip duration={media.duration} startTime={range.start / 1000} endTime={range.end / 1000}
           currentTime={media.currentTime} playing={media.playing} thumbnails={thumbnails}
           onTogglePlay={() => { if (stage.current?.isPlaying()) stage.current.togglePlay(); else playRange() }} onSeek={seek}
@@ -167,8 +190,10 @@ export function DirectorVideoRangeEditor({ take, shot, takes, source, onSave, on
             seek(0)
           }}>还原</Button>
         </div>
+      </div>}
       </div>
-      </div>
+      <DirectorShotInspector shot={shot} takes={takes} selectedId={take.id} disabled={saving || adding} onAddMaterials={onAddMaterials}
+        onSelect={selectedTake => { if (selectedTake.id !== take.id) navigate(() => onSelectTake(selectedTake)) }} />
     </Dialog>
     <Dialog open={Boolean(pendingNavigation)} onOpenChange={open => { if (!open) setPendingNavigation(null) }} title="放弃未保存的标记？" tone="dark" footer={<>
       <Button onClick={() => setPendingNavigation(null)}>继续编辑</Button>

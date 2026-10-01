@@ -7,17 +7,13 @@
 
 .director-range-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
   min-height: 0;
 }
 
 .director-range-dialog > .ui-dialog-close {
   top: 19px;
-}
-
-.director-range-body:has(> .director-take-list) {
-  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .director-range-main {
@@ -67,5 +63,5 @@
 }
 
 @media (max-width: 800px) {
-  .director-range-body:has(> .director-take-list) { grid-template-columns: 160px minmax(0, 1fr); }
+  .director-range-body { grid-template-columns: minmax(0, 1fr) 240px; }
 }
