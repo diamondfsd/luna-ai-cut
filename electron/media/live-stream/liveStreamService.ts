@@ -292,6 +292,7 @@ export function stopLiveStream(): Promise<LiveStreamStatus> {
     const session = activeSession
     if (session) {
       session.state = 'stopping'
+      onPhoneDisconnected()
       liveUsage?.stop(session.startedAt)
       await session.receiver.stop()
       await stopLiveStreamCapture()

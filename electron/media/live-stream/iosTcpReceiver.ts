@@ -164,6 +164,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
 
   private handleProxyExit(proxy: ChildProcess, error: string | null): void {
     if (this.proxy !== proxy || !this.running) return
+    this.notifyDisconnected()
     this.proxy = null
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
