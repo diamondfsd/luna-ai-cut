@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import { appendFileSync, mkdirSync } from 'node:fs'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { currentBaseDir, logDirForBaseDir } from '../storage/settingsService'
+import { saveStartupFailure, type StartupFailureReport } from './startupDiagnostics'
 
 const STARTUP_READY_CHANNEL = 'luna:startup-ready'
 let startupWindow: BrowserWindow | null = null
@@ -22,14 +22,54 @@ function startupPage(failed = false): string {
   ${failed ? '' : '<script>setTimeout(()=>{document.getElementById("status").textContent="首次启动可能需要多一点时间，请稍候…"},15000)</script>'}</body></html>`
 }
 
-function writeStartupFailure(error: unknown): void {
+function writeStartupFailure(error: unknown): StartupFailureReport {
+  const logPaths: string[] = []
   try {
-    const logDir = logDirForBaseDir(currentBaseDir())
-    mkdirSync(logDir, { recursive: true })
-    const detail = error instanceof Error ? (error.stack || error.message) : String(error)
-    appendFileSync(join(logDir, 'startup.log'), `[${new Date().toISOString()}] ${detail}\n`, 'utf8')
-  } catch {
-    // 启动日志不可写时仍继续显示错误提示。
+    logPaths.push(join(logDirForBaseDir(currentBaseDir()), 'startup.log'))
+  } catch (pathError) {
+    console.error('[startup] 无法读取日志目录', pathError)
+  }
+  logPaths.push(join(app.getPath('userData'), 'logs', 'startup.log'))
+  logPaths.push(join(app.getPath('temp'), 'LunaAI-Cut', 'logs', 'startup.log'))
+  return saveStartupFailure(error, [
+    `版本：${app.getVersion()}`,
+    `系统：${process.platform} ${process.arch}`,
+    `启动来源：${process.env.LUNA_BOOT_SOURCE || 'bootstrap'}`,
+    `应用：${process.execPath}`,
+    `资源：${process.resourcesPath}`,
+  ].join('\n'), logPaths)
+}
+
+async function showStartupFailure(report: StartupFailureReport, error: unknown): Promise<void> {
+  const reason = error instanceof Error ? error.message : String(error)
+  let actionError = ''
+  const buttons = report.logPath ? ['复制诊断信息', '打开日志位置', '退出'] : ['复制诊断信息', '退出']
+  let response = -1
+  while (response !== buttons.length - 1) {
+    const options = {
+      type: 'error' as const,
+      title: 'Luna AI Cut 暂时无法启动',
+      message: '应用未能正常打开',
+      detail: `原因：${reason.slice(0, 1600)}\n\n${report.logPath ? `日志：${report.logPath}` : '日志未能保存，可复制诊断信息。'}${actionError}`,
+      buttons,
+      defaultId: 0,
+      cancelId: buttons.length - 1,
+      noLink: true,
+    }
+    const parent = startupWindow && !startupWindow.isDestroyed() ? startupWindow : null
+    const result = await (parent ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options))
+    response = result.response
+    if (result.response === buttons.length - 1) return
+    actionError = ''
+    try {
+      if (result.response === 0 || !report.logPath) {
+        clipboard.writeText(report.diagnostic)
+      } else {
+        shell.showItemInFolder(report.logPath)
+      }
+    } catch {
+      actionError = '\n\n操作未完成，请重试。'
+    }
   }
 }
 
@@ -51,21 +91,15 @@ export function failStartup(error: unknown): void {
   if (!startupPending) return
   startupPending = false
   cleanupStartupListeners()
-  writeStartupFailure(error)
+  const report = writeStartupFailure(error)
   if (startupWindow && !startupWindow.isDestroyed()) {
     void startupWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupPage(true))}`)
     startupWindow.show()
     startupWindow.focus()
   }
-  const options = {
-    type: 'error' as const,
-    title: 'Luna AI Cut 暂时无法启动',
-    message: '应用未能正常打开',
-    detail: '请关闭应用后重试。若仍无法打开，请重新安装最新版。',
-    buttons: ['知道了'],
-  }
-  const prompt = startupWindow ? dialog.showMessageBox(startupWindow, options) : dialog.showMessageBox(options)
-  void prompt.finally(() => app.quit())
+  void showStartupFailure(report, error).catch((promptError) => {
+    console.error('[startup] 无法显示启动错误', promptError, report.diagnostic)
+  }).finally(() => app.quit())
 }
 
 function createStartupWindow(): void {
