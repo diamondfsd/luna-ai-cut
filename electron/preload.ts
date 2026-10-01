@@ -242,6 +242,14 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     download: (request: DirectorLabDownloadRequest) => ipcRenderer.invoke('director-lab:download', request),
     downloadPlan: (request) => ipcRenderer.invoke('director-lab:download-plan', request),
     listLocalPlans: () => ipcRenderer.invoke('director-lab:list-local-plans'),
+    addLocalShot: (plan) => ipcRenderer.invoke('director-lab:add-local-shot', plan),
+    importPlan: () => ipcRenderer.invoke('director-lab:import-plan'),
+    importPlanText: (text) => ipcRenderer.invoke('director-lab:import-plan-text', text),
+    saveLocalPlan: (plan) => ipcRenderer.invoke('director-lab:save-local-plan', plan),
+    importMaterials: (plan, shotId) => ipcRenderer.invoke('director-lab:import-materials', plan, shotId),
+    syncMaterials: (endpoint, planId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId),
+    acknowledgeLocalPlan: (remote, signature) => ipcRenderer.invoke('director-lab:acknowledge-local-plan', remote, signature),
+    prepareThumbnail: (url) => ipcRenderer.invoke('director-lab:prepare-thumbnail', url),
     reconcileLocalPlan: (plan, resolveConflict) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan, resolveConflict),
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorLabDownloadProgress): void => callback(progress)

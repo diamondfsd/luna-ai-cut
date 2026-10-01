@@ -53,6 +53,35 @@ for (const [code, position] of [
 }
 
 key('keydown', 'KeyW')
+key('keydown', 'ShiftLeft', { shiftKey: true })
+assert.deepEqual(commands.at(-1), { x: 0, y: 1 }, 'Shift must accelerate an already held direction')
+key('keydown', 'KeyD', { shiftKey: true })
+assert.ok(Math.abs(Math.hypot(commands.at(-1).x, commands.at(-1).y) - 1) < 1e-12, 'full-speed diagonal must remain capped')
+key('keyup', 'ShiftLeft', { shiftKey: false })
+assert.ok(Math.abs(Math.hypot(commands.at(-1).x, commands.at(-1).y) - 0.5) < 1e-12, 'releasing Shift must immediately restore medium speed')
+key('keyup', 'KeyD')
+key('keyup', 'KeyW')
+
+for (const code of ['KeyW', 'KeyA', 'KeyS', 'KeyD']) {
+  key('keydown', 'ShiftRight', { shiftKey: true })
+  key('keydown', code, { shiftKey: true })
+  assert.equal(Math.hypot(commands.at(-1).x, commands.at(-1).y), 1)
+  key('keyup', code, { shiftKey: true })
+  assert.equal(commands.at(-1), 'stop', 'releasing the direction must stop even with Shift held')
+  key('keyup', 'ShiftRight', { shiftKey: false })
+}
+
+key('keydown', 'KeyW', { shiftKey: true })
+key('keydown', 'ShiftRight', { shiftKey: true })
+key('keyup', 'ShiftLeft', { shiftKey: true })
+assert.deepEqual(commands.at(-1), { x: 0, y: 1 }, 'holding the other Shift key must retain full speed')
+windowTarget.dispatchEvent(new Event('blur'))
+assert.equal(commands.at(-1), 'stop', 'blur must stop full-speed movement')
+key('keydown', 'KeyW')
+assert.deepEqual(commands.at(-1), { x: 0, y: 0.5 }, 'blur must reset full-speed state')
+key('keyup', 'KeyW')
+
+key('keydown', 'KeyW')
 key('keydown', 'KeyD')
 assert.ok(Math.abs(Math.hypot(commands.at(-1).x, commands.at(-1).y) - 0.5) < 1e-12)
 key('keyup', 'KeyD')

@@ -83,6 +83,14 @@ export interface DirectorLabApi {
   downloadPlan(request: DirectorLabDownloadPlanRequest): Promise<DirectorLabDownloadPlanResult>
   discover(): Promise<DirectorLabDiscoveryResult>
   listLocalPlans(): Promise<DirectorLanPlanSummary[]>
+  addLocalShot(plan: DirectorLanPlanSummary): Promise<DirectorLanPlanSummary>
+  importPlan(): Promise<DirectorLanPlanSummary | null>
+  importPlanText(text: string): Promise<DirectorLanPlanSummary>
+  saveLocalPlan(plan: DirectorLanPlanSummary): Promise<DirectorLanPlanSummary>
+  importMaterials(plan: DirectorLanPlanSummary, shotId: string): Promise<DirectorLanPlanSummary | null>
+  syncMaterials(endpoint: string, planId: string): Promise<void>
+  acknowledgeLocalPlan(remote: DirectorLanPlanSummary, signature: string): Promise<void>
+  prepareThumbnail(url: string): Promise<DirectorLabPreviewResult>
   reconcileLocalPlan(plan: DirectorLanPlanSummary, resolveConflict?: boolean): Promise<boolean>
   onDownloadProgress(callback: (progress: DirectorLabDownloadProgress) => void): () => void
   preparePreview(request: DirectorLabPreviewRequest): Promise<DirectorLabPreviewResult>
@@ -92,11 +100,15 @@ export interface DirectorLabApi {
 export interface DirectorLanPlanSummary {
   id: string
   title: string
+  main_content?: string
   created_at: string
   updated_at: string
   revision?: number
   synced_revision?: number
   synced_signature?: string
+  pending_shot_ids?: string[]
+  pending_create?: boolean
+  pending_take_ids?: string[]
   /** 属性名由计划统一定义，所有镜头共用。 */
   attributes: DirectorLanPlanAttribute[]
   shot_count: number
@@ -105,6 +117,7 @@ export interface DirectorLanPlanSummary {
   archive_url: string
   source: 'remote' | 'local'
   local_directory?: string
+  local_updated_at?: string
   remote_plan?: DirectorLanPlanSummary
   update_available?: boolean
   shots: DirectorLanShot[]

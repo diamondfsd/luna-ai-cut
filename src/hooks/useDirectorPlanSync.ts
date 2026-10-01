@@ -103,6 +103,18 @@ export function useDirectorPlanSync({
         }
         const pushedPlanIds = new Set<string>()
 
+        for (const local of localPlans) {
+          if (!local.pending_create || remotePlans.some((plan) => plan.id === local.id) || isPlanWritePending(local.id)) continue
+          const created = await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(activeEndpoint,
+            `/api/v1/director/plans/${encodeURIComponent(local.id)}`, {
+              method: 'POST', body: buildDirectorPlanUpdate(local, 0),
+            })
+          await window.luna.directorLab.acknowledgeLocalPlan(created, directorPlanContentSignature(local))
+          remoteRefreshNeeded = true
+          localCopiesChanged = true
+          pushedPlanIds.add(local.id)
+        }
+
         for (const remote of remotePlans) {
           if (!mountedRef.current || endpointRef.current !== activeEndpoint) return
           const local = localPlans.find((plan) => plan.id === remote.id)
@@ -116,6 +128,24 @@ export function useDirectorPlanSync({
 
           const remoteSignature = directorPlanContentSignature(remote)
           const localSignature = directorPlanContentSignature(local)
+          if (local.pending_shot_ids?.length) {
+            const pendingIds = new Set(local.pending_shot_ids)
+            const nonPending = { ...local, shots: local.shots.filter((shot) => !pendingIds.has(shot.id)) }
+            if (directorPlanContentSignature(nonPending) === local.synced_signature) {
+              const merged = { ...remote, shots: [...remote.shots,
+                ...local.shots.filter((shot) => pendingIds.has(shot.id) && !remote.shots.some((item) => item.id === shot.id))] }
+              try {
+                if (directorPlanContentSignature(merged) !== remoteSignature) await pushLocalPlan(merged, remote, localSignature)
+                else await window.luna.directorLab.acknowledgeLocalPlan(remote, localSignature)
+                remoteRefreshNeeded = true
+                localCopiesChanged = true
+                pushedPlanIds.add(local.id)
+              } catch (error) {
+                if (!isRevisionConflict(error)) throw error
+              }
+              continue
+            }
+          }
           nextConflicts.delete(remote.id)
           if (conflictsRef.current.has(remote.id) && remoteSignature !== localSignature) {
             hasConflict = true
@@ -167,8 +197,16 @@ export function useDirectorPlanSync({
             || remoteSignature !== baseline.remoteSignature
           const localChanged = localSignature !== baseline.localSignature
 
-          if (!remoteChanged && !localChanged) continue
+          if (!remoteChanged && !localChanged) {
+            if (directorPlanRevision(local) !== directorPlanRevision(remote)) {
+              await reconcileRemotePlan(remote)
+              localCopiesChanged = true
+            }
+            continue
+          }
           if (remoteSignature === localSignature) {
+            await reconcileRemotePlan(remote)
+            localCopiesChanged = true
             baselinesRef.current.set(remote.id, nextDirectorPlanBaseline(remote, local))
             continue
           }
@@ -215,7 +253,7 @@ export function useDirectorPlanSync({
           for (const local of localPlans) {
             if (!pushedPlanIds.has(local.id)) continue
             const remote = finalRemotePlans.find((plan) => plan.id === local.id)
-            if (remote) baselinesRef.current.set(local.id, nextDirectorPlanBaseline(remote, local))
+              if (remote && !local.pending_shot_ids?.length && !local.pending_create) baselinesRef.current.set(local.id, nextDirectorPlanBaseline(remote, local))
           }
         }
 
@@ -245,10 +283,11 @@ export function useDirectorPlanSync({
     async function pushLocalPlan(
       local: DirectorLanPlanSummary,
       remote: DirectorLanPlanSummary,
+      signature = directorPlanContentSignature(local),
     ): Promise<void> {
       setPlanWritePending(local.id, true)
       try {
-        await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
+        const updated = await window.luna.lunaKaHttpClient.request<DirectorLanPlanSummary>(
           activeEndpoint,
           `/api/v1/director/plans/${encodeURIComponent(local.id)}`,
           {
@@ -256,6 +295,7 @@ export function useDirectorPlanSync({
             body: buildDirectorPlanUpdate(local, directorPlanRevision(remote)),
           },
         )
+        await window.luna.directorLab.acknowledgeLocalPlan(updated, signature)
       } finally {
         setPlanWritePending(local.id, false)
       }
@@ -346,8 +386,8 @@ export function useDirectorPlanSync({
 
   useEffect(() => {
     if (!enabled || !endpoint) return
-    void synchronize()
-    const timer = window.setInterval(() => void synchronize(), 4_000)
+    void synchronize().catch(() => undefined)
+    const timer = window.setInterval(() => void synchronize().catch(() => undefined), 4_000)
     return () => window.clearInterval(timer)
   }, [enabled, endpoint, synchronize])
 

@@ -1,5 +1,11 @@
 import type { DirectorLanPlanSummary } from '../shared/types'
 
+export const DIRECTOR_PLAN_ATTRIBUTES = [
+  { id: 'content', name: '画面内容' },
+  { id: 'framing', name: '景别' },
+  { id: 'movement', name: '运镜方式' },
+]
+
 export interface DirectorPlanSyncBaseline {
   revision: number
   remoteSignature: string
@@ -9,7 +15,8 @@ export interface DirectorPlanSyncBaseline {
 function stablePlanContent(plan: DirectorLanPlanSummary) {
   return {
     title: plan.title,
-    attributes: plan.attributes.map((attribute) => ({
+    ...(plan.main_content ? { mainContent: plan.main_content } : {}),
+    attributes: (plan.attributes ?? DIRECTOR_PLAN_ATTRIBUTES).map((attribute) => ({
       id: attribute.id,
       name: attribute.name,
     })),
@@ -79,6 +86,7 @@ export function buildDirectorPlanUpdate(
   return {
     expected_revision: expectedRevision,
     title: plan.title,
+    main_content: plan.main_content ?? '',
     attributes: plan.attributes,
     shots: plan.shots.map((shot) => ({
       id: shot.id,
@@ -103,4 +111,28 @@ export function nextDirectorPlanBaseline(
     remoteSignature: directorPlanContentSignature(remote),
     localSignature: directorPlanContentSignature(local),
   }
+}
+
+export function overlayDirectorLocalPlan(remote: DirectorLanPlanSummary, local: DirectorLanPlanSummary): DirectorLanPlanSummary {
+  const dirty = local.pending_create || local.pending_shot_ids?.length
+    || (local.synced_signature && directorPlanContentSignature(local) !== local.synced_signature)
+  const base = dirty ? local : remote
+  const shots = base.shots.map((shot) => {
+    const localShot = local.shots.find((item) => item.id === shot.id)
+    const remoteShot = remote.shots.find((item) => item.id === shot.id)
+    const takes = [...remoteShot?.takes ?? []]
+    for (const take of localShot?.takes ?? []) {
+      const index = takes.findIndex((item) => item.id === take.id)
+      if (index < 0 && local.pending_take_ids?.includes(take.id)) takes.push(take)
+      else if (index >= 0 && take.available && take.stream_url) takes[index] = take
+    }
+    return { ...shot, takes, completed_takes: takes.filter((take) => take.available).length }
+  })
+  return { ...base, shots, source: local.pending_create ? 'local' : 'remote',
+    local_directory: local.local_directory, pending_create: local.pending_create,
+    local_updated_at: local.updated_at,
+    pending_shot_ids: local.pending_shot_ids, pending_take_ids: local.pending_take_ids,
+    synced_revision: local.synced_revision, synced_signature: local.synced_signature,
+    remote_plan: remote, shot_count: shots.length,
+    take_count: shots.reduce((total, shot) => total + shot.takes.length, 0) }
 }

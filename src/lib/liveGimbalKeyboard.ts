@@ -25,15 +25,17 @@ const DIRECTIONS: Record<string, GimbalPosition> = {
 
 export function bindLiveGimbalKeyboard(options: LiveGimbalKeyboardOptions): () => void {
   const pressedKeys = new Set<string>()
+  let shiftPressed = false
   let position: GimbalPosition = { x: 0, y: 0 }
 
   const update = () => {
     const next = { x: 0, y: 0 }
     for (const code of pressedKeys) {
-      next.x += DIRECTIONS[code].x
-      next.y += DIRECTIONS[code].y
+      const multiplier = shiftPressed && !code.startsWith('Arrow') ? 2 : 1
+      next.x += DIRECTIONS[code].x * multiplier
+      next.y += DIRECTIONS[code].y * multiplier
     }
-    const maximumSpeed = [...pressedKeys].some((code) => code.startsWith('Arrow')) ? 1 : 0.5
+    const maximumSpeed = shiftPressed || [...pressedKeys].some((code) => code.startsWith('Arrow')) ? 1 : 0.5
     const magnitude = Math.hypot(next.x, next.y)
     if (magnitude > maximumSpeed) {
       next.x *= maximumSpeed / magnitude
@@ -47,25 +49,42 @@ export function bindLiveGimbalKeyboard(options: LiveGimbalKeyboardOptions): () =
 
   const stop = () => {
     pressedKeys.clear()
+    shiftPressed = false
     update()
   }
 
   const keyDown = (event: KeyboardEvent) => {
-    if (!DIRECTIONS[event.code]) return
+    const isShift = event.code === 'ShiftLeft' || event.code === 'ShiftRight'
+    if (!isShift && !DIRECTIONS[event.code]) return
     if (options.isPointerActive()) return
     if (event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return
     const target = event.target
     if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], [role="alertdialog"], [role="combobox"], [role="slider"], [role="menu"]')) return
+    if (isShift) {
+      shiftPressed = true
+      update()
+      return
+    }
     if (event.code.startsWith('Arrow') && !options.isPadTarget(target)) return
     event.preventDefault()
-    if (event.repeat || pressedKeys.has(event.code)) return
+    shiftPressed = Boolean(event.shiftKey)
+    if (event.repeat || pressedKeys.has(event.code)) {
+      update()
+      return
+    }
     pressedKeys.add(event.code)
     update()
   }
 
   const keyUp = (event: KeyboardEvent) => {
+    if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+      shiftPressed = Boolean(event.shiftKey)
+      update()
+      return
+    }
     if (!pressedKeys.delete(event.code)) return
     event.preventDefault()
+    shiftPressed = Boolean(event.shiftKey)
     update()
   }
 

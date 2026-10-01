@@ -48,7 +48,8 @@
 }
 
 .live-gimbal-pad:hover,
-.live-gimbal-pad:focus-visible {
+.live-gimbal-pad:focus-visible,
+.live-gimbal-pad[data-moving] {
   border-color: var(--blue);
   outline: none;
 }
@@ -92,6 +93,18 @@
   background: #193653;
   color: var(--blue);
   pointer-events: none;
+}
+
+.live-gimbal-pad[data-moving] .live-gimbal-knob {
+  background: var(--blue);
+  color: var(--canvas);
+}
+
+.live-gimbal-keyboard-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
 }
 
 .live-control-button-row {

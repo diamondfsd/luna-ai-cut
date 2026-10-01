@@ -1,0 +1,19 @@
+.lab-plan-import-dialog {
+  width: min(680px, calc(100vw - 40px));
+}
+
+.lab-plan-import-text {
+  display: block;
+  width: 100%;
+  height: min(420px, 50vh);
+  min-height: 180px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.lab-plan-import-error {
+  margin: 12px 0 0;
+}
