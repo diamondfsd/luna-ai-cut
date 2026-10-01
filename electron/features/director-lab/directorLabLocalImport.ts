@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { DirectorLanPlanSummary } from '../../../src/shared/types'
 import { parseDirectorPlanImport } from '../../../src/lib/directorPlanImport'
 import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync'
+import { directorLocalEditHasConflict } from '../../../src/lib/directorPlanLocalEdit'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
 import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
@@ -34,7 +35,8 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
       const root = getDirectorPlanDir(await getSettings())
       const directory = existing?.local_directory ?? path.join(root, `${planDirectory(plan.title)}_${plan.id}`)
       await writeDirectorPlanFilesUnlocked(directory, next)
-      return { ...next, source: 'local', local_directory: directory }
+      return { ...next, source: 'local', local_directory: directory,
+        local_content_signature: directorPlanContentSignature(next) }
     })
   }
   ipcMain.handle('director-lab:import-plan', async () => {
@@ -79,8 +81,8 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
       shots: [...current.shots, { id, order: current.shots.length + 1, name: `镜头 ${current.shots.length + 1}`,
         duration_ms: 5000, remark: '', attributes: [], completed_takes: 0, takes: [] }] }
   }))
-  ipcMain.handle('director-lab:save-local-plan', async (_event, plan: DirectorLanPlanSummary) => save(plan, (current) => {
-    if ((plan.revision ?? 0) !== (current.revision ?? 0) || (plan.local_updated_at ?? plan.updated_at) !== current.updated_at) {
+  ipcMain.handle('director-lab:save-local-plan', async (_event, plan: DirectorLanPlanSummary, expectedSignature?: string) => save(plan, (current) => {
+    if (directorLocalEditHasConflict(current, plan, expectedSignature)) {
       throw new Error('计划已更新，请刷新后重试')
     }
     if (!plan.title?.trim() || plan.title.length > 120 || plan.shots.length > 500

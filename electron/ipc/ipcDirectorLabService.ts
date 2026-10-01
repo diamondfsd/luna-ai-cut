@@ -24,6 +24,7 @@ import { discoverDirectorServices } from '../features/director-lab/directorLabDi
 import { registerDirectorLocalImport } from '../features/director-lab/directorLabLocalImport'
 import { registerDirectorThumbnail } from '../features/director-lab/directorLabThumbnail'
 import { persistDirectorDownloads } from '../features/director-lab/directorLabDownloadStorage'
+import { directorPlanContentSignature } from '../../src/lib/directorPlanSync'
 import {
   legacyShotAttribute,
   mediaFileName,
@@ -467,6 +468,7 @@ async function listLocalPlans(): Promise<DirectorLabDownloadPlanRequest['plan'][
     .map((entry) => localPlanFromManifest(path.join(root, entry.name, 'manifest.json'))))
   return plans
     .filter((plan): plan is DirectorLabDownloadPlanRequest['plan'] => Boolean(plan))
+    .map((plan) => ({ ...plan, local_content_signature: directorPlanContentSignature(plan) }))
     .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))
 }
 

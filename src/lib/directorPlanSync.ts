@@ -131,6 +131,7 @@ export function overlayDirectorLocalPlan(remote: DirectorLanPlanSummary, local: 
   return { ...base, shots, source: local.pending_create ? 'local' : 'remote',
     local_directory: local.local_directory, pending_create: local.pending_create,
     local_updated_at: local.updated_at,
+    local_content_signature: local.local_content_signature ?? directorPlanContentSignature(local),
     pending_shot_ids: local.pending_shot_ids, pending_take_ids: local.pending_take_ids,
     synced_revision: local.synced_revision, synced_signature: local.synced_signature,
     remote_plan: remote, shot_count: shots.length,

@@ -72,11 +72,11 @@ export function DirectorLabShotList({
     duration_ms: number
     remark: string
     attributes: DirectorLanShot['attributes']
-  }>, revision = plan.revision, updatedAt = plan.local_updated_at ?? plan.updated_at) {
-    return window.luna.directorLab.saveLocalPlan({ ...plan, revision, local_updated_at: updatedAt,
+  }>, expectedSignature = plan.local_content_signature ?? directorPlanContentSignature(plan)) {
+    return window.luna.directorLab.saveLocalPlan({ ...plan,
       synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan), shots: shots.map((shot, index) => ({
       ...shot, order: index + 1, completed_takes: 0, takes: [],
-    })) }).then((saved) => { onLocalPlanChange(saved); return saved })
+    })) }, expectedSignature).then((saved) => { onLocalPlanChange(saved); return saved })
   }
 
   async function addShot(): Promise<void> {
@@ -119,8 +119,7 @@ export function DirectorLabShotList({
     setEditingShotId(shot.id)
     setShotDraft({
       id: shot.id,
-      baseRevision: plan.revision ?? 0,
-      baseUpdatedAt: plan.local_updated_at ?? plan.updated_at,
+      baseSignature: plan.local_content_signature ?? directorPlanContentSignature(plan),
       name: shot.name,
       durationMs: shot.duration_ms,
       values: Object.fromEntries((schema?.shot_fields ?? []).map((definition) => [
@@ -178,27 +177,26 @@ export function DirectorLabShotList({
             : shot.attributes,
         }
       })
-      await planUpdate(shots, shotDraft.baseRevision, shotDraft.baseUpdatedAt)
+      await planUpdate(shots, shotDraft.baseSignature)
       setEditingShotId(null)
       setShotDraft(null)
       toast.success('镜头已保存')
     } catch (nextError) {
       const message = nextError instanceof Error ? nextError.message : String(nextError)
       if (message.includes('HTTP 409') || message.includes('已在其他端修改') || message.includes('计划已更新')) {
-        let latestRevision: number | undefined
-        let latestUpdatedAt = shotDraft.baseUpdatedAt
+        let latestSignature: string | undefined
         try {
           const latest = await refreshPlans()
-          latestRevision = latest.find((item) => item.id === plan.id)?.revision
-          latestUpdatedAt = latest.find((item) => item.id === plan.id)?.updated_at ?? latestUpdatedAt
+          const latestPlan = latest.find((item) => item.id === plan.id)
+          if (latestPlan) latestSignature = latestPlan.local_content_signature ?? directorPlanContentSignature(latestPlan)
         } catch {
           // Keep the draft and its original revision when refresh fails.
         }
-        if (latestRevision != null) {
+        if (latestSignature != null) {
           setEditConflict(true)
-          const revision = latestRevision
+          const signature = latestSignature
           setShotDraft((current) => current
-            ? { ...current, baseRevision: revision, baseUpdatedAt: latestUpdatedAt }
+            ? { ...current, baseSignature: signature }
             : current)
           toast.error('计划已在其他端修改，远端已刷新；确认草稿后再次保存以应用')
         } else {

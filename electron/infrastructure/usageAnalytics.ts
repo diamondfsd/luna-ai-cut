@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createLiveUsageBudget } from './liveUsageBudget'
+import { createLiveUsageBudget } from './liveUsageBudget.ts'
 import type { LiveUsageProperties } from '../../src/shared/types/liveUsage'
 
 const TOKEN = 'phc_mFKe7j96gzrDmRZM9prkHRWzDXVsNU9hnHYruVBJTQDy'
