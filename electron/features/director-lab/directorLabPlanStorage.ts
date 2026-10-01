@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { constants } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
@@ -201,6 +202,7 @@ export async function reconcileLocalDirectorPlan(
   rootDirectory: string,
   plan: DirectorLanPlanSummary,
   metadata: Record<string, DirectorLabMediaMetadata> = {},
+  resolveConflict = false,
 ): Promise<boolean> {
   let directory = path.join(rootDirectory, planDirectory(plan.title))
   const existingDirectory = await findPlanDirectoryById(rootDirectory, plan.id)
@@ -265,8 +267,27 @@ export async function reconcileLocalDirectorPlan(
         mediaFileName(takeIndex + 1, take.file_name),
       )
       const absolutePath = path.resolve(directory, relativePath.replace(/[\\/]+/g, path.sep))
-      const available = await localFileExists(absolutePath)
+      let available = await localFileExists(absolutePath)
       const previous = existingMedia.get(take.id)
+      if (resolveConflict && !available && typeof previous?.path === 'string') {
+        const previousPath = path.resolve(directory, previous.path.replace(/[\\/]+/g, path.sep))
+        const realDirectory = await fs.realpath(directory)
+        const realPreviousPath = await fs.realpath(previousPath).catch(() => null)
+        const relativePreviousPath = realPreviousPath ? path.relative(realDirectory, realPreviousPath) : null
+        if (relativePreviousPath && !path.isAbsolute(relativePreviousPath)
+          && relativePreviousPath !== '..' && !relativePreviousPath.startsWith(`..${path.sep}`)
+          && await localFileExists(realPreviousPath!)) {
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+          try {
+            await fs.link(realPreviousPath!, absolutePath)
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+              await fs.copyFile(realPreviousPath!, absolutePath, constants.COPYFILE_EXCL)
+            }
+          }
+          available = await localFileExists(absolutePath)
+        }
+      }
       if (available) {
         if (!previous || previous.available !== true || previous.path !== relativePath) {
           manifestNeedsUpdate = true
@@ -276,7 +297,10 @@ export async function reconcileLocalDirectorPlan(
     })),
   })))
 
-  if (!manifestNeedsUpdate && !remoteIsNewer) return false
+  if (!manifestNeedsUpdate && !remoteIsNewer && !resolveConflict) return false
+  if (resolveConflict && existing) {
+    await fs.copyFile(manifestPath, path.join(directory, `manifest.conflict-${randomUUID()}.json`))
+  }
   await writeDirectorPlanFiles(directory, { ...plan, shots }, { ...recoveredMetadata, ...metadata })
   return true
 }

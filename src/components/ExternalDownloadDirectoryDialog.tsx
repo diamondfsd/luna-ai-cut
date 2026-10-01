@@ -26,9 +26,9 @@ export function ExternalDownloadDirectoryDialog({ open, onDecision }: ExternalDo
         </>
       )}
     >
-      <div className="ui-dialog-body">
+
         下载到外部目录后，将无法在本地资源中预览。
-      </div>
+
     </Dialog>
   )
 }

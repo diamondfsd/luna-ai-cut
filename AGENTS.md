@@ -81,10 +81,11 @@
 | `title` | 弹窗标题 |
 | `description` | 弹窗描述 |
 | `children` | 主体内容 |
+| `bodyClassName` | 自动生成的正文容器自定义类名 |
 | `footer` | 底部操作栏 |
 | `className` | 弹窗内容面板自定义类名 |
 
-标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
+标题和描述自动组合为头部（带 `.ui-dialog-header`），正文统一包裹 `.ui-dialog-body`，默认提供 20px 内边距与滚动，footer 自动包裹 `.ui-dialog-footer`。普通弹窗直接传 children，禁止重复包裹 `.ui-dialog-body`、关闭默认正文布局或为正文补外层边距。功能特有的分栏、排列等样式使用 `bodyClassName`，不要重复定义正文 padding 与 overflow。只有 `variant="fullscreen"` 的全屏媒体预览不添加正文容器。
 
 ### Popover 弹出面板
 

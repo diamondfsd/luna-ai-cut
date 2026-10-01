@@ -242,7 +242,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     download: (request: DirectorLabDownloadRequest) => ipcRenderer.invoke('director-lab:download', request),
     downloadPlan: (request) => ipcRenderer.invoke('director-lab:download-plan', request),
     listLocalPlans: () => ipcRenderer.invoke('director-lab:list-local-plans'),
-    reconcileLocalPlan: (plan) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan),
+    reconcileLocalPlan: (plan, resolveConflict) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan, resolveConflict),
     onDownloadProgress: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorLabDownloadProgress): void => callback(progress)
       ipcRenderer.on('director-lab:download-progress', listener)

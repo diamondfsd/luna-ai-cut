@@ -114,6 +114,7 @@ export function ExportSettingsDialog({
 
   return (
     <Dialog
+      bodyClassName={`workspace-export-body${previewSource ? ' has-preview' : ''}`}
       open={open}
       tone={tone}
       onOpenChange={handleOpenChange}
@@ -135,24 +136,22 @@ export function ExportSettingsDialog({
         </div>
       }
     >
-      <div className={`workspace-export-body${previewSource ? ' has-preview' : ''}`}>
-        {previewSource ? (
-          <ExportPreviewPane
-            source={previewSource}
-            livePhotoSource={livePhotoSource}
-            value={exportConfig}
-            onChange={handleConfigChange}
-          />
-        ) : null}
-        <div className="workspace-export-settings-column">
-          <ExportSettingsPanel
-            value={exportConfig}
-            onChange={handleConfigChange}
-            livePhotoSource={livePhotoSource}
-            allowedFormats={allowedFormats}
-            outputAvailability={outputAvailability}
-          />
-        </div>
+      {previewSource ? (
+        <ExportPreviewPane
+          source={previewSource}
+          livePhotoSource={livePhotoSource}
+          value={exportConfig}
+          onChange={handleConfigChange}
+        />
+      ) : null}
+      <div className="workspace-export-settings-column">
+        <ExportSettingsPanel
+          value={exportConfig}
+          onChange={handleConfigChange}
+          livePhotoSource={livePhotoSource}
+          allowedFormats={allowedFormats}
+          outputAvailability={outputAvailability}
+        />
       </div>
     </Dialog>
   )

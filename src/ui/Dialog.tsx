@@ -50,6 +50,7 @@ export interface DialogProps {
   description?: ReactNode
   /** 主体内容 */
   children?: ReactNode
+  bodyClassName?: string
   /** 底部操作栏 */
   footer?: ReactNode
   /** DialogContent 自定义类名 */
@@ -83,6 +84,7 @@ export function Dialog({
   title,
   description,
   children,
+  bodyClassName,
   footer,
   className,
   variant = 'dialog',
@@ -151,7 +153,9 @@ export function Dialog({
               {description && <RadixDialog.Description className="ui-dialog-description">{description}</RadixDialog.Description>}
             </DialogHeader>
           )}
-          {children}
+          {isFullscreen ? children : children != null && (
+            <div className={`ui-dialog-body ${bodyClassName ?? ''}`}>{children}</div>
+          )}
           {!isFullscreen && footer && <DialogFooter>{footer}</DialogFooter>}
           {!isFullscreen && showCloseButton && (
             <RadixDialog.Close asChild>

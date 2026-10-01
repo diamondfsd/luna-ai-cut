@@ -61,6 +61,7 @@ export function WatermarkManagementDialog({
 
   return (
     <Dialog
+      bodyClassName="watermark-management-body"
       open={open}
       onOpenChange={onOpenChange}
       title="水印设置"
@@ -68,52 +69,50 @@ export function WatermarkManagementDialog({
       className="watermark-management-dialog"
       footer={<Button variant="primary" onClick={() => onOpenChange(false)}>完成</Button>}
     >
-      <div className="ui-dialog-body watermark-management-body">
-        <section className="watermark-management-section">
-          <h3>默认水印</h3>
-          <WatermarkSettingsComponent
-            preferencesOnly
-            title="默认开启"
-            settings={{
-              enabled: settings?.defaultWatermarkEnabled ?? true,
-              style: settings?.recentWatermarkSettings?.style ?? '',
-              position: defaultPosition,
-              sourceKind: 'builtin',
-              sizeOnCanvasWidth: settings?.defaultWatermarkSizeOnCanvasWidth,
-              placement: settings?.defaultWatermarkPlacement,
-            }}
-            onChange={onDefaultChange}
-          />
-        </section>
+      <section className="watermark-management-section">
+        <h3>默认水印</h3>
+        <WatermarkSettingsComponent
+          preferencesOnly
+          title="默认开启"
+          settings={{
+            enabled: settings?.defaultWatermarkEnabled ?? true,
+            style: settings?.recentWatermarkSettings?.style ?? '',
+            position: defaultPosition,
+            sourceKind: 'builtin',
+            sizeOnCanvasWidth: settings?.defaultWatermarkSizeOnCanvasWidth,
+            placement: settings?.defaultWatermarkPlacement,
+          }}
+          onChange={onDefaultChange}
+        />
+      </section>
 
-        <section className="watermark-management-section">
-          <div className="watermark-management-heading">
-            <h3>自定义水印</h3>
-            <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAdd()}>
-              添加水印
-            </Button>
+      <section className="watermark-management-section">
+        <div className="watermark-management-heading">
+          <h3>自定义水印</h3>
+          <Button variant="primary" size="compact" icon={<FolderOpen size={15} />} onClick={() => void handleAdd()}>
+            添加水印
+          </Button>
+        </div>
+        {loading ? <p className="watermark-management-empty">正在读取水印</p> : assets.length > 0 ? (
+          <div className="watermark-management-grid">
+            {assets.map((asset) => (
+              <article key={asset.id} className="watermark-management-card">
+                <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
+                <span title={asset.fileName}>{asset.fileName}</span>
+                <IconButton
+                  className="watermark-management-delete"
+                  variant="light"
+                  size="mini"
+                  icon={<Trash2 size={14} />}
+                  onClick={() => void handleDelete(asset)}
+                  title={`删除 ${asset.fileName}`}
+                  aria-label={`删除 ${asset.fileName}`}
+                />
+              </article>
+            ))}
           </div>
-          {loading ? <p className="watermark-management-empty">正在读取水印</p> : assets.length > 0 ? (
-            <div className="watermark-management-grid">
-              {assets.map((asset) => (
-                <article key={asset.id} className="watermark-management-card">
-                  <img src={filePathToPreviewUrl(asset.filePath) ?? ''} alt="" />
-                  <span title={asset.fileName}>{asset.fileName}</span>
-                  <IconButton
-                    className="watermark-management-delete"
-                    variant="light"
-                    size="mini"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => void handleDelete(asset)}
-                    title={`删除 ${asset.fileName}`}
-                    aria-label={`删除 ${asset.fileName}`}
-                  />
-                </article>
-              ))}
-            </div>
-          ) : <p className="watermark-management-empty">暂无自定义水印</p>}
-        </section>
-      </div>
+        ) : <p className="watermark-management-empty">暂无自定义水印</p>}
+      </section>
     </Dialog>
   )
 }

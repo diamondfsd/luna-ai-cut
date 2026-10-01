@@ -119,6 +119,7 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
 
   return (
     <Dialog
+      bodyClassName="camera-live-preview-body"
       open={open}
       onOpenChange={handleOpenChange}
       title="相机预览"
@@ -126,58 +127,56 @@ export function CameraLivePreviewDialog({ open, connected, deviceId, host, mode,
       tone="dark"
       footer={footer}
     >
-      <div className="camera-live-preview-body">
-        <div
-          className="camera-live-preview-stage"
-          style={streamDimensions && !immersive ? { aspectRatio: `${streamDimensions.width} / ${streamDimensions.height}` } : undefined}
-        >
-          <Tooltip content={immersive ? '退出全屏' : '全屏预览'}>
-            <IconButton
-              variant="light"
-              className="camera-live-preview-fullscreen-toggle"
-              icon={immersive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
-              onClick={toggleImmersive}
-              title={immersive ? '退出全屏' : '全屏预览'}
-              aria-label={immersive ? '退出全屏' : '全屏预览'}
-              aria-pressed={immersive}
-            />
-          </Tooltip>
-          {status?.streamUrl && status.state === 'running' && !unsupported ? (
-            <AnnexBVideoCanvas
-              url={status.streamUrl}
-              className="camera-live-preview-canvas"
-              onFrame={handleFrame}
-              onError={handleError}
-            />
-          ) : null}
-          {waiting && (
-            <div className="camera-live-preview-placeholder">
-              <LoadingIndicator label="正在连接相机画面" size="large" variant="media" />
-            </div>
-          )}
-          {unsupported && (
-            <div className="camera-live-preview-placeholder">
-              <CameraOff size={28} />
-              <span>{status.message}</span>
-            </div>
-          )}
-          {error && (
-            <div className="camera-live-preview-placeholder camera-live-preview-error" role="alert">
-              <CameraOff size={28} />
-              <span>{error}</span>
-            </div>
-          )}
-        </div>
-        <div className="camera-live-preview-status" aria-live="polite">
-          <span className={`camera-live-preview-dot ${hasFrame ? 'active' : ''}`} />
-          <span>{hasFrame ? '正在接收画面' : status?.message ?? '准备相机预览'}</span>
-          {streamDimensions ? (
-            <span className="camera-live-preview-resolution">
-              分辨率 {streamDimensions.width} × {streamDimensions.height}
-            </span>
-          ) : null}
-          {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
-        </div>
+      <div
+        className="camera-live-preview-stage"
+        style={streamDimensions && !immersive ? { aspectRatio: `${streamDimensions.width} / ${streamDimensions.height}` } : undefined}
+      >
+        <Tooltip content={immersive ? '退出全屏' : '全屏预览'}>
+          <IconButton
+            variant="light"
+            className="camera-live-preview-fullscreen-toggle"
+            icon={immersive ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+            onClick={toggleImmersive}
+            title={immersive ? '退出全屏' : '全屏预览'}
+            aria-label={immersive ? '退出全屏' : '全屏预览'}
+            aria-pressed={immersive}
+          />
+        </Tooltip>
+        {status?.streamUrl && status.state === 'running' && !unsupported ? (
+          <AnnexBVideoCanvas
+            url={status.streamUrl}
+            className="camera-live-preview-canvas"
+            onFrame={handleFrame}
+            onError={handleError}
+          />
+        ) : null}
+        {waiting && (
+          <div className="camera-live-preview-placeholder">
+            <LoadingIndicator label="正在连接相机画面" size="large" variant="media" />
+          </div>
+        )}
+        {unsupported && (
+          <div className="camera-live-preview-placeholder">
+            <CameraOff size={28} />
+            <span>{status.message}</span>
+          </div>
+        )}
+        {error && (
+          <div className="camera-live-preview-placeholder camera-live-preview-error" role="alert">
+            <CameraOff size={28} />
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
+      <div className="camera-live-preview-status" aria-live="polite">
+        <span className={`camera-live-preview-dot ${hasFrame ? 'active' : ''}`} />
+        <span>{hasFrame ? '正在接收画面' : status?.message ?? '准备相机预览'}</span>
+        {streamDimensions ? (
+          <span className="camera-live-preview-resolution">
+            分辨率 {streamDimensions.width} × {streamDimensions.height}
+          </span>
+        ) : null}
+        {status && status.frames > 0 ? <span className="camera-live-preview-count">已接收画面</span> : null}
       </div>
     </Dialog>
   )

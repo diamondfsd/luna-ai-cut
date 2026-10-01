@@ -30,7 +30,6 @@
 
 .workspace-import-body {
   min-height: 0;
-  overflow: hidden;
 }
 
 .workspace-create-project-dialog .workspace-import-body {

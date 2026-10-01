@@ -19,6 +19,7 @@ import type {
   DirectorLabMediaMetadata,
   DirectorLanPlanAttribute,
   DirectorLanPlanSummary,
+  DirectorPlanSchema,
   DirectorLanPlansResponse,
   DirectorLanShot,
 } from '../shared/types'
@@ -27,6 +28,7 @@ import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip, toast } f
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
+import { DirectorPlanConflictDialog } from './DirectorPlanConflictDialog'
 
 interface DirectorLabViewProps {
   active: boolean
@@ -57,6 +59,27 @@ async function requestPlans(endpoint: string): Promise<DirectorLanPlansResponse>
     throw new Error('手机返回的数据格式不兼容')
   }
   return normalizePlanUrls(payload, endpoint)
+}
+
+async function requestSchema(endpoint: string): Promise<DirectorPlanSchema> {
+  const schema = await window.luna.lunaKaHttpClient.request<DirectorPlanSchema>(
+    endpoint,
+    '/api/v1/director/schema',
+  )
+  if (!Number.isSafeInteger(schema.schema_version) || schema.schema_version < 1
+    || !Array.isArray(schema.shot_fields) || schema.shot_fields.length > 100
+    || new Set(schema.shot_fields.map((field) => field.id)).size !== schema.shot_fields.length
+    || schema.shot_fields.some((field) =>
+      !/^[a-z][a-z0-9_]*$/.test(field.id)
+      || !field.label?.trim()
+      || !field.storage_name?.trim()
+      || field.storage_name.length > 80
+      || !['text', 'multiline'].includes(field.kind)
+      || !Number.isSafeInteger(field.max_length)
+      || field.max_length < 1 || field.max_length > 4000)) {
+    throw new Error('手机返回的导演计划字段定义无效')
+  }
+  return schema
 }
 
 function normalizeServiceUrl(endpoint: string, value: string | null): string | null {
@@ -244,6 +267,7 @@ function buildAiPrompt(
 
 export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
   const [connectedEndpoint, setConnectedEndpoint] = useState<string | null>(null)
+  const [schema, setSchema] = useState<DirectorPlanSchema | null>(null)
   const [plans, setPlans] = useState<DirectorLanPlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
   const [shotQuery, setShotQuery] = useState('')
@@ -337,7 +361,11 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
 
   const refreshRemotePlans = useCallback(async (): Promise<DirectorLanPlanSummary[]> => {
     if (!connectedEndpoint) return []
-    const payload = await requestPlans(connectedEndpoint)
+    const [payload, definitions] = await Promise.all([
+      requestPlans(connectedEndpoint),
+      requestSchema(connectedEndpoint),
+    ])
+    setSchema(definitions)
     mergePlans(payload.plans)
     return payload.plans
   }, [connectedEndpoint, mergePlans])
@@ -389,7 +417,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     })
   }, [])
 
-  const { status: syncStatus, synchronize } = useDirectorPlanSync({
+  const [conflictsOpen, setConflictsOpen] = useState(false)
+  const { status: syncStatus, synchronize, conflicts, resolvingPlanId, resolveConflict } = useDirectorPlanSync({
     enabled: active,
     endpoint: connectedEndpoint,
     requestRemotePlans: refreshRemotePlans,
@@ -530,7 +559,10 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
 
     setLoading(true)
     try {
-      const payload = await requestPlans(normalized)
+      const [payload, definitions] = await Promise.all([
+        requestPlans(normalized), requestSchema(normalized),
+      ])
+      setSchema(definitions)
       mergePlans(payload.plans)
       setConnectedEndpoint(normalized)
       setActivePlanId((current) => payload.plans.some((plan) => plan.id === current)
@@ -540,6 +572,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       return true
     } catch {
       setConnectedEndpoint(null)
+      setSchema(null)
       return false
     } finally {
       setLoading(false)
@@ -780,6 +813,9 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
             >
               {syncStatusLabel}
             </span>
+            {conflicts.length > 0 && <Button size="compact" onClick={() => setConflictsOpen(true)}>
+              处理冲突 ({conflicts.length})
+            </Button>}
             <Tooltip content="刷新导演计划">
               <IconButton
                 variant="outline"
@@ -990,6 +1026,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
             </div>
             <div className="lab-director-content">
               <DirectorLabShotList
+                schema={schema}
                 plan={activePlan}
                 shots={visibleShots}
                 endpoint={activePlan.source === 'remote' ? connectedEndpoint : null}
@@ -1001,6 +1038,13 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           </div>
         </section>
       )}
+      <DirectorPlanConflictDialog
+        open={conflictsOpen}
+        onOpenChange={setConflictsOpen}
+        conflicts={conflicts}
+        resolvingPlanId={resolvingPlanId}
+        onResolve={resolveConflict}
+      />
       {previewTake && previewShot && activePlan && (
         <DirectorMediaPreviewDialog
           take={previewTake}

@@ -11,6 +11,8 @@ import {
 import {
   buildDirectorPlanUpdate,
   directorPlanContentSignature,
+  directorPlanHasSameShots,
+  directorPlanConflictDetails,
   nextDirectorPlanBaseline,
 } from '../src/lib/directorPlanSync.ts'
 
@@ -107,6 +109,19 @@ try {
   )
   assert.equal(JSON.parse(await fs.readFile(localManifestPath, 'utf8')).title, 'Local edit')
   assert.equal(locallyEdited.synced_signature, directorPlanContentSignature(plan))
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, plan, {}, true), true)
+  const backupFiles = (await fs.readdir(syncPlanDirectory)).filter((file) => file.startsWith('manifest.conflict-'))
+  assert.equal(backupFiles.length, 1)
+  assert.equal(JSON.parse(await fs.readFile(path.join(syncPlanDirectory, backupFiles[0]), 'utf8')).title, 'Local edit')
+  const resolved = JSON.parse(await fs.readFile(localManifestPath, 'utf8'))
+  assert.equal(resolved.title, plan.title)
+  assert.equal(resolved.synced_signature, directorPlanContentSignature(plan))
+  assert.equal(await fs.readFile(localMediaPath, 'utf8'), 'downloaded')
+
+  await fs.writeFile(localManifestPath, JSON.stringify({ ...resolved, revision: 99, title: 'Newer local' }))
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, plan), false)
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, plan, {}, true), true)
+  assert.equal(JSON.parse(await fs.readFile(localManifestPath, 'utf8')).revision, plan.revision ?? 0)
 
   const remotelyUpdatedPlan = {
     ...plan,
@@ -118,6 +133,15 @@ try {
   const renamedManifestPath = path.join(syncDirectory, 'Remote edit', 'manifest.json')
   assert.equal(JSON.parse(await fs.readFile(renamedManifestPath, 'utf8')).title, 'Remote edit')
   await fs.access(path.join(syncDirectory, 'Remote edit', 'media', '01_Walk', '02_second.mp4'))
+  const renamedShotPlan = {
+    ...remotelyUpdatedPlan,
+    shots: remotelyUpdatedPlan.shots.map((shot) => ({ ...shot, name: 'Renamed shot' })),
+  }
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, renamedShotPlan, {}, true), true)
+  const renamedShotManifest = JSON.parse(await fs.readFile(renamedManifestPath, 'utf8'))
+  assert.equal(renamedShotManifest.shots[0].media[1].available, true)
+  assert.equal(await fs.readFile(path.join(syncDirectory, 'Remote edit', 'media', '01_Renamed shot', '02_second.mp4'), 'utf8'), 'downloaded')
+  assert.equal(await fs.readFile(path.join(syncDirectory, 'Remote edit', 'media', '01_Walk', '02_second.mp4'), 'utf8'), 'downloaded')
 
   const localEquivalent = {
     ...plan,
@@ -137,6 +161,11 @@ try {
     shots: plan.shots.map((shot, index) => index === 0 ? { ...shot, remark: '更新后的备注' } : shot),
   }
   assert.notEqual(directorPlanContentSignature(editedPlan), directorPlanContentSignature(plan))
+  assert.equal(directorPlanHasSameShots(plan, editedPlan), true)
+  assert.equal(directorPlanHasSameShots(plan, { ...editedPlan, shots: [] }), false)
+  assert.deepEqual(directorPlanConflictDetails(plan, editedPlan), [{
+    label: 'Walk · 备注', remote: '注意收音', local: '更新后的备注',
+  }])
   const update = buildDirectorPlanUpdate(editedPlan, 7)
   assert.equal(update.expected_revision, 7)
   assert.equal(update.shots[0].remark, '更新后的备注')
