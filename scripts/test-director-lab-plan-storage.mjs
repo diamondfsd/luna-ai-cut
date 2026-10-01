@@ -8,9 +8,15 @@ import {
   reconcileLocalDirectorPlan,
   writeDirectorPlanFiles,
 } from '../electron/features/director-lab/directorLabPlanStorage.ts'
+import {
+  buildDirectorPlanUpdate,
+  directorPlanContentSignature,
+  nextDirectorPlanBaseline,
+} from '../src/lib/directorPlanSync.ts'
 
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'director-plan-storage-'))
 const legacyDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'director-plan-reconcile-'))
+const syncDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'director-plan-sync-'))
 
 try {
   const plan = {
@@ -75,6 +81,59 @@ try {
   assert.deepEqual(manifest.attributes, [{ id: 'framing', name: '画面说明' }])
   assert.equal(manifest.shots[0].remark, '注意收音')
   assert.equal(plan.shots[0].takes[1].available, false, 'marking a local take must not mutate the remote plan')
+  const syncPlanDirectory = path.join(syncDirectory, 'Plan')
+  await writeDirectorPlanFiles(syncPlanDirectory, localPlan)
+  const localMediaPath = path.join(syncPlanDirectory, 'media', '01_Walk', '02_second.mp4')
+  await fs.mkdir(path.dirname(localMediaPath), { recursive: true })
+  await fs.writeFile(localMediaPath, 'downloaded')
+
+  const localManifestPath = path.join(syncPlanDirectory, 'manifest.json')
+  const locallyEdited = { ...manifest, title: 'Local edit' }
+  await fs.writeFile(localManifestPath, JSON.stringify(locallyEdited, null, 2), 'utf8')
+  assert.equal(
+    await reconcileLocalDirectorPlan(syncDirectory, plan),
+    false,
+    'a same-revision local edit must not be overwritten by remote reconciliation',
+  )
+  assert.equal(JSON.parse(await fs.readFile(localManifestPath, 'utf8')).title, 'Local edit')
+
+  const remotelyUpdatedPlan = {
+    ...plan,
+    title: 'Remote edit',
+    revision: (plan.revision ?? 0) + 1,
+    updated_at: '2026-01-02T00:00:00.000Z',
+  }
+  assert.equal(await reconcileLocalDirectorPlan(syncDirectory, remotelyUpdatedPlan), true)
+  const renamedManifestPath = path.join(syncDirectory, 'Remote edit', 'manifest.json')
+  assert.equal(JSON.parse(await fs.readFile(renamedManifestPath, 'utf8')).title, 'Remote edit')
+  await fs.access(path.join(syncDirectory, 'Remote edit', 'media', '01_Walk', '02_second.mp4'))
+
+  const localEquivalent = {
+    ...plan,
+    source: 'local',
+    shots: plan.shots.map((shot) => ({
+      ...shot,
+      takes: shot.takes.map((take) => ({ ...take, available: true })),
+    })),
+  }
+  assert.equal(
+    directorPlanContentSignature(localEquivalent),
+    directorPlanContentSignature(plan),
+    'media availability must not create a plan metadata sync conflict',
+  )
+  const editedPlan = {
+    ...plan,
+    shots: plan.shots.map((shot, index) => index === 0 ? { ...shot, remark: '更新后的备注' } : shot),
+  }
+  assert.notEqual(directorPlanContentSignature(editedPlan), directorPlanContentSignature(plan))
+  const update = buildDirectorPlanUpdate(editedPlan, 7)
+  assert.equal(update.expected_revision, 7)
+  assert.equal(update.shots[0].remark, '更新后的备注')
+  assert.deepEqual(nextDirectorPlanBaseline(plan, localEquivalent), {
+    revision: plan.revision ?? 0,
+    remoteSignature: directorPlanContentSignature(plan),
+    localSignature: directorPlanContentSignature(localEquivalent),
+  })
 
   const legacyMedia = path.join(legacyDirectory, 'Plan', 'media', '01_Walk', '01_first.mp4')
   await fs.mkdir(path.dirname(legacyMedia), { recursive: true })
@@ -87,6 +146,7 @@ try {
 } finally {
   await fs.rm(directory, { recursive: true, force: true })
   await fs.rm(legacyDirectory, { recursive: true, force: true })
+  await fs.rm(syncDirectory, { recursive: true, force: true })
 }
 
 console.log('director lab plan storage tests passed')
