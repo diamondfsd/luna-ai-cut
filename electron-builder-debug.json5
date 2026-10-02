@@ -3,7 +3,9 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.diamondfsd.luna-device-debug",
   "asar": true,
-  "asarUnpack": [],
+  "asarUnpack": [
+    "node_modules/usb/**/*"
+  ],
   "beforePack": "scripts/verify-native-artifact.mjs",
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna Device Debug",
@@ -86,6 +88,7 @@
       }
     ],
     "extendInfo": {
+      "NSMicrophoneUsageDescription": "Luna AI Cut 需要使用电脑麦克风作为直播声音来源",
       "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接相机并读取素材",
       "NSBluetoothAlwaysUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息",
       "NSBluetoothPeripheralUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息"
@@ -97,6 +100,11 @@
       {
         "from": "node_modules/7zip-bin/win/x64/7za.exe",
         "to": "tools/7za.exe"
+      },
+      {
+        "from": "resources/ios-usb/win-x64",
+        "to": "ios-usb",
+        "filter": ["*.exe", "*.dll", "licenses/**/*"]
       }
     ],
     "target": [

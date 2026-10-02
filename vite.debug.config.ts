@@ -33,6 +33,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
+              external: ['ws'],
               output: {
                 entryFileNames: 'main.js',
                 // 与主包区分 chunk 命名，避免热更新时串文件

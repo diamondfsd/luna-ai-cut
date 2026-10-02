@@ -9,6 +9,7 @@
   place-items: center;
   cursor: pointer;
   border: 0;
+  box-sizing: border-box;
   font-family: inherit;
   transition:
     transform 140ms ease,
@@ -16,13 +17,18 @@
     border-color 140ms ease;
 }
 
-.ui-icon-btn:active {
-  transform: scale(0.95);
+.ui-icon-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .ui-icon-btn:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.ui-icon-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 42%, transparent);
+  outline-offset: 2px;
 }
 
 /* circle — 默认圆形按钮 */
@@ -62,13 +68,28 @@
   color: var(--muted);
 }
 
+/* nav — 顶栏紧凑图标按钮 */
+.ui-icon-btn-nav {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--parchment);
+  color: var(--muted);
+}
+
+.ui-icon-btn-nav:hover:not(:disabled) {
+  background: #e8e8ed;
+  color: var(--ink);
+}
+
 /* 尺寸 */
 .ui-icon-btn-compact {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
 }
 
 .ui-icon-btn-mini {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
 }

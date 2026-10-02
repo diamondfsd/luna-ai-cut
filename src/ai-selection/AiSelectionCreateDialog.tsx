@@ -110,6 +110,7 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
 
   return <MediaLibraryCtx.Provider value={controller}>
     <Dialog
+      bodyClassName="ai-selection-create-body"
       open={open}
       onOpenChange={onOpenChange}
       title="新建选片任务"
@@ -122,15 +123,13 @@ export function AiSelectionCreateDialog({ open, busy, onOpenChange, onCreate }: 
         <Button variant="primary" size="compact" icon={<Plus size={14} />} disabled={!source || busy} onClick={() => void create()}>{busy ? '创建中' : '创建任务'}</Button>
       </>}
     >
-      <div className="ai-selection-create-body">
-        <div className="ai-selection-create-settings-panel">
-          <label className="ai-selection-create-name"><span>任务名称</span><Input variant="pill" fullWidth value={taskName} onChange={(event) => { setTaskNameEdited(true); setTaskName(event.target.value) }} placeholder="选择素材后自动生成" /></label>
-          <label><span>选片用途</span><Select variant="compact" fullWidth value={purpose} options={[{ value: 'general', label: '快速精选' }, { value: 'people', label: '人物照片' }, { value: 'travel', label: '旅行记录' }, { value: 'editing', label: '剪辑素材' }]} onValueChange={(value) => setPurpose(value as AiSelectionPurpose)} /></label>
-          <label><span>建议数量</span><Select variant="compact" fullWidth value={preset} options={[{ value: 'quick', label: '少' }, { value: 'balanced', label: '适中' }, { value: 'deep', label: '多' }]} onValueChange={(value) => setPreset(value as AiSelectionPreset)} /></label>
-          <label className="ai-selection-create-target"><span>选片目标</span><ButtonGroup value={targetMode} onChange={(value) => setTargetMode(value as AiSelectionTarget['mode'])} options={[{ value: 'preset', label: '自动' }, { value: 'count', label: '数量' }, { value: 'ratio', label: '比例' }]} />{targetMode !== 'preset' && <Input variant="compact" value={targetValue} onChange={(event) => setTargetValue(event.target.value.replace(/\D/g, ''))} placeholder={targetMode === 'count' ? '张/段' : '%'} />}</label>
-        </div>
-        <div className="workspace-import-body"><MediaGallery mode="local" groupTitle={groupTitle} /></div>
+      <div className="ai-selection-create-settings-panel">
+        <label className="ai-selection-create-name"><span>任务名称</span><Input variant="pill" fullWidth value={taskName} onChange={(event) => { setTaskNameEdited(true); setTaskName(event.target.value) }} placeholder="选择素材后自动生成" /></label>
+        <label><span>选片用途</span><Select variant="compact" fullWidth value={purpose} options={[{ value: 'general', label: '快速精选' }, { value: 'people', label: '人物照片' }, { value: 'travel', label: '旅行记录' }, { value: 'editing', label: '剪辑素材' }]} onValueChange={(value) => setPurpose(value as AiSelectionPurpose)} /></label>
+        <label><span>建议数量</span><Select variant="compact" fullWidth value={preset} options={[{ value: 'quick', label: '少' }, { value: 'balanced', label: '适中' }, { value: 'deep', label: '多' }]} onValueChange={(value) => setPreset(value as AiSelectionPreset)} /></label>
+        <label className="ai-selection-create-target"><span>选片目标</span><ButtonGroup value={targetMode} onChange={(value) => setTargetMode(value as AiSelectionTarget['mode'])} options={[{ value: 'preset', label: '自动' }, { value: 'count', label: '数量' }, { value: 'ratio', label: '比例' }]} />{targetMode !== 'preset' && <Input variant="compact" value={targetValue} onChange={(event) => setTargetValue(event.target.value.replace(/\D/g, ''))} placeholder={targetMode === 'count' ? '张/段' : '%'} />}</label>
       </div>
+      <div className="workspace-import-body"><MediaGallery mode="local" groupTitle={groupTitle} /></div>
     </Dialog>
   </MediaLibraryCtx.Provider>
 }

@@ -1,0 +1,115 @@
+.lab-shot-browser { min-width: 0; }
+
+.lab-shot-toolbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.lab-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.lab-shot-row {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--parchment);
+}
+
+.lab-shot-index {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  min-width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  place-items: center;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: var(--glass-surface-strong);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: var(--glass-blur);
+  pointer-events: none;
+}
+
+.lab-shot-card-media {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  background: var(--hairline);
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lab-shot-card-media img,
+.lab-shot-card-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lab-shot-card-media.is-empty { cursor: pointer; }
+.lab-shot-card-media:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
+.lab-shot-row-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.lab-shot-row-heading { display: grid; min-width: 0; gap: 4px; }
+.lab-shot-row-heading > .lab-shot-title {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-shot-card-take-count { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.lab-shot-row-copy > .ui-icon-btn { flex: 0 0 auto; }
+.lab-shot-empty { padding: 24px 16px; color: var(--muted); font-size: 13px; }
+
+@media (max-width: 560px) {
+  .lab-shot-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap: 12px; padding: 12px; }
+}
+.lab-media-thumbnail {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.lab-media-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

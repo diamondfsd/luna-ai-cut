@@ -328,6 +328,7 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
 
   return (
     <Dialog
+      bodyClassName="lut-import-body"
       open={open}
       onOpenChange={onOpenChange}
       title="批量导入 LUT"
@@ -364,109 +365,107 @@ export function LutImportDialog({ open, onOpenChange, onSuccess }: LutImportDial
         </div>
       }
     >
-      <div className="lut-import-body">
-        {/* ═══ 选择区域 ── 拖拽或点击选择文件 ═══ */}
-        <div
-          className={`lut-import-drop-zone ${isDragOver ? 'drag-over' : ''}`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onClick={handleBrowseClick}
-        >
-          <div className="lut-import-folder-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 19V5" />
-              <path d="M5 12l7-7 7 7" />
-            </svg>
-          </div>
-          <div className="lut-import-drop-title">
-            {isDragOver ? '松开以导入' : '拖拽 LUT 文件到这里'}
-          </div>
-          <button className="lut-import-link-btn" onClick={(e) => { e.stopPropagation(); handleBrowseClick() }}>
-            或点击选择文件
-          </button>
-          <div className="lut-import-drop-help">支持 .cube 文件，可批量拖拽</div>
+      {/* ═══ 选择区域 ── 拖拽或点击选择文件 ═══ */}
+      <div
+        className={`lut-import-drop-zone ${isDragOver ? 'drag-over' : ''}`}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={handleBrowseClick}
+      >
+        <div className="lut-import-folder-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 19V5" />
+            <path d="M5 12l7-7 7 7" />
+          </svg>
         </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".cube"
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-
-        {/* ═══ 中间区域 ── 文件夹名称 ═══ */}
-        <div className="lut-import-folder-row">
-          <label className="lut-import-folder-label">文件夹名称</label>
-          <div className="lut-import-folder-input-wrap">
-            <input
-              className="lut-import-folder-input"
-              type="text"
-              value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
-              placeholder="例如：Fuji、Leica、我的滤镜"
-            />
-            <span className="lut-import-folder-note">
-              导入后将在 LUT 目录下创建此文件夹
-            </span>
-          </div>
+        <div className="lut-import-drop-title">
+          {isDragOver ? '松开以导入' : '拖拽 LUT 文件到这里'}
         </div>
+        <button className="lut-import-link-btn" onClick={(e) => { e.stopPropagation(); handleBrowseClick() }}>
+          或点击选择文件
+        </button>
+        <div className="lut-import-drop-help">支持 .cube 文件，可批量拖拽</div>
+      </div>
 
-        {/* ═══ 展示区域 ── 文件表格（可编辑名称） ═══ */}
-        {fileEntries.length > 0 && (
-          <div className="lut-import-table-wrap">
-            <div className="lut-import-table">
-              <div className="lut-import-table-header">
-                <div>名称</div>
-                <div>原始文件</div>
-                <div>状态</div>
-                <div></div>
-              </div>
-              <div className="lut-import-table-body">
-                {fileEntries.map((entry) => (
-                  <div key={entry.id} className="lut-import-table-row">
-                    {/* 可编辑的名称 */}
-                    <div className="lut-import-name-cell">
-                      <input
-                        className="lut-import-name-input"
-                        type="text"
-                        value={entry.displayName}
-                        onChange={(e) => handleDisplayNameChange(entry.id, e.target.value)}
-                        disabled={importing || entry.status === 'imported'}
-                      />
-                    </div>
-                    {/* 原始文件名 */}
-                    <div className="lut-import-origin-cell">
-                      <span className="lut-import-origin-name" title={entry.name}>{entry.name}</span>
-                    </div>
-                    {/* 状态 */}
-                    <div className="lut-import-status-cell">
-                      {statusIcon(entry.status)}
-                      <span className={`status-text ${entry.status === 'ready' || entry.status === 'imported' ? 'success' : entry.status === 'duplicate' ? 'duplicate' : 'danger'}`}>
-                        {entry.statusText}
-                      </span>
-                    </div>
-                    {/* 操作 */}
-                    <div className="lut-import-action-cell">
-                      {!importing && entry.status !== 'imported' && entry.status !== 'importing' && (
-                        <button className="lut-import-remove-btn" onClick={() => handleRemoveFile(entry.id)} title="移除">
-                          ×
-                        </button>
-                      )}
-                      {entry.status === 'imported' && (
-                        <span className="lut-import-check-mark">✓</span>
-                      )}
-                    </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".cube"
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
+      {/* ═══ 中间区域 ── 文件夹名称 ═══ */}
+      <div className="lut-import-folder-row">
+        <label className="lut-import-folder-label">文件夹名称</label>
+        <div className="lut-import-folder-input-wrap">
+          <input
+            className="lut-import-folder-input"
+            type="text"
+            value={folderName}
+            onChange={(e) => setFolderName(e.target.value)}
+            placeholder="例如：Fuji、Leica、我的滤镜"
+          />
+          <span className="lut-import-folder-note">
+            导入后将在 LUT 目录下创建此文件夹
+          </span>
+        </div>
+      </div>
+
+      {/* ═══ 展示区域 ── 文件表格（可编辑名称） ═══ */}
+      {fileEntries.length > 0 && (
+        <div className="lut-import-table-wrap">
+          <div className="lut-import-table">
+            <div className="lut-import-table-header">
+              <div>名称</div>
+              <div>原始文件</div>
+              <div>状态</div>
+              <div></div>
+            </div>
+            <div className="lut-import-table-body">
+              {fileEntries.map((entry) => (
+                <div key={entry.id} className="lut-import-table-row">
+                  {/* 可编辑的名称 */}
+                  <div className="lut-import-name-cell">
+                    <input
+                      className="lut-import-name-input"
+                      type="text"
+                      value={entry.displayName}
+                      onChange={(e) => handleDisplayNameChange(entry.id, e.target.value)}
+                      disabled={importing || entry.status === 'imported'}
+                    />
                   </div>
-                ))}
-              </div>
+                  {/* 原始文件名 */}
+                  <div className="lut-import-origin-cell">
+                    <span className="lut-import-origin-name" title={entry.name}>{entry.name}</span>
+                  </div>
+                  {/* 状态 */}
+                  <div className="lut-import-status-cell">
+                    {statusIcon(entry.status)}
+                    <span className={`status-text ${entry.status === 'ready' || entry.status === 'imported' ? 'success' : entry.status === 'duplicate' ? 'duplicate' : 'danger'}`}>
+                      {entry.statusText}
+                    </span>
+                  </div>
+                  {/* 操作 */}
+                  <div className="lut-import-action-cell">
+                    {!importing && entry.status !== 'imported' && entry.status !== 'importing' && (
+                      <button className="lut-import-remove-btn" onClick={() => handleRemoveFile(entry.id)} title="移除">
+                        ×
+                      </button>
+                    )}
+                    {entry.status === 'imported' && (
+                      <span className="lut-import-check-mark">✓</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </Dialog>
   )
 }

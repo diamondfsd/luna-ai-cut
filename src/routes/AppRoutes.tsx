@@ -20,7 +20,8 @@ import { AiSelectionPage } from '../pages/AiSelectionPage'
 import { AiEditorPage } from '../pages/AiEditorPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
-import { ObsStreamDemoPage } from '../pages/ObsStreamDemoPage'
+import { LiveConsolePage } from '../pages/LiveConsolePage'
+import { LabPage } from '../pages/LabPage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
@@ -51,6 +52,7 @@ export function AppRoutes() {
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [pagesKey, setPagesKey] = useState(0)
   const [creativeModeId, setCreativeModeId] = useState<CreativeModeId | null>(null)
+  const [windowLiveMode, setWindowLiveMode] = useState(false)
 
   useEffect(() => {
     void window.luna.getCacheStats().then(setCacheStats).catch(() => undefined)
@@ -71,6 +73,11 @@ export function AppRoutes() {
     if (dir) setSettings(await window.luna.getSettings())
   }
 
+  async function chooseDirectorPlanDir(): Promise<void> {
+    const dir = await window.luna.chooseDirectorPlanDir()
+    if (dir) setSettings(await window.luna.getSettings())
+  }
+
   function openDirectory(targetPath: string | null | undefined): void {
     if (!targetPath) return
     void window.luna.openPath(targetPath)
@@ -85,11 +92,17 @@ export function AppRoutes() {
 
   const developerMode = settings?.developerMode ?? false
   const debugVisible = import.meta.env.DEV || hiddenDevMode
-  const obsStreamDemoVisible = !window.luna.isPackaged
   const location = useLocation()
   const activePath = location.pathname === '/' ? '/library' : location.pathname
   const isActive = (path: string) => activePath === path
   const settingsRoute = activePath === '/settings'
+
+  useEffect(() => window.luna.onLiveWindowModeEnd(() => setWindowLiveMode(false)), [])
+
+  useEffect(() => {
+    if (activePath === '/live-console' || !windowLiveMode) return
+    void window.luna.setLiveWindowMode(false).finally(() => setWindowLiveMode(false))
+  }, [activePath, windowLiveMode])
 
   // ── 路由访问权限表：path → 是否有权访问 ──
   // 加新路由时，在这里加一行，再在下面加 <section> 即可
@@ -99,7 +112,8 @@ export function AppRoutes() {
     ['/ai-selection', true],
     ['/ai-editor', true],
     ['/workspace', true],
-    ['/obs-stream', obsStreamDemoVisible],
+    ['/lab', true],
+    ['/live-console', true],
     ['/settings', true],
     ['/developer', developerMode],
     ['/ble-debug', debugVisible],
@@ -140,7 +154,7 @@ export function AppRoutes() {
 
   return (
     <ExportProgressProvider>
-      <DownloadProgressProvider>
+        <DownloadProgressProvider>
         <NasSyncProgressProvider>
         <main className="app">
         <AppNav
@@ -199,8 +213,15 @@ export function AppRoutes() {
           />
         </AppRoute>
 
-        <AppRoute path="/obs-stream" preserve={false}>
-          <ObsStreamDemoPage />
+        <AppRoute path="/lab">
+          <LabPage pageActive={isActive('/lab')} />
+        </AppRoute>
+
+        <AppRoute path="/live-console" preserve={false}>
+          <LiveConsolePage
+            windowLiveMode={windowLiveMode}
+            onWindowLiveModeChange={setWindowLiveMode}
+          />
         </AppRoute>
 
         <AppRoute path="/settings" preserve={false}>
@@ -211,6 +232,7 @@ export function AppRoutes() {
             chooseBaseDir={chooseBaseDir}
             chooseLocalResourcesDir={chooseLocalResourcesDir}
             chooseExportDir={chooseExportDir}
+            chooseDirectorPlanDir={chooseDirectorPlanDir}
             clearCache={clearCache}
             connection={connection}
             openDirectory={openDirectory}

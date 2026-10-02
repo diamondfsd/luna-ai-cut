@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useFileCache } from '../../hooks/useFileCache'
 import type { CompositionInput } from '../../shared/types'
 import { IconButton, Tooltip } from '../../ui'
+import { renderLiveLutThumbnail } from './liveLutThumbnail'
 
 interface FilterItemProps {
   filePath: string
@@ -12,6 +13,7 @@ interface FilterItemProps {
   onClick?: () => void
   /** 父组件传来的源文件路径（子组件自行通过 useFileCache 加载缩略图） */
   mediaPath: string | null
+  thumbnailFrame?: ImageData | null
   /** 隐藏底部的名称文本 */
   hideName?: boolean
   /** LUT 强度 0-100，默认 100 */
@@ -84,6 +86,7 @@ export function FilterItem({
   active,
   onClick,
   mediaPath,
+  thumbnailFrame,
   hideName,
   intensity = 30,
   editing = false,
@@ -127,7 +130,7 @@ export function FilterItem({
   // 源缩略图就绪 → 调用 Rust 渲染带 LUT 的缩略图
   useEffect(() => {
     const sourcePath = cacheFilePath || thumbnailRef.current
-    if (!sourcePath || !filePath) {
+    if ((!sourcePath && !thumbnailFrame) || !filePath || !visible) {
       setThumbUrl(null)
       return
     }
@@ -135,7 +138,10 @@ export function FilterItem({
     let cancelled = false
     setLoading(true)
 
-    renderFilterThumb(sourcePath, filePath, intensity).then((url) => {
+    const thumbnail = thumbnailFrame
+      ? renderLiveLutThumbnail(thumbnailFrame, filePath, intensity)
+      : renderFilterThumb(sourcePath!, filePath, intensity)
+    thumbnail.then((url) => {
       if (!cancelled && mountedRef.current) {
         setThumbUrl(url)
         setLoading(false)
@@ -145,7 +151,7 @@ export function FilterItem({
     })
 
     return () => { cancelled = true }
-  }, [cacheFilePath, filePath, intensity])
+  }, [cacheFilePath, filePath, intensity, thumbnailFrame, visible])
 
   return (
     <article

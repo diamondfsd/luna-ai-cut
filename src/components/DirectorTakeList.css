@@ -1,0 +1,10 @@
+.director-take-list { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.director-take-list-count { font-size: 13px; color: var(--muted); }
+.director-take-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.director-take-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 12px; padding: 3px; }
+.director-take-card { position: relative; min-width: 0; }
+.director-take-grid .director-take-card .director-take-list-item { display: block; width: 100%; height: auto; min-height: 0; aspect-ratio: 1; border: 0; padding: 0; border-radius: 12px; overflow: hidden; background: transparent; box-shadow: none; }
+.director-take-card .director-take-list-item[aria-pressed="true"] { outline: 2px solid var(--blue); outline-offset: 2px; }
+.director-take-card .lab-media-thumbnail { width: 100%; height: 100%; border-radius: inherit; background: transparent; }
+.director-take-card .director-take-delete { position: absolute; top: 4px; right: 4px; opacity: 0; pointer-events: none; }
+.director-take-card:hover .director-take-delete, .director-take-card:focus-within .director-take-delete { opacity: 1; pointer-events: auto; }

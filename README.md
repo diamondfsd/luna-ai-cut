@@ -19,6 +19,7 @@ Luna AI Cut 是一款开源、非商业的桌面素材管理与创作工具。�
 ## 使用文档
 
 - 产品介绍与使用指南：[https://luna.diamondfsd.com/](https://luna.diamondfsd.com/)
+- Windows iPhone USB 直播自检与验收：[`docs/windows-ios-usb-live.md`](docs/windows-ios-usb-live.md)。
 
 ## 核心功能
 

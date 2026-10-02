@@ -12,7 +12,7 @@ import QRCode from 'qrcode'
 
 import { listDownloadedFiles } from '../downloadedLibraryService'
 import { getTasks } from '../../export/exportTaskService'
-import { getLocalResourcesDir, getSettings, saveSettings } from '../../storage/fileService'
+import { cacheDir, getLocalResourcesDir, getSettings, saveSettings } from '../../storage/fileService'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import {
   startLocalMediaShareServer,
@@ -122,7 +122,7 @@ async function createResource(
 
 async function localResources(): Promise<ShareResourceRecord[]> {
   const settings = await getSettings()
-  const files = await listDownloadedFiles([getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])])
+  const files = await listDownloadedFiles([getLocalResourcesDir(settings), ...(settings.downloadDirectories ?? [])], cacheDir(settings.baseDir))
   const resources = await Promise.all(files.map((file) => createResource('local', file.localPath ?? file.downloadFilePath ?? '')))
   return resources.filter((resource): resource is ShareResourceRecord => resource !== null)
 }

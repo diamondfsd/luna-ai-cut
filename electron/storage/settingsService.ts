@@ -41,6 +41,10 @@ export function getLocalResourcesDir(settings: AppSettings): string {
   return settings.localResourcesDir || path.join(settings.baseDir, 'localResources')
 }
 
+export function getDirectorPlanDir(settings: AppSettings): string {
+  return settings.directorPlanDir || path.join(settings.baseDir, '导演计划')
+}
+
 export async function previewCacheDir(): Promise<string> {
   return previewCacheDirForBaseDir((await getSettings()).baseDir)
 }
@@ -147,7 +151,11 @@ type LegacyNasSyncDebugSettings = {
   nasSyncDebugPrevious?: unknown
 }
 
-type StoredSettings = Partial<AppSettings> & { downloadDir?: string } & LegacyNasSyncDebugSettings
+type StoredSettings = Partial<AppSettings> & {
+  downloadDir?: string
+  liveRtmpUrl?: unknown
+  liveRtmpStreamKey?: unknown
+} & LegacyNasSyncDebugSettings
 
 async function readSettingsFile() {
   return readStoredSettings<StoredSettings>(settingsPath(), legacyPath())
@@ -162,6 +170,9 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
     baseDir: savedSettings.baseDir,
     cacheDir: cacheDir(savedSettings.baseDir),
   }
+  const legacyLiveSettings = merged as typeof merged & Pick<StoredSettings, 'liveRtmpUrl' | 'liveRtmpStreamKey'>
+  delete legacyLiveSettings.liveRtmpUrl
+  delete legacyLiveSettings.liveRtmpStreamKey
   const hasLegacyNasDebugMode = saved?.nasSyncDebugMode === true
   merged.defaultWatermarkEnabled = typeof saved?.defaultWatermarkEnabled === 'boolean'
     ? saved.defaultWatermarkEnabled
@@ -284,11 +295,16 @@ export async function getSettings(): Promise<AppSettings> {
     return defaults
   }
   const merged = mergeSettings(saved)
+  const hasLegacyLiveSettings = Boolean(saved && (
+    Object.prototype.hasOwnProperty.call(saved, 'liveRtmpUrl')
+    || Object.prototype.hasOwnProperty.call(saved, 'liveRtmpStreamKey')
+  ))
   if (
     stored.fromLegacyPath
     || (saved.downloadDir && !saved.baseDir)
     || saved.experimentalWebGpuExport === true
     || hasLegacyNasSyncDebugSettings(saved)
+    || hasLegacyLiveSettings
   ) {
     await writeSettingsFile(merged)
   }
@@ -376,6 +392,20 @@ export async function chooseExportDir(): Promise<string | null> {
   if (result.canceled || result.filePaths.length === 0) return null
 
   await saveSettings({ exportDir: result.filePaths[0] })
+  return result.filePaths[0]
+}
+
+export async function chooseDirectorPlanDir(): Promise<string | null> {
+  const settings = await getSettings()
+  const result = await dialog.showOpenDialog({
+    defaultPath: getDirectorPlanDir(settings),
+    properties: ['openDirectory', 'createDirectory'],
+    title: '选择导演计划目录',
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return null
+
+  await saveSettings({ directorPlanDir: result.filePaths[0] })
   return result.filePaths[0]
 }
 

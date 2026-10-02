@@ -14,8 +14,6 @@
 
 .merge-dialog-body {
   min-height: 0;
-  overflow-y: auto;
-  padding: 22px;
   box-sizing: border-box;
   scrollbar-gutter: stable;
 }
@@ -177,19 +175,12 @@
     width: min(456px, calc(100vw - 32px));
   }
 
-  .merge-dialog-body {
-    padding: 18px 16px 24px;
-  }
-
   .merge-dialog-card-list {
     gap: 12px;
   }
 }
 
 @media (max-width: 430px) {
-  .merge-dialog-body {
-    padding: 14px 12px 20px;
-  }
 
   .merge-dialog-card-list {
     grid-template-columns: repeat(2, 120px);

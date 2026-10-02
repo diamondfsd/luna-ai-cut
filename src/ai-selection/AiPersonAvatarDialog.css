@@ -1,5 +1,5 @@
 .ai-person-avatar-dialog.ui-dialog-content { width: min(860px, 92vw); height: min(620px, 85vh); }
-.ai-person-avatar-body { min-height: 0; height: 100%; padding: 16px; overflow: hidden; display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 16px; box-sizing: border-box; }
+.ai-person-avatar-body { min-height: 0; height: 100%; display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 16px; box-sizing: border-box; }
 .ai-person-avatar-candidates { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
 .ai-person-avatar-candidates > strong { font-size: 12px; }
 .ai-person-avatar-candidates > div { min-height: 0; flex: 1; padding: 2px 2px 10px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, 104px); grid-auto-rows: 58.5px; align-content: start; justify-content: center; gap: 6px; }

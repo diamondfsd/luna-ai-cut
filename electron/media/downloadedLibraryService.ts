@@ -32,8 +32,19 @@ export async function getDownloadedRecords(files: LunaFile[], outputDir: string,
   return records
 }
 
-export async function listDownloadedFiles(outputDirs: string | string[]): Promise<LunaFile[]> {
+export async function listDownloadedFiles(outputDirs: string | string[], cacheDirectory?: string): Promise<LunaFile[]> {
   const files: LunaFile[] = []
+  const cacheRoot = cacheDirectory ? path.resolve(cacheDirectory) : null
+  const cacheSubdirectories = new Set(['previews', 'metadata', 'ai-selection'])
+
+  function isCacheDirectory(directory: string, outputDir: string): boolean {
+    if (path.basename(directory) === 'cache_previews') return true
+    if (!cacheRoot) return false
+    const relative = path.relative(cacheRoot, path.resolve(directory))
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return false
+    if (path.resolve(outputDir) === cacheRoot) return cacheSubdirectories.has(relative.split(path.sep)[0])
+    return true
+  }
 
   async function appendFile(filePath: string, outputDir: string): Promise<void> {
     const name = path.basename(filePath)
@@ -79,6 +90,7 @@ export async function listDownloadedFiles(outputDirs: string | string[]): Promis
   }
 
   async function walk(dir: string, outputDir: string): Promise<void> {
+    if (isCacheDirectory(dir, outputDir)) return
     const entries = await fs.readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue

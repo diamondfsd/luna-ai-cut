@@ -93,6 +93,8 @@ interface WatermarkSettingsProps {
   onChange: WatermarkChangeHandler
   compact?: boolean
   showToggle?: boolean
+  showSourceSelector?: boolean
+  showStyleSelector?: boolean
   preferencesOnly?: boolean
   title?: string
   filePath?: string
@@ -175,6 +177,8 @@ export function WatermarkSettings({
   onChange,
   compact,
   showToggle = true,
+  showSourceSelector = true,
+  showStyleSelector = true,
   preferencesOnly = false,
   title = '水印设置',
   filePath,
@@ -392,7 +396,7 @@ export function WatermarkSettings({
     void enrichAndChange(patch)
   }
 
-  const selectedSourceKind = preferencesOnly
+  const selectedSourceKind = preferencesOnly || !showSourceSelector
     ? 'builtin'
     : builtinAvailable ? currentSettings.sourceKind ?? 'builtin' : 'custom'
   const customSelected = selectedSourceKind === 'custom' && usesCustomWatermark(currentSettings)
@@ -401,7 +405,7 @@ export function WatermarkSettings({
     : [{ value: 'custom', label: '自定义' }]
   const content = (
     <div className="wm-settings-content">
-      {!preferencesOnly && builtinAvailable && (
+      {!preferencesOnly && showSourceSelector && builtinAvailable && (
         <div className="wm-source-control">
           <SegmentedControl
             ariaLabel="水印来源"
@@ -439,7 +443,7 @@ export function WatermarkSettings({
         </SettingsSection>
       )}
 
-      {!preferencesOnly && selectedSourceKind === 'builtin' && stylePills.length > 0 && (
+      {!preferencesOnly && showStyleSelector && selectedSourceKind === 'builtin' && stylePills.length > 0 && (
         <SettingsSection>
           <SegmentedControl ariaLabel="水印样式" options={stylePills} value={currentSettings.style} onChange={(style) => void enrichAndChange({ style })} variant="size" className="wm-style-selector" />
         </SettingsSection>

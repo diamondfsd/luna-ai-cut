@@ -75,7 +75,7 @@ export function Modal({
       description={description}
       footer={footer ?? defaultFooter}
     >
-      <div className="ui-dialog-body">{children}</div>
+      {children}
     </Dialog>
   )
 }

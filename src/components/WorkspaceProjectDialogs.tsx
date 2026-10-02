@@ -34,6 +34,7 @@ export function CreateWorkspaceProjectDialog({
 }: CreateWorkspaceProjectDialogProps) {
   return (
     <Dialog
+      bodyClassName="workspace-dialog-body"
       open={open}
       onOpenChange={onOpenChange}
       title="创建工作台项目"
@@ -47,14 +48,12 @@ export function CreateWorkspaceProjectDialog({
         </>
       }
     >
-      <div className="workspace-dialog-body">
-        <Input
-          fullWidth
-          value={projectName}
-          placeholder="项目名称"
-          onChange={(event) => onProjectNameChange(event.target.value)}
-        />
-      </div>
+      <Input
+        fullWidth
+        value={projectName}
+        placeholder="项目名称"
+        onChange={(event) => onProjectNameChange(event.target.value)}
+      />
     </Dialog>
   )
 }
@@ -70,6 +69,7 @@ export function AddToWorkspaceProjectDialog({
 }: AddToWorkspaceProjectDialogProps) {
   return (
     <Dialog
+      bodyClassName="workspace-dialog-body"
       open={open}
       onOpenChange={onOpenChange}
       title="添加到已有项目"
@@ -83,18 +83,16 @@ export function AddToWorkspaceProjectDialog({
         </>
       }
     >
-      <div className="workspace-dialog-body">
-        {projects.length > 0 ? (
-          <Select
-            fullWidth
-            value={selectedProjectId}
-            options={projects.map((project) => ({ value: project.id, label: project.name }))}
-            onValueChange={onSelectedProjectIdChange}
-          />
-        ) : (
-          <div className="workspace-dialog-empty">暂无项目，请先创建项目。</div>
-        )}
-      </div>
+      {projects.length > 0 ? (
+        <Select
+          fullWidth
+          value={selectedProjectId}
+          options={projects.map((project) => ({ value: project.id, label: project.name }))}
+          onValueChange={onSelectedProjectIdChange}
+        />
+      ) : (
+        <div className="workspace-dialog-empty">暂无项目，请先创建项目。</div>
+      )}
     </Dialog>
   )
 }

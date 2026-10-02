@@ -43,6 +43,7 @@ export function HotUpdateStartupDialog() {
 
   return (
     <Dialog
+      bodyClassName="hot-update-startup-body"
       open={open}
       onOpenChange={setOpen}
       className="hot-update-startup-dialog"
@@ -58,11 +59,9 @@ export function HotUpdateStartupDialog() {
         </>
       )}
     >
-      <div className="ui-dialog-body hot-update-startup-body">
-        {phase === 'downloading' && <p>正在下载更新，请稍候。</p>}
-        {phase === 'error' && <p>{error}</p>}
-        {phase === 'idle' && notes && <MarkdownViewer content={notes} />}
-      </div>
+      {phase === 'downloading' && <p>正在下载更新，请稍候。</p>}
+      {phase === 'error' && <p>{error}</p>}
+      {phase === 'idle' && notes && <MarkdownViewer content={notes} />}
     </Dialog>
   )
 }

@@ -1,0 +1,41 @@
+.live-connection-guides {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ui-dialog-content.live-connection-guide-dialog {
+  width: min(820px, calc(100vw - 32px));
+}
+
+.live-connection-guide-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 200px;
+  align-items: start;
+  gap: 24px;
+}
+
+.live-guide-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.live-guide-instructions > p {
+  margin: 0;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.live-guide-download { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.live-guide-app { display: flex; align-items: center; gap: 8px; }
+.live-guide-app img { border-radius: 9px; }
+.live-guide-app strong { font-size: 14px; font-weight: 600; }
+
+@media (max-width: 760px) {
+  .live-connection-guide-body { grid-template-columns: minmax(0, 1fr); }
+}

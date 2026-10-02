@@ -9,8 +9,8 @@ import { initLogger, logMainInfo, logMainError, logMainWarn } from './infrastruc
 import { attachWindowCrashDiagnostics, installCrashDiagnostics } from './infrastructure/crashDiagnostics'
 import { cameraPathsForFiles } from './devices/common/cameraDeletePaths'
 import { stopAllCameraVideoStreams } from './devices/common/cameraVideoStreamService'
-import { stopObsStreamDemoOnQuit } from './media/obs-demo/obsMp4StreamService'
-import { createUsageAnalytics } from './infrastructure/usageAnalytics'
+import { stopLiveStreamOnQuit } from './media/live-stream/liveStreamService'
+import { createAppUsageAnalytics } from './infrastructure/usageAnalyticsRegistration'
 
 import {
   getLocalResourcesDir,
@@ -77,23 +77,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
-const usageAnalytics = createUsageAnalytics({
-  enabled: !process.env.LUNA_E2E_USER_DATA_DIR,
-  userData: app.getPath('userData'),
-  appVersion: process.env.LUNA_BOOT_SOURCE?.startsWith('hot-update:')
-    ? process.env.LUNA_BOOT_SOURCE.slice('hot-update:'.length)
-    : app.getVersion(),
-  osName: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : process.platform,
-  osVersion: process.getSystemVersion(),
-  arch: process.arch,
-  environment: app.isPackaged ? 'production' : 'development',
-  onResult: (result) => {
-    const message = `[PostHog] ${result.success ? '上报成功' : '上报失败'}`
-    if (result.success) logMainInfo(message, result)
-    else logMainWarn(message, result)
-    if (!app.isPackaged) console.info(message, result)
-  },
-})
+const usageAnalytics = createAppUsageAnalytics()
 const clients = new Map<string, LunaClient>()
 const goUltraClients = new Map<string, GoUltraClient>()
 const activeDownloadControllers = new Set<AbortController>()
@@ -108,7 +92,7 @@ const enqueuePreviewTask = createPreviewTaskQueue(2)
 /** 停止所有客户端的保活并清理 */
 function stopAllKeepAlive(): void {
   void stopAllCameraVideoStreams()
-  void stopObsStreamDemoOnQuit()
+  void stopLiveStreamOnQuit()
   for (const client of clients.values()) {
     client.stopKeepAlive()
     client.close()
@@ -361,11 +345,7 @@ app.on('activate', () => {
 })
 
 function registerIpc(): void {
-  ipcMain.on('usage:page-opened', (event, page: unknown) => {
-    if (win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame) {
-      void usageAnalytics.pageOpened(page)
-    }
-  })
+  usageAnalytics.register(() => win)
   ipcMain.on('app:is-packaged', (event) => {
     event.returnValue = app.isPackaged
   })

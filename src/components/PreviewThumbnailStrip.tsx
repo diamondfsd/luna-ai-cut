@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject, type WheelEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type WheelEvent } from 'react'
 
 import { LivePhotoBadge, VideoPlayBadge } from '../ui'
 import { useLivePhotoWhenVisible } from '../shared/livePhoto'
@@ -13,6 +13,7 @@ interface PreviewThumbnailStripProps {
   modifiedFileIds?: Set<string>
   /** 当前选中文件变化时回调 */
   onChange?: (filePath: string) => void
+  renderThumbnail?: (filePath: string) => ReactNode
 }
 
 function localPathForDuration(cacheFilePath: string): string {
@@ -35,12 +36,13 @@ function formatDuration(seconds: number): string {
     : `${minutes}:${String(remainingSeconds).padStart(2, '0')}`
 }
 
-function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThumbRef }: {
+function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThumbRef, renderThumbnail }: {
   filePath: string
   isActive: boolean
   isModified: boolean
   onFileChange: (filePath: string) => void
   activeThumbRef?: RefObject<HTMLButtonElement>
+  renderThumbnail?: (filePath: string) => ReactNode
 }) {
   const btnRef = useRef<HTMLButtonElement>(null)
   const kind = mediaKindFromPath(filePath)
@@ -71,12 +73,12 @@ function ThumbnailItem({ filePath, isActive, isModified, onFileChange, activeThu
       title={fileNameFromPath(filePath)}
     >
       {isModified && <span className="preview-thumb-modified-dot" />}
-      <ThumbImage
+      {renderThumbnail ? renderThumbnail(filePath) : <ThumbImage
         src={filePath}
         alt={fileNameFromPath(filePath)}
         loading="lazy"
         onCacheReady={handleCacheReady}
-      />
+      />}
       {kind === 'video' && duration != null && <span className="preview-thumb-duration">{formatDuration(duration)}</span>}
       {kind === 'video' && <VideoPlayBadge size={16} />}
       {isLive && <LivePhotoBadge size={18} className="preview-thumb-live" />}
@@ -89,6 +91,7 @@ export function PreviewThumbnailStrip({
   initialFilePath,
   modifiedFileIds,
   onChange,
+  renderThumbnail,
 }: PreviewThumbnailStripProps) {
   const stripRef = useRef<HTMLDivElement | null>(null)
   const activeThumbRef = useRef<HTMLButtonElement | null>(null)
@@ -188,6 +191,7 @@ export function PreviewThumbnailStrip({
           isModified={modifiedFileIds?.has(filePath) ?? false}
           onFileChange={handleFileClick}
           activeThumbRef={filePath === currentFilePath ? activeThumbRef : undefined}
+          renderThumbnail={renderThumbnail}
         />
       ))}
     </div>
