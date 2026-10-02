@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { Download } from 'lucide-react'
 import { Button, Dialog, LoadingIndicator, type ButtonSize } from '../ui'
+import lunaKaLogo from '../assets/mobile-app/luna-ka-icon.jpg'
 import './MobileAppDownload.css'
 
 const MOBILE_APP_DOWNLOAD_URLS = {
@@ -15,7 +16,7 @@ export function MobileAppDownloadQr({ platform }: { platform: 'ios' | 'android' 
   const [generated, setGenerated] = useState<{ url: string; image: string | null; failed: boolean } | null>(null)
   useEffect(() => {
     let cancelled = false
-    void QRCode.toDataURL(url, { width: 240, margin: 4, errorCorrectionLevel: 'M' }).then(image => {
+    void QRCode.toDataURL(url, { width: 400, margin: 4, errorCorrectionLevel: 'H' }).then(image => {
       if (!cancelled) setGenerated({ url, image, failed: false })
     }).catch(() => {
       if (!cancelled) setGenerated({ url, image: null, failed: true })
@@ -27,7 +28,8 @@ export function MobileAppDownloadQr({ platform }: { platform: 'ios' | 'android' 
     <figure className="mobile-app-download-code">
       <div className="mobile-app-download-image">
         {current?.image
-          ? <img src={current.image} alt={`${label} App 下载二维码`} width={200} height={200} />
+          ? <><img className="mobile-app-download-qr" src={current.image} alt={`${label} App 下载二维码`} width={200} height={200} />
+            <img className="mobile-app-download-logo" src={lunaKaLogo} alt="" /></>
           : current?.failed ? <span role="alert">二维码生成失败</span> : <LoadingIndicator />}
       </div>
       <figcaption>{label}</figcaption>
