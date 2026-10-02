@@ -1,13 +1,13 @@
-import { AlertTriangle, Brush, Crosshair, Eye, Loader2, Minus, Plus, Spline, Square, Trash2, X } from 'lucide-react'
+import { Brush, Crosshair, Eye, Loader2, Minus, Plus, Spline, Square, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Button, ButtonGroup, IconButton, Switch, toast } from '../../ui'
+import { Button, ButtonGroup, Switch, toast } from '../../ui'
 import { useWorkspaceEdit } from '../context/WorkspaceEditContext'
 import { useWorkspaceMask } from '../context/WorkspaceMaskContext'
 import { useWorkspaceMedia } from '../context/WorkspaceMediaContext'
 import { ParamSlider } from '../components/ParamSlider'
 import { hasUsableMask } from '../mask/maskSelectionOperations'
 import type { WorkspaceRemovalOperation } from '../../shared/types'
-import { activeRemovalOperation, deleteRemovalOperation, latestReadyRemovalOperation, setRemovalOperationEnabled } from './removalOperations'
+import { latestReadyRemovalOperation } from './removalOperations'
 import './RemovalPanel.css'
 
 const MODEL_VERSION = 'carve-c3c0c9e' as const
@@ -22,7 +22,7 @@ export function RemovalPanel() {
   const media = useWorkspaceMedia()
   const [edgeExpansion, setEdgeExpansion] = useState(DEFAULT_EDGE_EXPANSION)
   const [feather, setFeather] = useState(DEFAULT_FEATHER)
-  const [quality, setQuality] = useState<'fast' | 'high'>('high')
+  const [quality, setQuality] = useState<'fast' | 'high'>('fast')
   const [processing, setProcessing] = useState(false)
   const requestRef = useRef<string | null>(null)
   const projectRef = useRef(media.currentProject)
@@ -32,7 +32,6 @@ export function RemovalPanel() {
   projectRef.current = media.currentProject
   const asset = media.currentProject?.assets[media.activeIndex]
   const operations = asset?.removal?.operations ?? []
-  const activeOperation = activeRemovalOperation(operations)
   const activeResult = latestReadyRemovalOperation(operations)
   const ownerKey = `${media.currentProject?.id ?? ''}:${media.activeMedia?.id ?? ''}`
   const ownerKeyRef = useRef(ownerKey)
@@ -167,7 +166,10 @@ export function RemovalPanel() {
       if (ownerKeyRef.current !== requestOwnerKey) return
       if (discardedMaskId) mask.removeLayer(discardedMaskId)
       draftLayerRef.current = null
-      mask.setEditing(false)
+      mask.createMask()
+      mask.setManualTool(mask.manualTool)
+      mask.setSemanticPicking(mask.semanticPicking)
+      mask.setSelectionOperation(mask.selectionOperation)
       edit.setCompareOriginal(false)
       toast.success(`消除完成 · ${Math.max(0.1, result.inferenceMs / 1000).toFixed(1)} 秒`)
     } catch (error) {
@@ -192,7 +194,7 @@ export function RemovalPanel() {
   const persistRemoval = (nextOperations: WorkspaceRemovalOperation[]): void => {
     if (!media.currentProject || !media.activeMedia) return
     void saveRemoval(media.currentProject.id, media.activeMedia.id, nextOperations).catch((error) => {
-      toast.error(error instanceof Error ? error.message : '消除步骤保存失败')
+      toast.error(error instanceof Error ? error.message : '保存失败')
     })
   }
 
@@ -245,33 +247,6 @@ export function RemovalPanel() {
         <ParamSlider label="扩展" value={edgeExpansion} min={0} max={24} onChange={setEdgeExpansion} formatValue={(value) => `${Math.round(value)} px`} />
         <ParamSlider label="羽化" value={feather} min={0} max={18} onChange={setFeather} formatValue={(value) => `${Math.round(value)} px`} />
       </section>
-      {operations.length > 0 && <section className="workspace-removal-steps">
-        <h3>消除步骤</h3>
-        {operations.map((operation, index) => {
-          const needsRegeneration = operation.status === 'needs-regeneration'
-          return <div className={`workspace-removal-step${needsRegeneration ? ' is-invalid' : ''}`} key={operation.id}>
-            <div className="workspace-removal-step-copy">
-              <strong>步骤 {index + 1}</strong>
-              <span>{needsRegeneration ? operation.failureReason ?? '需要重新生成' : '已完成'}</span>
-            </div>
-            <Switch
-              ariaLabel={`启用消除步骤 ${index + 1}`}
-              checked={operation.enabled}
-              disabled={processing || needsRegeneration}
-              onCheckedChange={(enabled) => persistRemoval(setRemovalOperationEnabled(operations, operation.id, enabled))}
-            />
-            <IconButton
-              variant="ghost"
-              size="mini"
-              icon={<Trash2 size={14} />}
-              aria-label={`删除消除步骤 ${index + 1}`}
-              disabled={processing}
-              onClick={() => persistRemoval(deleteRemovalOperation(operations, operation.id))}
-            />
-          </div>
-        })}
-      </section>}
-      {activeOperation?.status === 'needs-regeneration' && <div className="workspace-removal-warning"><AlertTriangle size={15} /><span>部分消除步骤已经失效，请删除后重新选择区域。</span></div>}
       {activeResult && <section className="workspace-removal-result">
         <h3>结果</h3>
         <Button variant="secondary" className="workspace-removal-full-button" icon={<Eye size={16} />} onPointerDown={() => edit.setCompareOriginal(true)} onPointerUp={() => edit.setCompareOriginal(false)} onPointerLeave={() => edit.setCompareOriginal(false)}>按住查看原图</Button>

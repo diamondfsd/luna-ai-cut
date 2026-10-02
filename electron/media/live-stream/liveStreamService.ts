@@ -111,8 +111,8 @@ function statusMessage(state: LiveStreamState, usb: UsbAoaStatus): string {
 export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
   const appleDeviceSupport = await getAppleDeviceSupportStatus()
   const usb = activeSession?.receiver.status() ?? IDLE_USB_STATUS
-  const usbMessage = usb.transport !== 'android-adb' && usb.state === 'waiting' && !usb.deviceLabel && !usb.error
-    ? '等待 Android 或 iPhone 通过 USB 连接' : usb.message
+  const usbMessage = usb.transport !== 'android-adb' && usb.transport !== 'harmony-hdc' && usb.state === 'waiting' && !usb.deviceLabel && !usb.error
+    ? '等待手机通过 USB 连接' : usb.message
   const state = statusState(usb.state)
   const error = usb.error ?? null
   if (activeSession) liveUsage?.capabilities(activeSession.startedAt, usb.controlReady, activeSession.capabilities)

@@ -7,6 +7,8 @@
   list-style: none;
 }
 
+.live-guide-steps-harmony { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 .live-guide-steps > li { min-width: 0; }
 
 .live-guide-illustration {
