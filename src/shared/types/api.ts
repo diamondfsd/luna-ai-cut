@@ -1,3 +1,4 @@
+import type { ExternalAgentApi } from './externalAgent'
 import type { AppSettings, CacheStats, CustomLutFile, NasSyncSettings, StorageMigrationResult } from './settings'
 import type { DeviceDefinition, DeviceConnectOptions, ConnectionStatus, BluetoothDeviceCandidate } from './device'
 import type { CameraDeleteResult, FileCopyResult, LunaFile } from './media'
@@ -151,6 +152,7 @@ export interface LunaApi {
   isPackaged: boolean
   lunaKaHttpClient: LunaKaHttpClientApi
   startupReady(): void
+  externalAgent: ExternalAgentApi
   aiEditor: AiEditorFileApi
   trackPageOpened(path: string): void
   trackLiveUsage(message: LiveUsageMessage): void

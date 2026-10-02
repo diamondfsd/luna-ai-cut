@@ -46,6 +46,7 @@ resources/bgm/soundfonts/*.sha256
 docs/*
 !docs/ai-editor-skills-memory-architecture.md
 !docs/director-plan-ai-editing-workflow.md
+!docs/external-agent-adapters.md
 !docs/camera-media-architecture.md
 !docs/windows-ios-usb-live.md
 
