@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { DirectorLanPlanSummary } from '../shared/types'
-import { Button, Dialog, toast } from '../ui'
+import { Button, Dialog, IconButton, Tooltip, toast } from '../ui'
+import './DirectorPlanDeleteControl.css'
 
 interface Props {
   plan: DirectorLanPlanSummary
@@ -28,8 +29,11 @@ export function DirectorPlanDeleteControl({ plan, disabled, onDeleted }: Props) 
     }
   }
   return <>
-    <Button variant="danger" size="compact" icon={<Trash2 size={14} />} disabled={disabled || deleting}
-      onClick={() => setOpen(true)}>删除计划</Button>
+    <Tooltip content="删除计划">
+      <IconButton className="director-plan-delete" variant="ghost" size="compact"
+        aria-label="删除计划" icon={<Trash2 size={14} />} disabled={disabled || deleting}
+        onClick={() => setOpen(true)} />
+    </Tooltip>
     <Dialog open={open} onOpenChange={value => { if (!deleting) setOpen(value) }} title="删除计划"
       description={`将“${plan.title}”及本地素材移到废纸篓？手机上的计划保留。`}
       footer={<><Button disabled={deleting} onClick={() => setOpen(false)}>取消</Button>

@@ -145,4 +145,4 @@
 }
 .lab-plan-list-row:last-child { border-bottom: 0; }
 .lab-plan-list-row > .lab-plan-list-item { flex: 1; min-width: 0; border-bottom: 0; }
-.lab-plan-list-row > .ui-btn { flex-shrink: 0; margin-right: 18px; }
+.lab-plan-list-row > .director-plan-delete { flex-shrink: 0; margin-right: 18px; }

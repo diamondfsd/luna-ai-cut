@@ -5,7 +5,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { LUNA_HTTP_SKILL } from './lunaHttpSkill.ts'
+import { agentPersonalSpace } from '../features/agent-space/agentPersonalSpace.ts'
 import { asRecord, type JsonRpcResponse, type LunaMcpServerOptions, type LunaMcpServer, type LunaMcpEndpoint } from './lunaMcpProtocol.ts'
 import { getToolCatalog, openApiDocument } from './lunaMcpCatalog.ts'
 import { handleRpc } from './lunaMcpRpc.ts'
@@ -14,7 +14,7 @@ export type { LunaMcpServerOptions, LunaMcpServer, LunaMcpEndpoint, LunaHttpConn
 const MAX_BODY_BYTES = 2 * 1024 * 1024
 
 function endpointPathFor(homeDir: string): string {
-  return path.join(homeDir, '.luna-ai-cut', 'mcp-endpoint.json')
+  return agentPersonalSpace(homeDir).endpointPath
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -141,7 +141,7 @@ async function handleHttpRequest(
 
   if (request.method === 'GET' && pathname === '/skill.md') {
     response.setHeader('Cache-Control', 'no-store')
-    writeText(response, 200, LUNA_HTTP_SKILL, 'text/markdown; charset=utf-8')
+    writeText(response, 200, agentSkillIndex(appToolRegistry(options).skills), 'text/markdown; charset=utf-8')
     return
   }
 
@@ -246,7 +246,7 @@ export function createLunaMcpServer(options: LunaMcpServerOptions): LunaMcpServe
           apiUrl: `${baseUrl}/api/tools/{toolName}`,
           pid: process.pid,
         }
-        await mkdir(path.dirname(endpointPath), { recursive: true })
+        await mkdir(path.dirname(endpointPath), { recursive: true, mode: 0o700 })
         const temporaryEndpoint = `${endpointPath}.${randomUUID()}.tmp`
         try {
           await writeFile(temporaryEndpoint, `${JSON.stringify(endpoint, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })

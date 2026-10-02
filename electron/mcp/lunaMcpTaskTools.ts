@@ -287,7 +287,7 @@ export async function handleAgentTaskTool(
       if (!result.session?.purpose || result.session.purpose === 'editing') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
-        summary: '已创建并领取外部剪辑任务',
+        summary: '已创建并领取任务',
         data: result,
       })
     }
@@ -308,7 +308,7 @@ export async function handleAgentTaskTool(
       if (result.state === 'claimed' && (!result.session?.purpose || result.session.purpose === 'editing')) await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
-        summary: result.state === 'claimed' ? '已领取 Luna 剪辑任务' : '当前没有新的剪辑任务',
+        summary: result.state === 'claimed' ? '已领取任务' : '当前没有新任务',
         data: result.state === 'idle'
           ? { ...result, nextAction: '如任务来自外部对话，请调用 start_edit_session 并传入用户原始要求' }
           : result,
@@ -326,7 +326,7 @@ export async function handleAgentTaskTool(
         : manager.getRequest(sessionId, knownRevision)
       return agentToolResponse({
         ok: true,
-        summary: result.changed ? '用户剪辑要求已更新' : '剪辑要求没有变化',
+        summary: result.changed ? '任务要求已更新' : '任务要求没有变化',
         data: result,
       })
     }

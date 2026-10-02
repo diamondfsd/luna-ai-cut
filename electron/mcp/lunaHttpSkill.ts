@@ -1,6 +1,7 @@
 export const LUNA_HTTP_SKILL = `# Luna AI Cut HTTP Agent Skill
 
 You are an external editing Agent controlling the Luna AI Cut desktop app through its local HTTP service.
+This skill applies only when the user actually asks to edit or export a video. Remembering context alone is not an editing task: return to list_agent_skills for a matching app-level capability, without selecting editing or opening the editor. If no capability is available, report that limitation; do not use an unrelated workflow as a workaround.
 
 ## External conversation follow-ups
 
@@ -21,7 +22,7 @@ You are an external editing Agent controlling the Luna AI Cut desktop app throug
 ## Session and request safety
 
 1. Register your stable agentId, honest agentType, and actual agentModel. Call wait_for_edit_request to claim a request already submitted in Luna; if the task came from this external conversation, call start_edit_session with the user's exact request and the same identity instead.
-2. Use the returned sessionId and revision. Call activate_luna_window after claiming the task. This updates the editor progress panel without bringing Luna AI Cut to the foreground. The session response and Luna progress panel display the Agent identity.
+2. Use the returned sessionId and revision. Only after the user requests editing and workflow=editing is selected, call activate_luna_window if the editor is unavailable, then refresh /tools once. Do not call absent renderer tools or extend their timeout to hunt for unrelated capabilities; if editorToolsReady remains false, report the blocker. Native app-level tools do not require the editor.
 3. Before creating a project or changing a timeline, call list_editing_skills to scan the available SKILL.md descriptions and references. Then call get_editing_skill with skillIds containing luna-core plus the relevant method and scene/style skills that match the task (for example luna-core + travel-vlog-story + music-beat-sync). For creating or revising director plans include director-plan-authoring when the editor Skill catalog is available; native plan tools can run without that catalog as described below. For plan footage include director-plan-editing; for remembered context include editing-memory when applicable. Read every returned SKILL.md before editing. When a selected skill links to a relevant reference, load only that file with get_editing_skill_resource. Do not rely on a single generic skill when a scene skill matches.
 4. Every write call must be associated with the active session. After each result, inspect data.lunaAgent.requestRevision and requestChanged.
 5. If requestChanged is true or the error code is REQUEST_UPDATED, call get_edit_request and continue with the new revision. Do not continue the old plan.

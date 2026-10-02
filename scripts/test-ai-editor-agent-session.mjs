@@ -67,7 +67,7 @@ externalManager.toolFinished(
 )
 assert.equal(externalManager.snapshot().session?.message, '联络表渲染失败')
 externalManager.toolStarted('list-media-1', 'list_local_media', {})
-assert.equal(externalManager.snapshot().session?.message, '正在执行编辑操作')
+assert.equal(externalManager.snapshot().session?.message, '正在处理任务')
 
 assert.throws(
   () => externalManager.startExternalRequest('另一个任务', 'external-editor'),
