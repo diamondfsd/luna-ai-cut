@@ -1,0 +1,15 @@
+.live-settings-tab-label {
+  position: relative;
+  display: inline-block;
+}
+
+.live-settings-tab-dot {
+  position: absolute;
+  top: -2px;
+  right: -8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--blue);
+  pointer-events: none;
+}
