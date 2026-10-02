@@ -1,3 +1,4 @@
+import { editorRoot } from "../luna/embedded-runtime";
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle2, XCircle, AlertTriangle, Info } from "@/icons/lucide-compat";
@@ -89,7 +90,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
   const [progress, setProgress] = useState(100);
   const isDark =
     typeof document !== "undefined" &&
-    document.documentElement.classList.contains("dark");
+    editorRoot().classList.contains("dark");
   const theme = isDark ? "dark" : "light";
   const config = THEME_CONFIG[notification.type][theme];
   const duration = notification.duration || 4000;

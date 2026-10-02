@@ -1,9 +1,7 @@
 .ai-editor-page {
-  display: grid;
+  position: relative;
   width: 100%;
   height: calc(100vh - 44px);
-  place-items: center;
-  background: #15171b;
-  color: #c7cbd2;
-  font-size: 13px;
+  overflow: hidden;
 }
+.ai-editor-component { width: 100%; height: 100%; }

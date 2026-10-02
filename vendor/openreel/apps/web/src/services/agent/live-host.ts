@@ -1,3 +1,4 @@
+import { setEditorHash } from '../../luna/embedded-runtime';
 import type {
   EditingHost,
   JobKind,
@@ -112,7 +113,7 @@ function projectRef(project: Project): ProjectRef {
 
 function navigateToEditor(): void {
   if (typeof window !== "undefined") {
-    window.location.hash = "#/editor";
+    setEditorHash("#/editor");
   }
 }
 

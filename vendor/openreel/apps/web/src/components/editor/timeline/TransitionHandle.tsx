@@ -1,3 +1,4 @@
+import { editorPortalRoot } from "../../../luna/embedded-runtime";
 import React, { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TransitionType } from "@openreel/core";
@@ -176,7 +177,7 @@ export const TransitionHandle: React.FC<TransitionHandleProps> = ({
               </div>
             </div>
           </>,
-          document.body,
+          editorPortalRoot(),
         )
       : null;
 

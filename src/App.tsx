@@ -30,6 +30,13 @@ function App() {
     })
   }, [navigate, isLivePreviewWindow])
 
+  useEffect(() => {
+    if (isLivePreviewWindow) return
+    return window.luna.aiEditor.onOpenProject(projectId => {
+      navigate('/ai-editor', { state: { projectId } })
+    })
+  }, [navigate, isLivePreviewWindow])
+
   if (isLivePreviewWindow) return <LivePreviewWindow />
 
   return (

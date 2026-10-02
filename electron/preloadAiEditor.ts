@@ -2,6 +2,11 @@ import { ipcRenderer } from 'electron'
 import type { AiEditorFileApi } from '../src/shared/types'
 
 export const aiEditorApi: AiEditorFileApi = {
+    onOpenProject: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, projectId: string | null) => callback(projectId)
+      ipcRenderer.on('ai-editor:open-project', listener)
+      return () => ipcRenderer.off('ai-editor:open-project', listener)
+    },
     openWindow: (assets = []) => ipcRenderer.invoke('ai-editor:open-window', assets),
     project: {
       list: () => ipcRenderer.invoke('ai-editor:list-projects'),

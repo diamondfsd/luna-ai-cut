@@ -1,3 +1,4 @@
+import { editorOwnsKeyEvent } from "./luna/embedded-runtime";
 import { useEffect, useCallback, useRef, useState, lazy, Suspense } from "react";
 import { ToastContainer } from "./components/Toast";
 import { ScriptViewDialog } from "./components/editor/ScriptViewDialog";
@@ -173,6 +174,7 @@ function App() {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (!editorOwnsKeyEvent(e)) return;
       if (e.key === "Escape" && route !== "editor" && route !== "luna-editor") {
         navigate("editor");
       }

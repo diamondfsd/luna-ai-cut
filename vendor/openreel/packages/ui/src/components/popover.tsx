@@ -1,3 +1,4 @@
+import { editorPortalContainer } from "../lib/portal-root"
 "use client"
 
 import * as React from "react"
@@ -13,7 +14,7 @@ const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
 >(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
+  <PopoverPrimitive.Portal container={editorPortalContainer()}>
     <PopoverPrimitive.Content
       ref={ref}
       align={align}

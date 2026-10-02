@@ -1,6 +1,6 @@
 import { useAgentChat } from './agent-chat/agentChatContext'
 import { useState } from 'react'
-import { Camera, Film, MessageSquare, MonitorCog, Unplug } from 'lucide-react'
+import { Camera, MessageSquare, MonitorCog, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -49,14 +49,13 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
             AI 选片
           </NavLink>
           <NavLink to="/ai-director" className={({ isActive }) => (isActive ? 'active' : '')}>
-            AI导拍
+            AI 导拍
           </NavLink>
           <button
             type="button"
             className="nav-action"
             onClick={() => void window.luna.aiEditor.openWindow()}
           >
-            <Film size={14} aria-hidden="true" />
             AI 剪辑
           </button>
           <NavLink to="/workspace" className={({ isActive }) => (isActive ? 'active' : '')}>

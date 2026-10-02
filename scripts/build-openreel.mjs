@@ -74,3 +74,18 @@ if (index !== originalIndex) {
 }
 
 console.log(`[build-openreel] ${openreelDist}`)
+
+// Component entry: styles are scoped; no HTML document or separate window is loaded.
+const manifest = JSON.parse(readFileSync(join(openreelDist, '.vite', 'manifest.json'), 'utf8'))
+const styles = new Set()
+const visited = new Set()
+function collectStyles(key) {
+  if (visited.has(key)) return
+  visited.add(key)
+  const entry = manifest[key]
+  for (const css of entry?.css ?? []) styles.add(css)
+  for (const dependency of entry?.imports ?? []) collectStyles(dependency)
+}
+collectStyles('src/luna/embedded.tsx')
+writeFileSync(join(openreelDist, 'embedded-loader.js'),
+  `export const styles = ${JSON.stringify([...styles])};\nexport { mount } from './embedded.js';\n`)

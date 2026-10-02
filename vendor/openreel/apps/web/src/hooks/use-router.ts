@@ -1,3 +1,4 @@
+import { editorHash, setEditorHash, editorRouteEvent } from '../luna/embedded-runtime';
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { shareBaseOrigin } from "../services/share-origin";
 import { MOTION_CREATOR_ENABLED } from "../config/features";
@@ -96,36 +97,36 @@ function buildHash(route: AppRoute, params?: RouteParams): string {
 export function useRouter() {
   const [state, setState] = useState<RouterState>(() => {
     if (typeof window !== "undefined") {
-      return parseHash(window.location.hash);
+      return parseHash(editorHash());
     }
     return { route: "welcome", params: {} };
   });
 
   useEffect(() => {
     const handleHashChange = () => {
-      setState(parseHash(window.location.hash));
+      setState(parseHash(editorHash()));
     };
 
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
+    window.addEventListener(editorRouteEvent(), handleHashChange);
+    return () => window.removeEventListener(editorRouteEvent(), handleHashChange);
   }, []);
 
   const navigate = useCallback((route: AppRoute, params?: RouteParams) => {
     const hash = buildHash(route, params);
-    window.location.hash = hash;
+    setEditorHash(hash);
   }, []);
 
   const updateParams = useCallback(
     (newParams: Partial<RouteParams>) => {
       const hash = buildHash(state.route, { ...state.params, ...newParams });
-      window.location.hash = hash;
+      setEditorHash(hash);
     },
     [state.route, state.params],
   );
 
   const clearParams = useCallback(() => {
     const hash = buildHash(state.route);
-    window.location.hash = hash;
+    setEditorHash(hash);
   }, [state.route]);
 
   const parsedDimensions = useMemo(() => {

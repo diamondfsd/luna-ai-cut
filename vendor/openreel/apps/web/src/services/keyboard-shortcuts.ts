@@ -1,3 +1,4 @@
+import { editorOwnsKeyEvent } from "../luna/embedded-runtime";
 export type ShortcutCategory =
   | "playback"
   | "editing"
@@ -523,6 +524,7 @@ class KeyboardShortcutsManager {
   }
 
   private handleKeyDown = (e: KeyboardEvent): void => {
+    if (!editorOwnsKeyEvent(e)) return;
     const target = e.target;
     if (
       target instanceof HTMLInputElement ||

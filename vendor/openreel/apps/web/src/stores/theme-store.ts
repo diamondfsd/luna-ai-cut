@@ -1,3 +1,4 @@
+import { editorRoot } from '../luna/embedded-runtime';
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -35,11 +36,11 @@ export const useThemeStore = create<ThemeState>()(
         set({ mode, isDark });
 
         if (isDark) {
-          document.documentElement.classList.add("dark");
-          document.documentElement.dataset.theme = "dark";
+          editorRoot().classList.add("dark");
+          editorRoot().dataset.theme = "dark";
         } else {
-          document.documentElement.classList.remove("dark");
-          document.documentElement.dataset.theme = "light";
+          editorRoot().classList.remove("dark");
+          editorRoot().dataset.theme = "light";
         }
       },
 
@@ -61,11 +62,11 @@ export const useThemeStore = create<ThemeState>()(
           const isDark = calculateIsDark(state.mode);
           state.isDark = isDark;
           if (isDark) {
-            document.documentElement.classList.add("dark");
-            document.documentElement.dataset.theme = "dark";
+            editorRoot().classList.add("dark");
+            editorRoot().dataset.theme = "dark";
           } else {
-            document.documentElement.classList.remove("dark");
-            document.documentElement.dataset.theme = "light";
+            editorRoot().classList.remove("dark");
+            editorRoot().dataset.theme = "light";
           }
         }
       },
@@ -83,11 +84,11 @@ if (typeof window !== "undefined") {
       useThemeStore.setState({ isDark });
 
       if (isDark) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.dataset.theme = "dark";
+        editorRoot().classList.add("dark");
+        editorRoot().dataset.theme = "dark";
       } else {
-        document.documentElement.classList.remove("dark");
-        document.documentElement.dataset.theme = "light";
+        editorRoot().classList.remove("dark");
+        editorRoot().dataset.theme = "light";
       }
     }
   });

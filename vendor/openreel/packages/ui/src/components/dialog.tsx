@@ -1,3 +1,4 @@
+import { editorPortalContainer } from "../lib/portal-root"
 "use client"
 
 import * as React from "react"
@@ -10,7 +11,7 @@ const Dialog = DialogPrimitive.Root
 
 const DialogTrigger = DialogPrimitive.Trigger
 
-const DialogPortal = DialogPrimitive.Portal
+const DialogPortal = (props: React.ComponentProps<typeof DialogPrimitive.Portal>) => <DialogPrimitive.Portal container={editorPortalContainer()} {...props} />
 
 const DialogClose = DialogPrimitive.Close
 

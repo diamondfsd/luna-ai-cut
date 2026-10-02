@@ -49,3 +49,13 @@
 ## 验证范围
 
 独立 TypeScript 检查与变更范围 Lint；相关动作、工具、模型禁用、会话、项目恢复及 API 服务的非界面 Vitest 回归。不启动应用、不执行 UI 测试、全量 E2E、构建或打包。
+
+## 无 iframe 的组件接入试验（2026-10-02）
+
+`AiEditorPage` 挂载 `embedded-loader.js` 暴露的 React 编辑器模块，与主页面共用 DOM；模块独立打包和 React root，不创建 iframe、WebContentsView 或 BrowserWindow。旧 `openWindow()` 名称保留兼容，但实现只向主窗口发送打开项目事件。Agent 请求仍发给主窗口，经现有 preload 和 bridge 直接进入编辑器监听器。
+
+编辑器内部路由使用模块状态与独立事件，不覆盖 Luna HashRouter。构建时将全部编辑器 CSS（含动态块和设计系统）限定在 `.luna-openreel`，主题变量与 Radix/时间线弹窗也限定在编辑器容器；不把编辑器 CSS 当全局样式加载到 Luna。切换页面保留组件和项目，暂停时间线播放。全局 AI 助手仍为主页面浮层，无须隐藏编辑器。
+
+接入入口：`src/pages/openreelComponent.ts`、vendored `src/luna/embedded.tsx`；资源清单由现有 `scripts/build-openreel.mjs` 生成。类型检查、变更范围 Lint、路由/样式隔离逻辑测试、项目存储和 MCP 契约检查通过。本次未执行应用构建或 UI 验收，因此新资源入口与实际视觉效果仍待首次构建和用户测试；已有产物不包含新入口。
+
+用户可用现有 `pnpm dev` 流程生成资源并启动测试（predev 包含构建步骤）。重点检查编辑器内项目打开/保存、AI 助手叠层、切换页面后返回、编辑器菜单与弹窗、导出，以及外部 Agent 调用。试验接入已由用户初步测试，提交时一并统一顶部「AI 导拍」文案并移除「AI 剪辑」导航图标。

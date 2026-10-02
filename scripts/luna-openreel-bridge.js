@@ -266,6 +266,7 @@
   window.openreel = Object.assign(window.openreel || {}, {
     mcp: {
       onRequest: (handler) => {
+        if (!embeddedInLuna) return parentApi().mcp.onRequest(handler)
         mcpRequestHandler = handler
         return () => {
           if (mcpRequestHandler === handler) mcpRequestHandler = null
@@ -282,12 +283,14 @@
       denyExport: (sessionId) => parentApi().agent.denyExport(sessionId),
       getSnapshot: () => parentApi().agent.getSnapshot(),
       onEvent: (handler) => {
+        if (!embeddedInLuna) return parentApi().agent.onEvent(handler)
         agentEventHandler = handler
         return () => {
           if (agentEventHandler === handler) agentEventHandler = null
         }
       },
       onActivate: (handler) => {
+        if (!embeddedInLuna) return parentApi().agent.onActivate(handler)
         agentActivateHandler = handler
         return () => {
           if (agentActivateHandler === handler) agentActivateHandler = null

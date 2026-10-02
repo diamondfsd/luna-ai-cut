@@ -1,3 +1,4 @@
+import { editorRoot } from "../../luna/embedded-runtime";
 import React, {
   useRef,
   useEffect,
@@ -1335,7 +1336,7 @@ export const Preview: React.FC = () => {
     }
     const screenBg =
       typeof window !== "undefined"
-        ? getComputedStyle(document.documentElement)
+        ? getComputedStyle(editorRoot())
             .getPropertyValue("--screen-bg")
             .trim()
         : "";

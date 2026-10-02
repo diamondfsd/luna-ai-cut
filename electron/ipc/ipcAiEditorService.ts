@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type {
   AiEditorFileDialogOptions,
@@ -44,12 +43,6 @@ let aiEditorWindow: BrowserWindow | null = null
 
 export function getAiEditorWindow(): BrowserWindow | null {
   return aiEditorWindow && !aiEditorWindow.isDestroyed() ? aiEditorWindow : null
-}
-
-function aiEditorUrl(projectId: string | null = null): string {
-  const route = projectId ? `#/luna-editor?projectId=${encodeURIComponent(projectId)}` : '#/projects'
-  const editorPath = path.join(process.env.APP_ROOT ?? app.getAppPath(), 'dist', 'ai-editor', 'index.html')
-  return `${pathToFileURL(editorPath).toString()}${route}`
 }
 
 function logAiEditorInfo(message: string, meta?: unknown): void {
@@ -164,32 +157,10 @@ export function register(): void {
     const project = settings
       ? await createAiEditorProject(settings.baseDir, 'AI 剪辑项目', importedAssets)
       : null
-    const targetUrl = aiEditorUrl(project?.id ?? null)
-
-    const existingWindow = getAiEditorWindow()
-    if (existingWindow) {
-      await existingWindow.loadURL(targetUrl)
-      existingWindow.show()
-      return
-    }
-
-    aiEditorWindow = new BrowserWindow({
-      title: 'AI 剪辑',
-      width: 1440,
-      height: 900,
-      minWidth: 1100,
-      minHeight: 700,
-      show: false,
-      webPreferences: {
-        preload: path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.mjs'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        webSecurity: false,
-      },
-    })
-    aiEditorWindow.once('ready-to-show', () => aiEditorWindow?.show())
-    aiEditorWindow.once('closed', () => { aiEditorWindow = null })
-    await aiEditorWindow.loadURL(targetUrl)
+    const owner = BrowserWindow.fromWebContents(_event.sender)
+    if (!owner || owner.isDestroyed()) throw new Error('主窗口不可用')
+    aiEditorWindow = owner
+    owner.webContents.send('ai-editor:open-project', project?.id ?? null)
   })
 
   ipcMain.handle('ai-editor:list-local-media', async (_event, query: AiEditorLocalMediaQuery = {}) => {

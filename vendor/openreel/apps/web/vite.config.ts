@@ -1,3 +1,6 @@
+import tailwindcss from "tailwindcss";
+import autoprefixer from "autoprefixer";
+import { lunaCssScope } from "./vite-plugins/luna-css-scope";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -31,6 +34,7 @@ function desktopHtmlPlugin() {
 export default defineConfig({
   base: isDesktop ? "./" : "/",
   plugins: [react(), desktopHtmlPlugin(), stripFfmpegPlugin(isDesktop), pruneFontsPlugin(isDesktop)],
+  css: { postcss: { plugins: [tailwindcss(), autoprefixer(), ...(isDesktop ? [lunaCssScope()] : [])] } },
   assetsInclude: ["**/*.wasm"],
   resolve: {
     dedupe: ["react", "react-dom"],
@@ -49,8 +53,12 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    manifest: true,
     rollupOptions: {
+      preserveEntrySignatures: "exports-only",
+      input: { index: path.resolve(__dirname, "index.html"), embedded: path.resolve(__dirname, "src/luna/embedded.tsx") },
       output: {
+        entryFileNames: chunk => chunk.name === "embedded" ? "embedded.js" : "assets/[name]-[hash].js",
         manualChunks: (id) => {
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react";
           if (id.includes("node_modules/zustand")) return "zustand";

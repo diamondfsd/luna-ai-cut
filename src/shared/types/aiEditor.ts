@@ -346,6 +346,7 @@ export interface AiEditorHttpConnection {
 }
 
 export interface AiEditorFileApi {
+  onOpenProject(callback: (projectId: string | null) => void): () => void
   openWindow(assets?: WorkspaceMediaAsset[]): Promise<void>
   project: AiEditorProjectApi
   mcp: AiEditorMcpApi

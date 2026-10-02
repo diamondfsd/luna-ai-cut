@@ -368,9 +368,10 @@
   }
 
   const start = () => {
-    document.documentElement.lang = 'zh-CN'
-    document.title = 'Luna AI 剪辑'
-    translateElement(document.documentElement)
+    const root = window.__lunaOpenreelRoot || document.documentElement
+    root.lang = 'zh-CN'
+    if (root === document.documentElement) document.title = 'Luna AI 剪辑'
+    translateElement(root)
 
     const observer = new MutationObserver((records) => {
       for (const record of records) {
@@ -382,7 +383,7 @@
         if (record.type === 'characterData') translateNode(record.target)
       }
     })
-    observer.observe(document.documentElement, {
+    observer.observe(root, {
       childList: true,
       subtree: true,
       characterData: true,

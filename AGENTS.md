@@ -316,9 +316,9 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 
 ### OpenReel 与 Electron 原生交互约束
 
-- 当前 `AiEditorPage` 将 `vendor/openreel/apps/web` 作为 iframe 嵌入 Luna，使用 Luna 自己的 Electron 主进程；不要直接把 OpenReel 上游 `apps/desktop` 宿主合并进来，除非明确要替换 Luna 的主窗口、生命周期、IPC 和打包体系。
-- OpenReel iframe 所需的文件、项目、素材选择和导出等原生能力，统一经过父窗口 `window.luna`、`electron/preload.ts`、`electron/ipc/`，再由 `scripts/luna-openreel-bridge.js` 暴露给 iframe。OpenReel renderer 不得直接调用 Node.js 或 Electron API。
-- 当前嵌入场景不要设置 `window.openreel.platform = "desktop"`。该标记会让 OpenReel 切换到上游独立 desktop UI，而不是继续使用 Luna 的嵌入式编辑器。
+- 当前 `AiEditorPage` 将 `vendor/openreel/apps/web` 的独立 React 模块挂载在主页面 DOM 中，不使用 iframe、WebContentsView 或独立编辑器窗口，使用 Luna 自己的 Electron 主进程；不要直接把 OpenReel 上游 `apps/desktop` 宿主合并进来，除非明确要替换 Luna 的主窗口、生命周期、IPC 和打包体系。
+- OpenReel 所需的文件、项目和导出等原生能力，统一经过主窗口 `window.luna`、`electron/preload.ts`、`electron/ipc/`，再由 `scripts/luna-openreel-bridge.js` 暴露给编辑器模块。OpenReel renderer 不得直接调用 Node.js 或 Electron API。
+- 当前组件接入必须隔离编辑器路由、主题、样式和弹窗容器；内部导航不得改写 Luna HashRouter，样式不得污染主页面。当前嵌入场景不要设置 `window.openreel.platform = "desktop"`。该标记会让 OpenReel 切换到上游独立 desktop UI，而不是继续使用 Luna 的嵌入式编辑器。
 - 工作台项目和 OpenReel AI 剪辑项目是两套独立数据：工作台固定使用 `baseDir/workspace-projects/<id>/`，AI 剪辑固定使用 `baseDir/ai-editor-projects/<id>/`。两者不得复用同一个目录或同一个项目服务；删除、重命名、保存和迁移都必须保持边界独立。
 - `parent` 窗口和 iframe 属于不同 JavaScript realm。二进制结果跨窗口后不能依赖 iframe 侧的 `value instanceof ArrayBuffer` 判断父窗口返回值；所有 `readFileBytes` 或类似接口必须在 bridge 层复制、归一化为 iframe 当前 realm 的 `ArrayBuffer`，并兼容 `ArrayBuffer`、TypedArray 及结构化克隆后的字节对象。
 - 新增或修改 OpenReel 原生能力时，必须同步检查共享类型、preload、IPC handler、iframe bridge 和对应测试；优先沿用上游的精确字节切片方式，并在修改后至少运行 `pnpm run build:app`。
