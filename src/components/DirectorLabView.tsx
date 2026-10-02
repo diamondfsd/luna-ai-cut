@@ -111,7 +111,7 @@ export function DirectorLabView({ active }: DirectorLabViewProps) {
               }}
             />
           </Tooltip>}
-          <h1>AI导拍</h1>
+          <h1>AI 导拍</h1>
         </div>
         <div className="lab-director-sync-actions">
           {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
