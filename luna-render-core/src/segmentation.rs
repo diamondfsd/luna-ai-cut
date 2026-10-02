@@ -1,4 +1,5 @@
-use ort::{session::Session, value::Tensor};
+use crate::onnx_session::Session;
+use ort::value::Tensor;
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
@@ -245,11 +246,7 @@ pub fn segment_with_guide(
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(2);
-        let session = Session::builder()
-            .map_err(|error| format!("初始化 ONNX Runtime 失败: {error}"))?
-            .with_intra_threads(threads)
-            .map_err(|error| format!("配置 ONNX Runtime 失败: {error}"))?
-            .commit_from_file(&model_path)
+        let session = Session::load(&model_path, threads)
             .map_err(|error| format!("加载分割模型失败: {error}"))?;
         *guard = Some((model_path, session));
     }

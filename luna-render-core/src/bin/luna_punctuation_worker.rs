@@ -1,4 +1,8 @@
-use ort::{session::Session, value::Tensor};
+#[path = "../onnx_session.rs"]
+mod onnx_session;
+
+use crate::onnx_session::Session;
+use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -48,11 +52,7 @@ impl PunctuationSession {
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(2);
-        let session = Session::builder()
-            .map_err(|error| format!("初始化标点模型失败: {error}"))?
-            .with_intra_threads(threads)
-            .map_err(|error| format!("配置标点模型失败: {error}"))?
-            .commit_from_file(model_path)
+        let session = Session::load(model_path, threads)
             .map_err(|error| format!("加载标点模型失败: {error}"))?;
         let tokens = metadata_value(&session, "tokens")?;
         let punctuation_raw = metadata_value(&session, "punctuations")?;

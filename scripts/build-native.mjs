@@ -224,11 +224,15 @@ const runtimeDirs = [...new Set([artifactDir, process.env.ORT_LIB_LOCATION].filt
 for (const runtimeDir of runtimeDirs) {
   if (!existsSync(runtimeDir)) continue
   for (const fileName of readdirSync(runtimeDir)) {
-    if (!/^onnxruntime.*\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
+    if (!/^(?:onnxruntime.*|DirectML)\.dll$/i.test(fileName) && !/^libonnxruntime.*\.(dylib|so)/i.test(fileName)) continue
     const runtimeDest = join(rcDir, fileName)
     copyArtifact(join(runtimeDir, fileName), runtimeDest)
     console.log('[build-native] ✅', runtimeDest)
   }
+}
+
+if (isWin && !existsSync(join(rcDir, 'DirectML.dll'))) {
+  throw new Error('DirectML.dll missing from ONNX Runtime artifacts; acceleration runtime must be staged with the workers')
 }
 
 if (isWin) {
