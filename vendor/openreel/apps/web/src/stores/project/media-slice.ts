@@ -17,8 +17,11 @@ function fileUrlForPath(filePath: string): string {
     .replace(/\?/g, "%3F");
 }
 
-function mimeTypeForAsset(name: string, kind: OpenReelLunaAsset["kind"]): string {
+function mimeTypeForAsset(name: string, kind: OpenReelLunaAsset["kind"] | "audio"): string {
   const extension = name.split(".").pop()?.toLowerCase();
+  if (kind === "audio") {
+    return ({ wav: "audio/wav", mp3: "audio/mpeg", m4a: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg" } as Record<string, string>)[extension ?? ""] ?? "audio/wav";
+  }
   if (kind === "image") {
     if (extension === "png") return "image/png";
     if (extension === "webp") return "image/webp";
@@ -41,7 +44,7 @@ async function hydrateLunaMediaItem(item: MediaItem): Promise<MediaItem> {
       throw new Error("empty media file");
     }
     const blob = new File([bytes], item.name, {
-      type: mimeTypeForAsset(item.name, item.type === "image" ? "image" : "video"),
+      type: mimeTypeForAsset(item.name, item.type),
     });
     let thumbnailUrl = item.thumbnailUrl;
     const resolveThumbnail = window.openreel.lunaMedia.resolveThumbnail;

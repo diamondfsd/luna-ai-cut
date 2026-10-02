@@ -321,6 +321,8 @@ declare global {
           duration?: number;
         }>>;
         getLocalMedia(mediaId: string): Promise<{
+          musicTiming?: import("@openreel/core").MediaItem["musicTiming"];
+          sourcePath?: string;
           mediaId: string;
           name: string;
           kind: "image" | "video" | "audio";

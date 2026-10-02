@@ -66,7 +66,8 @@ export class BeatDetectionEngine {
 
     const onsets = this.detectOnsets(channelData, sampleRate);
     const { bpm, confidence } = this.calculateBpm(onsets, duration);
-    const beats = this.generateBeats(bpm, duration, onsets);
+    // An undetected tempo must not turn into a convincing-looking 120 BPM grid.
+    const beats = confidence > 0 ? this.generateBeats(bpm, duration, onsets) : [];
     const downbeats = this.detectDownbeats(beats);
 
     return {
@@ -105,43 +106,46 @@ export class BeatDetectionEngine {
     const { windowSize, hopSize, sensitivity } = this.config;
     const onsets: number[] = [];
 
-    const numFrames = Math.floor((samples.length - windowSize) / hopSize);
+    const numFrames = Math.max(0, 1 + Math.floor((samples.length - windowSize) / hopSize));
+    if (numFrames < 3) return [];
     const energiesF32 = new Float32Array(numFrames);
 
     this.wasmProcessor.computeRMSEnergies(samples, windowSize, hopSize, energiesF32);
 
     const smoothedF32 = new Float32Array(numFrames);
-    this.wasmProcessor.smoothArray(energiesF32, smoothedF32, 5);
+    this.wasmProcessor.smoothArray(energiesF32, smoothedF32, 3);
 
-    const smoothedEnergies = Array.from(smoothedF32);
+    // Measure attacks above the recent energy floor. A sustained pad must not
+    // hide percussion, and the small slope at an energy peak is not its attack.
+    const novelty = Array.from(smoothedF32, (energy, index) =>
+      Math.max(0, energy - smoothedF32[Math.max(0, index - 3)]),
+    );
+    const energyFloor = smoothedF32.reduce((peak, energy) => Math.max(peak, energy), 0) * 0.01;
     // Step 3: Compute dynamic threshold based on local statistics and sensitivity
     const threshold = this.calculateAdaptiveThreshold(
-      smoothedEnergies,
+      novelty,
       sensitivity,
     );
 
     // Step 4: Detect peaks (onsets) with multiple constraints
-    let lastOnsetFrame = -10;
+    let lastOnsetFrame = -Infinity;
     // Minimum 100ms between onsets to avoid detecting echoes/reverb as separate onsets
     const minFramesBetweenOnsets = Math.floor((sampleRate / hopSize) * 0.1);
 
-    for (let i = 1; i < smoothedEnergies.length - 1; i++) {
-      const current = smoothedEnergies[i];
-      const prev = smoothedEnergies[i - 1];
-      const localThreshold = threshold[i];
+    for (let i = 1; i < novelty.length - 1; i++) {
+      const current = novelty[i];
+      const localThreshold = Math.max(energyFloor, threshold[i]);
 
       // Must be local maximum in time
       const isLocalMax =
-        current > smoothedEnergies[i - 1] && current >= smoothedEnergies[i + 1];
+        current > novelty[i - 1] && current >= novelty[i + 1];
       // Must exceed adaptive threshold at this point
       const isAboveThreshold = current > localThreshold;
-      // Must show sufficient energy rise (indicates attack phase, not just high sustained energy)
-      const hasRise = current - prev > localThreshold * 0.3;
       // Enforce minimum spacing between detections (prevents duplicate detections)
       const notTooClose = i - lastOnsetFrame >= minFramesBetweenOnsets;
 
-      if (isLocalMax && isAboveThreshold && hasRise && notTooClose) {
-        const timeInSeconds = (i * hopSize) / sampleRate;
+      if (isLocalMax && isAboveThreshold && notTooClose) {
+        const timeInSeconds = (i * hopSize + windowSize / 2) / sampleRate;
         onsets.push(timeInSeconds);
         lastOnsetFrame = i;
       }
@@ -186,41 +190,20 @@ export class BeatDetectionEngine {
       return { bpm: 120, confidence: 0 };
     }
 
-    const intervals: number[] = [];
-    for (let i = 1; i < onsets.length; i++) {
-      intervals.push(onsets[i] - onsets[i - 1]);
-    }
-
     const { minBpm, maxBpm } = this.config;
-    const minInterval = 60 / maxBpm;
-    const maxInterval = 60 / minBpm;
-
-    const validIntervals = intervals.filter(
-      (i) => i >= minInterval && i <= maxInterval,
-    );
-
-    if (validIntervals.length < 3) {
-      return { bpm: 120, confidence: 0 };
-    }
-
     const bpmCandidates = new Map<number, number>();
-    const bpmResolution = 1;
-
-    for (const interval of validIntervals) {
-      const bpm = Math.round(60 / interval / bpmResolution) * bpmResolution;
-      if (bpm >= minBpm && bpm <= maxBpm) {
-        bpmCandidates.set(bpm, (bpmCandidates.get(bpm) || 0) + 1);
-      }
-
-      const doubleBpm =
-        Math.round(120 / interval / bpmResolution) * bpmResolution;
-      if (doubleBpm >= minBpm && doubleBpm <= maxBpm) {
-        bpmCandidates.set(doubleBpm, (bpmCandidates.get(doubleBpm) || 0) + 0.5);
-      }
-
-      const halfBpm = Math.round(30 / interval / bpmResolution) * bpmResolution;
-      if (halfBpm >= minBpm && halfBpm <= maxBpm) {
-        bpmCandidates.set(halfBpm, (bpmCandidates.get(halfBpm) || 0) + 0.3);
+    // Eighth-note hats and missing attacks are common. Include nearby onset
+    // pairs instead of discarding every interval shorter than one full beat.
+    for (let index = 0; index < onsets.length; index++) {
+      for (let gap = 1; gap <= 4 && index + gap < onsets.length; gap++) {
+        const interval = onsets[index + gap] - onsets[index];
+        if (interval <= 0) continue;
+        for (const [multiple, weight] of [[1, 1], [0.5, 0.5], [2, 0.3]]) {
+          const candidate = Math.round(60 * multiple / interval);
+          if (candidate >= minBpm && candidate <= maxBpm) {
+            bpmCandidates.set(candidate, (bpmCandidates.get(candidate) ?? 0) + weight / gap);
+          }
+        }
       }
     }
 
@@ -234,12 +217,16 @@ export class BeatDetectionEngine {
       }
     }
 
-    const expectedBeats = (duration * bestBpm) / 60;
-    const actualBeats = onsets.length;
-    const confidence = Math.min(
-      1,
-      Math.max(0, 1 - Math.abs(expectedBeats - actualBeats) / expectedBeats),
-    );
+    if (bestScore === 0) return { bpm: 120, confidence: 0 };
+    const period = 60 / bestBpm;
+    const coveredBeats = new Set<number>();
+    const phase = onsets[0] % period;
+    for (const onset of onsets) {
+      const index = Math.round((onset - phase) / period);
+      if (Math.abs(onset - (phase + index * period)) <= period * 0.12) coveredBeats.add(index);
+    }
+    const expectedBeats = Math.max(1, Math.ceil((duration - phase) / period));
+    const confidence = Math.min(1, coveredBeats.size / expectedBeats);
 
     return { bpm: bestBpm, confidence };
   }

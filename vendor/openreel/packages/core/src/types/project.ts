@@ -70,6 +70,14 @@ export interface MediaItem {
   readonly sourceAssetId?: string;
   /** Original local path used to resolve this reference by the desktop host. */
   readonly sourcePath?: string;
+  readonly musicTiming?: {
+    source: "generated-score";
+    bpm: number;
+    duration: number;
+    beatTimes: number[];
+    downbeats: number[];
+    percussionHits: { time: number; pitch: number; velocity: number }[];
+  };
   /** File hint stored in JSON for cross-session/cross-machine asset matching */
   readonly sourceFile?: { name: string; size: number; lastModified: number; folder?: string };
   /** True while a background KieAI generation task is in progress */

@@ -49,6 +49,7 @@ export interface MediaBeatMarker {
 }
 
 export interface MediaBeatAnalysis {
+  timingSource?: "generated-score" | "audio-detection";
   readonly mediaId: string;
   readonly bpm: number;
   readonly confidence: number;

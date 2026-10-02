@@ -1,3 +1,5 @@
+import { analyzeMediaItemBeats } from "./media-beat-analysis";
+import { importLunaLocalMedia } from "./local-media-import";
 import { setEditorHash } from '../../luna/embedded-runtime';
 import type {
   EditingHost,
@@ -60,7 +62,6 @@ import {
 } from "../../motion/stores/motion-store";
 import { runMotionRenderQueue } from "../../motion/render-queue-runner";
 import { createMulticamHostBridge } from "./multicam-bridge";
-import { getBeatDetectionEngine } from "@openreel/core/audio/beat-detection-engine";
 
 const MIME_BY_EXT: Record<string, string> = {
   mp4: "video/mp4",
@@ -325,34 +326,7 @@ export class LiveEditorHost implements EditingHost {
 
   async importMediaFromLocalMedia(mediaId: string): Promise<ImportedMediaRef> {
     this.requireOpenProject();
-    const bridge = window.openreel?.lunaMedia;
-    if (
-      typeof bridge?.getLocalMedia !== "function" ||
-      typeof bridge.readLocalMediaBytes !== "function"
-    ) {
-      throw new Error("Local media import is only available in Luna AI Cut");
-    }
-    const media = await bridge.getLocalMedia(mediaId);
-    const bytes = await bridge.readLocalMediaBytes(mediaId);
-    const mime = MIME_BY_EXT[media.name.split(".").pop()?.toLowerCase() ?? ""]
-      ?? (media.kind === "image" ? "image/jpeg" : "video/mp4");
-    const file = new File([bytes], media.name, { type: mime });
-    const result = await useProjectStore.getState().importMedia(file, { mediaId });
-    if (!result.success || !result.actionId) {
-      throw new Error(result.error?.message ?? "Media import failed");
-    }
-    const importedMediaId = result.actionId;
-    const item = useProjectStore
-      .getState()
-      .project.mediaLibrary.items.find((candidate) => candidate.id === importedMediaId);
-    return {
-      mediaId: importedMediaId,
-      name: media.name,
-      type: item?.type ?? media.kind,
-      durationSec: item?.metadata?.duration ?? media.duration ?? 0,
-      width: item?.metadata?.width,
-      height: item?.metadata?.height,
-    };
+    return importLunaLocalMedia(mediaId, MIME_BY_EXT);
   }
 
   async analyzeMediaBeats(mediaId: string): Promise<MediaBeatAnalysis> {
@@ -364,28 +338,17 @@ export class LiveEditorHost implements EditingHost {
       throw new Error(`Media ${item.name} has no audio track to analyze`);
     }
 
-    let blob = item.blob;
-    const readFileBytes = window.openreel?.lunaMedia?.readFileBytes;
-    if (!blob && item.sourcePath && typeof readFileBytes === "function") {
-      const bytes = await readFileBytes(item.sourcePath);
-      blob = new File([bytes], item.name, { type: item.type === "audio" ? "audio/wav" : "video/mp4" });
-    }
-    if (!blob && item.originalUrl) {
-      const response = await fetch(item.originalUrl);
-      if (response.ok) blob = await response.blob();
-    }
-    if (!blob) throw new Error(`Media ${item.name} is unavailable for beat analysis`);
-
-    const result = await getBeatDetectionEngine().analyzeFromBlob(blob);
+    const result = await analyzeMediaItemBeats(item);
     const downbeatSet = new Set(result.downbeats);
     const beats = result.beats.map((beat) => ({
       time: beat.time,
       strength: beat.strength,
       index: beat.index,
-      isDownbeat: downbeatSet.has(beat.time) || beat.index % 4 === 0,
+      isDownbeat: downbeatSet.has(beat.time),
     }));
     const analysis: MediaBeatAnalysis = {
       mediaId,
+      timingSource: item.musicTiming?.source ?? "audio-detection",
       bpm: result.bpm,
       confidence: result.confidence,
       duration: result.duration,

@@ -5,6 +5,13 @@ import path from 'node:path'
 
 import { createLunaMcpServer } from '../electron/mcp/lunaMcpServer.ts'
 import { AgentSessionManager } from '../electron/mcp/agentSessionManager.ts'
+import { requestExplicitlyAsksForExport } from '../electron/mcp/lunaMcpTaskTools.ts'
+
+assert.equal(requestExplicitlyAsksForExport('按曲谱卡点完成后再导出MP4，不能再通过音频反推'), true)
+assert.equal(requestExplicitlyAsksForExport('剪辑完后再导出视频'), true)
+assert.equal(requestExplicitlyAsksForExport('先预览，稍后再导出'), false)
+assert.equal(requestExplicitlyAsksForExport('剪辑完再考虑导出'), false)
+assert.equal(requestExplicitlyAsksForExport('不要导出'), false)
 
 const homeDir = await mkdtemp(path.join(os.tmpdir(), 'luna-mcp-agent-contract-'))
 const manager = new AgentSessionManager()

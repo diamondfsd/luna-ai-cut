@@ -48,7 +48,16 @@ async function loadWasmModule(): Promise<WasmBeatDetectionExports | null> {
       },
     });
 
-    return instance.exports as unknown as WasmBeatDetectionExports;
+    const candidate = instance.exports as unknown as WasmBeatDetectionExports;
+    // Raw AssemblyScript exports accept heap pointers, not JavaScript arrays.
+    // Until an array-marshalling adapter is present, reject that ABI instead
+    // of silently analyzing zero energies in browsers where WASM loads.
+    const probe = new Float32Array([1, 3]);
+    const energies = new Float32Array(1);
+    candidate.computeRMSEnergies(probe, 2, 1, energies);
+    if (Math.abs(candidate.calculateMean(probe) - 2) > 0.0001 ||
+        Math.abs(energies[0] - Math.sqrt(5)) > 0.0001) return null;
+    return candidate;
   } catch {
     return null;
   }

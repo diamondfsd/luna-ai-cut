@@ -44,7 +44,8 @@ export function requestExplicitlyAsksForExport(request: string): boolean {
     /(?:先|暂时|现在)?不要导出/,
     /(?:先|暂时|现在)?别导出/,
     /(?:先|暂时|现在)?无需导出/,
-    /(?:剪辑完后|完成后|稍后|之后)?再(?:考虑|决定)?[\s\S]{0,4}导出/,
+    /再(?:考虑|决定)[^。！？\n]{0,4}导出/,
+    /(?:稍后|之后)再导出/,
     /\b(?:do not|don't|dont|without)\s+(?:export|render|save)\b/,
   ].some((pattern) => pattern.test(normalized))
   if (declined) return false

@@ -24,7 +24,19 @@ export interface AiEditorProjectSummary {
   updatedAt: string
 }
 
+export interface GeneratedMusicTiming {
+  source: 'generated-score'
+  bpm: number
+  duration: number
+  beatTimes: number[]
+  downbeats: number[]
+  percussionHits: { time: number; pitch: number; velocity: number }[]
+}
+
 export interface AiEditorLocalMedia {
+  musicTiming?: GeneratedMusicTiming
+  /** Native renderer recovery only; omitted from public media listings. */
+  sourcePath?: string
   mediaId: string
   name: string
   kind: 'image' | 'video' | 'audio'

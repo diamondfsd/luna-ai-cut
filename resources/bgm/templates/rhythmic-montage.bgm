@@ -1,0 +1,86 @@
+# Original layered arrangement for music-led travel and lifestyle montages.
+# 120 BPM: half beat = 0.25 s, one beat = 0.5 s, two beats = 1 s.
+bgm 1
+dur 24
+bpm 120
+ts 4/4
+sec intro 1
+  ch Cmaj7
+  t keys c0 i4 v56 m
+    p e r 3 5 7 o 7 5 3 d.3
+  t pad c1 i89 v30 m
+    p w c d3.7
+  t drums c9 v70
+    p q kick - - clap d.12
+    p e hat - hat - hat - hat - d.08 v34
+sec groove 3
+  ch Cmaj7 Am7 Fmaj7
+  t keys c0 i4 v54 m
+    p e off c d.18
+  t pad c1 i89 v29 m
+    p w c d3.8
+  t bass c2 i33 v70 l
+    p e r - r 5 - r 5 - d.3
+  t lead c3 i12 v60 h
+    p e r 3 5 - 7 5 3 - d.32
+  t drums c9 v84
+    p q kick snare kick snare d.12
+    p e - - - kick - - kick - d.1 v57
+    p e hat hat hat hat hat hat hat open_hat d.08 v36
+sec variation 3
+  ch Fmaj7 G7 Em7
+  t keys c0 i4 v55 m
+    p e off c d.2
+  t pad c1 i89 v31 m
+    p w c d3.8
+  t bass c2 i33 v73 l
+    p e r - 5 r - 5 r - d.35
+  t lead c3 i12 v62 h
+    p e 5 - 3 7 5 3 - r d.3
+  t arpeggio c4 i10 v38 m
+    a e updown r 3 5 7 o d.22
+  t drums c9 v86
+    p q kick snare kick snare d.12
+    p e - kick - - - - kick - d.1 v60
+    p e hat hat hat hat hat open_hat hat hat d.08 v40
+sec break 1
+  ch G7
+  t keys c0 i4 v48 m
+    p h c - d1.5
+  t pad c1 i89 v30 m
+    p w c d3.7
+  t lead c3 i12 v54 h
+    p q 7 5 3 r d.6
+  t drums c9 v65
+    p q kick - - - d.12
+    p s - - - - - - - - - - snare snare tom tom low_tom clap d.08
+sec climax 3
+  ch Am7 Fmaj7 G7
+  t keys c0 i4 v59 m
+    p e off c d.22
+  t pad c1 i89 v34 m
+    p w c d3.8
+  t bass c2 i33 v77 l
+    p e r - r 5 r - 5 r d.3
+  t lead c3 i12 v66 h
+    p e r 3 5 7 o 7 5 3 d.32
+  t arpeggio c4 i10 v42 m
+    a s updown r 3 5 7 o d.15
+  t counter c5 i27 v35 m
+    p h 5 7 d1.2
+  t drums c9 v90
+    p q kick snare kick snare d.12
+    p e - - - kick - kick - - d.1 v62
+    p e hat hat hat open_hat hat hat hat open_hat d.08 v43
+sec outro 1
+  ch Cmaj7
+  t keys c0 i4 v47 m
+    p w c d3.6
+  t pad c1 i89 v28 m
+    p w c d3.8
+  t bass c2 i33 v59 l
+    p w r d3
+  t lead c3 i12 v49 h
+    p h 5 r d1.5
+  t drums c9 v68
+    p w crash d.6

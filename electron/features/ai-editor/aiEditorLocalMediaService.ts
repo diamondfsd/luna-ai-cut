@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import type { AiEditorLocalMedia, AiEditorLocalMediaQuery } from '../../../src/shared/types'
 import { generatedMusicFileName } from '../music/musicMedia.ts'
+import { readGeneratedMusicTiming } from '../music/musicScoreTiming.ts'
 import { listDownloadedFiles } from '../../media/downloadedLibraryService'
 import { getLocalResourcesDir, getSettings } from '../../storage/fileService'
 import { assignAiEditorMediaIds } from './aiEditorMediaCatalog.ts'
@@ -144,6 +145,7 @@ async function listGeneratedMusicFiles(): Promise<LocalMediaFile[]> {
         modifiedAt: stats.mtime.toISOString(),
         groupDay: stats.mtime.toISOString().slice(0, 10),
         duration: await wavDurationSec(filePath, stats.size),
+        musicTiming: await readGeneratedMusicTiming(filePath),
         filePath,
       }]
     } catch {

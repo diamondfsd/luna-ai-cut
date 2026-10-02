@@ -3,6 +3,16 @@
   "template_license": "Project-local original arrangements; source projects are listed as syntax or algorithm references.",
   "templates": [
     {
+      "id": "rhythmic-montage",
+      "file": "rhythmic-montage.bgm",
+      "tags": ["rhythmic", "upbeat", "travel", "family", "montage", "layered"],
+      "scene_tags": ["travel", "family", "lifestyle", "event", "product"],
+      "tempo_bpm": 120,
+      "density": "high",
+      "dialogue_safe": false,
+      "description": "Original seven-layer arrangement with electric-piano chords, warm pad, syncopated bass, melodic hook, arpeggio, counterline and kick/snare/hats; intro, groove, variation, break, climax and resolved ending."
+    },
+    {
       "id": "corporate-upbeat",
       "file": "corporate-upbeat.bgm",
       "tags": ["corporate", "upbeat", "product", "technology", "dialogue-safe"],
@@ -10,7 +20,8 @@
       "density": "medium",
       "dialogue_safe": true,
       "description": "Bright pluck accents, restrained bass, pad harmony, and a light backbeat.",
-      "source_basis": ["alda-lang/alda", "tidalcycles/Tidal", "ideoforms/isobar"]
+      "source_basis": ["alda-lang/alda", "tidalcycles/Tidal", "ideoforms/isobar"],
+      "scene_tags": ["product", "technology", "travel", "event"]
     },
     {
       "id": "calm-tech",
@@ -20,7 +31,8 @@
       "density": "low",
       "dialogue_safe": true,
       "description": "Warm pad, soft electric piano, and a sparse high-register pulse.",
-      "source_basis": ["alda-lang/alda", "ideoforms/isobar"]
+      "source_basis": ["alda-lang/alda", "ideoforms/isobar"],
+      "scene_tags": ["technology", "explainer"]
     },
     {
       "id": "warm-piano",
@@ -30,7 +42,8 @@
       "density": "low",
       "dialogue_safe": true,
       "description": "Soft piano arpeggios with sustained strings and a quiet bass foundation.",
-      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"]
+      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"],
+      "scene_tags": ["story", "documentary", "family"]
     },
     {
       "id": "lofi-study",
@@ -40,7 +53,8 @@
       "density": "medium",
       "dialogue_safe": false,
       "description": "Electric piano chords, syncopated bass, soft hats, and a restrained beat.",
-      "source_basis": ["tidalcycles/Tidal", "ideoforms/isobar"]
+      "source_basis": ["tidalcycles/Tidal", "ideoforms/isobar"],
+      "scene_tags": ["study", "lifestyle"]
     },
     {
       "id": "cinematic-ambient",
@@ -50,7 +64,8 @@
       "density": "low",
       "dialogue_safe": true,
       "description": "Slow evolving pad, strings, and minimal piano movement without drums.",
-      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"]
+      "source_basis": ["alda-lang/alda", "cuthbertLab/music21"],
+      "scene_tags": ["documentary", "nature"]
     },
     {
       "id": "playful-product",
@@ -60,7 +75,8 @@
       "density": "medium",
       "dialogue_safe": false,
       "description": "Marimba-like hook, simple bass motion, bright chords, and a light groove.",
-      "source_basis": ["tidalcycles/strudel", "ideoforms/isobar"]
+      "source_basis": ["tidalcycles/strudel", "ideoforms/isobar"],
+      "scene_tags": ["product", "family", "travel", "education"]
     }
   ]
 }

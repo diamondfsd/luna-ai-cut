@@ -9,6 +9,8 @@ Apply this skill to every editing task. Then load the method and scene/style ski
 
 ## Core principles
 
+- Accept short, conversational requests. Keep the original request unchanged; this skill and the matching scene/method skills supply tool limits, quality checks and operational defaults. Do not ask users to specify tool names, beat parameters, source-reuse limits or recovery steps, or append such rules to their recorded request. Ask only when a missing creative choice or unavailable resource materially blocks the task.
+- Choose reasonable editing defaults from the footage and requested style, within existing authorization. A default is not a new user preference or permission to export; explicit user choices override it.
 - File names, capture timestamps, duration, and file size can filter candidates but cannot prove visual content.
 - Inspect representative frames before choosing media, ordering shots, or setting trim points. Do not claim to have seen media without frame evidence.
 - Start with a low-cost overview, then inspect only likely selections in detail.
@@ -54,6 +56,7 @@ Apply this skill to every editing task. Then load the method and scene/style ski
 
 - Tool calls already appear in Luna. Use `report_edit_progress` only at key milestones, not after every call.
 - Finish with `report_edit_result` for completed, failed, or cancelled. Text chat is not a result report.
+- Save before completion. For new projects, source/timing changes or recovery complaints, reopen through available tools and allow background source recovery to settle before judging missing media. Check that selected media, clip ranges, timing and generated music metadata remain usable. Do not interpret an import-job receipt or a momentary placeholder as proof of success or failure.
 - Do not export automatically after editing, packaging, captions, or music. Complete and report the timeline so the user can preview first.
 - Call `export_video` only when the current user request explicitly asks to export. If the user asks later, read the updated revision first.
 - Export waits for user confirmation in Luna. `EXPORT_NOT_REQUESTED`, denial, timeout, or failure is not an exported file. Only `ok=true` with a real `data.path` is success.

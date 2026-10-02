@@ -171,7 +171,7 @@ export function register(): void {
     const media = await getAiEditorLocalMedia(mediaId)
     const publicMedia = { ...media }
     Reflect.deleteProperty(publicMedia, 'filePath')
-    return publicMedia
+    return { ...publicMedia, sourcePath: media.filePath }
   })
 
   ipcMain.handle('ai-editor:get-local-media-metadata', async (_event, mediaIds: string[]) => {

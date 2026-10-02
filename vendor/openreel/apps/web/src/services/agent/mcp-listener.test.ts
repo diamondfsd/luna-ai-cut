@@ -46,6 +46,7 @@ import { handleMcpBridgeRequest } from "./mcp-listener";
 describe("handleMcpBridgeRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(h.liveHost, "getProject", { value: vi.fn(() => ({ id: "test-project" })), configurable: true });
     delete h.liveHost.importMediaFromLocalMedia;
     delete h.liveHost.requireOpenProject;
     h.requiresUserConfirmation.mockImplementation((name) => name === "delete_media");
