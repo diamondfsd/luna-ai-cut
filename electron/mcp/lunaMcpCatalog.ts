@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AiEditorMcpResponse } from '../../src/shared/types/aiEditor.ts'
 import { asRecord, type LunaMcpServerOptions } from './lunaMcpProtocol.ts'
-import { AGENT_TASK_TOOLS } from './lunaMcpTaskCatalog.ts'
-import { DIRECTOR_PLAN_TOOLS } from './directorPlanTools.ts'
+import { appToolRegistry } from './lunaAppToolModules.ts'
 
 interface ToolCatalog {
   tools: unknown[]
@@ -11,7 +10,7 @@ interface ToolCatalog {
 }
 
 export async function getToolCatalog(options: LunaMcpServerOptions): Promise<ToolCatalog> {
-  const nativeTools = [...AGENT_TASK_TOOLS, ...(options.directorPlanTools ? DIRECTOR_PLAN_TOOLS : [])]
+  const nativeTools = appToolRegistry(options).tools
   let bridgeResponse: AiEditorMcpResponse
   try {
     bridgeResponse = await options.requestRenderer({
@@ -34,7 +33,7 @@ export async function getToolCatalog(options: LunaMcpServerOptions): Promise<Too
   }
   const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
   return {
-    tools: [...nativeTools, ...rendererTools],
+    tools: [...nativeTools, ...rendererTools.filter(tool => !nativeTools.some(native => native.name === toolName(tool)))],
     editorToolsReady: rendererTools.length > 0,
   }
 }

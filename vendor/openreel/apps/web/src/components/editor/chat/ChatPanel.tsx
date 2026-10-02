@@ -132,7 +132,7 @@ export function ChatPanel({
   onClose,
 }: {
   onClose?: () => void;
-}): JSX.Element {
+}): JSX.Element | null {
   const messages = useChatStore((s) => s.messages);
   const status = useChatStore((s) => s.status);
   const error = useChatStore((s) => s.error);
@@ -172,6 +172,8 @@ export function ChatPanel({
   useEffect(() => {
     setProjectContext(projectId);
   }, [projectId, setProjectContext]);
+
+  if (externalAvailable) return null;
 
   return (
     <div className="relative flex h-full flex-col bg-bg-1">

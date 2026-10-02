@@ -8,6 +8,14 @@ export const externalAgentApi: ExternalAgentApi = {
     ipcRenderer.on('external-agent:chat-open', listener)
     return () => ipcRenderer.off('external-agent:chat-open', listener)
   },
+  copyTask: (id, request) => ipcRenderer.invoke('external-agent:copy-task', id, request),
+  listConversations: () => ipcRenderer.invoke('external-agent:history'),
+  deleteConversation: id => ipcRenderer.invoke('external-agent:delete-history', id),
+  onHistoryChanged: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('external-agent:history-changed', listener)
+    return () => ipcRenderer.off('external-agent:history-changed', listener)
+  },
   list: () => ipcRenderer.invoke('external-agent:list'),
   isInstalled: id => ipcRenderer.invoke('external-agent:installed', id),
   open: id => ipcRenderer.invoke('external-agent:open', id),

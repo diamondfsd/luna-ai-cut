@@ -259,6 +259,7 @@ export type AiEditorAgentPhase =
   | 'cancelled'
 
 export interface AiEditorAgentSession {
+  purpose?: 'editing' | 'director-plan'
   sessionId: string
   request: string
   revision: number
@@ -339,6 +340,7 @@ export interface AiEditorHttpConnection {
   toolsUrl: string
   openapiUrl: string
   apiUrl: string
+  discoveryPath?: string
 }
 
 export interface AiEditorFileApi {

@@ -1,6 +1,6 @@
 # 从导演计划到 AI 成片：全链路产品与实施流程
 
-日期：2026-10-02。本文前半部分定义目标流程。外部 Agent 创建、读取和修改本地导演计划的接口已实现，实际调用方式见第 12 节；当前导演计划只有「AI 提示词」入口，尚未实现一键绑定计划并发起剪辑，剪辑上下文、方案应用和记忆服务仍待实现。
+日期：2026-10-02。本文前半部分定义目标流程。外部 Agent 创建、读取和修改本地导演计划的接口已实现，实际调用方式见第 12 节；当前统一入口为导航栏「AI 助手」右侧浮窗，选择「导演计划」后发起外部 Agent 任务；首次消息和任务进度已本地存档。尚未实现一键绑定已有计划并发起剪辑，剪辑上下文、方案应用和记忆服务仍待实现。本文第 3 节描述未来计划到剪辑的交接，不代表当前新增页面入口。
 
 底层接口与存储设计见 [架构方案](ai-editor-skills-memory-architecture.md)。本文以用户完成一条视频为主线，说明入口、任务交接、Agent 执行、预览修改和文件导出。
 
@@ -146,15 +146,15 @@ Agent 路径：获取最新要求 → 检查时间线与适用导出设置 → �
 
 ## 12. 已实现：让外部 Agent 创建与修改计划
 
-以下为当前源码已实现的接口。使用更新后的应用与现有 HTTP 连接提示词；服务只在应用运行时可用，端口由连接信息提供。无需先创建剪辑项目或打开编辑窗口。现有内存会话提供任务 gate；独立的计划 taskKind/planRef 与结构化结果字段仍未实现。
+以下为当前源码已实现的接口。使用更新后的应用与现有 HTTP 连接提示词；服务只在应用运行时可用，Agent 从固定发现文件读取最新端口，使用 `/skills/director-plan.md`。无需先创建剪辑项目或打开编辑窗口。会话支持 `purpose=director-plan`；独立的计划 planRef 与结构化结果字段仍未实现。
 
-所有调用使用 `POST /api/tools/{toolName}`，请求体为 `{ "arguments": { ... } }`。同一组工具也可通过既有 MCP 入口调用。先读取 `/skill.md` 与 `/tools`，以实时 schema 为准；HTTP 200 不代表业务成功。
+所有调用使用 `POST /api/tools/{toolName}`，请求体为 `{ "arguments": { ... } }`。同一组工具也可通过既有 MCP 入口调用。先读取 `/skills/director-plan.md` 与 `/tools`，以实时 schema 为准；HTTP 200 不代表业务成功。
 
 ### 创建计划
 
 1. `get_director_plan_format`：读取固定格式与限制。
 2. `validate_director_plan_markdown`：传入 `formatVersion: 1` 和 Markdown，检查返回 draft、totalDurationMs 与 warnings。只要求建议时到这里即可，不写盘。
-3. 用户要求保存时，调用现有 `start_edit_session`，传入用户原话和真实 Agent 身份，取得 sessionId/revision；已有领取任务则复用该会话。
+3. 用户要求保存时，优先通过 `wait_for_edit_request` 领取 Luna 创建的导演计划任务并核对交接编号；任务直接来自外部对话时调用 `start_edit_session`，传入 `purpose=director-plan`、用户原话和真实 Agent 身份，取得 sessionId/revision。
 4. `create_director_plan`：传入上述会话、Markdown、formatVersion 与唯一 idempotencyKey，返回 planId、snapshot、稳定 shotId 和 created。
 5. 调用 `report_edit_result` 报告 completed，summary 包含计划编号；不填写不存在的 projectId，不声称已经剪出视频。
 

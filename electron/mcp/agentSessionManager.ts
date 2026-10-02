@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-
 import { AI_EDITOR_USER_STOPPED_ERROR } from '../../src/shared/types/aiEditor.ts'
 import type {
   AiEditorAgentEvent,
@@ -8,126 +7,12 @@ import type {
   AiEditorAgentSessionStatus,
   AiEditorAgentSnapshot,
 } from '../../src/shared/types'
-
-export interface AgentToolError {
-  code: string
-  message: string
-  retryable?: boolean
-  suggestedAction?: string
-}
-
-export interface AgentToolResult {
-  ok: boolean
-  summary: string
-  data?: unknown
-  error?: AgentToolError
-}
-
-export class AgentSessionError extends Error {
-  readonly code: string
-
-  constructor(code: string, message: string) {
-    super(message)
-    this.name = 'AgentSessionError'
-    this.code = code
-  }
-}
-
-export interface AgentWaitResult {
-  ok: true
-  state: 'claimed' | 'idle'
-  session?: AiEditorAgentSession
-}
-
-export interface AgentRequestResult {
-  ok: true
-  session: AiEditorAgentSession
-  changed: boolean
-}
-
-export interface AgentToolGate {
-  session: AiEditorAgentSession
-  allowed: boolean
-  error?: AgentToolError
-}
-
-export interface AgentRequestContext {
-  sessionId: string
-  revision: number
-  request: string
-  changed: boolean
-}
-
-interface Waiter {
-  resolve: (result: AgentWaitResult) => void
-  timer: NodeJS.Timeout
-  agentId: string | null
-  agentType: string | null
-  agentModel: string | null
-}
-
-interface ExportConfirmationDecision {
-  approved: boolean
-  code?: string
-  message?: string
-}
-
-interface ExportConfirmationWaiter {
-  sessionId: string
-  revision: number
-  resolve: (decision: ExportConfirmationDecision) => void
-  timer: NodeJS.Timeout
-}
-
-type Listener = (event: AiEditorAgentEvent) => void
-
-type AgentEventInput =
-  | {
-      type: 'session-created' | 'session-claimed' | 'request-updated' | 'progress' | 'result' | 'error' | 'cancel-requested' | 'cancelled' | 'export-confirmation-required' | 'export-confirmed' | 'export-denied'
-      session: AiEditorAgentSession
-      message?: string
-    }
-  | {
-      type: 'tool-start' | 'tool-finished'
-      session: AiEditorAgentSession
-      callId: string
-      toolName: string
-      args?: Record<string, unknown>
-      ok?: boolean
-      summary?: string
-      error?: AgentToolError
-      durationMs?: number
-    }
-
-const ACTIVE_STATUSES = new Set<AiEditorAgentSessionStatus>(['queued', 'running'])
-const TERMINAL_STATUSES = new Set<AiEditorAgentSessionStatus>(['completed', 'failed', 'cancelled'])
-const MAX_EVENTS = 200
-const DEFAULT_WAIT_SECONDS = 300
-const MAX_WAIT_SECONDS = 900
-const EXPORT_CONFIRMATION_TIMEOUT_MS = 15 * 60 * 1_000
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function clampProgress(progress: number): number {
-  return Math.max(0, Math.min(100, Math.round(progress)))
-}
-
-function copySession(session: AiEditorAgentSession): AiEditorAgentSession {
-  return {
-    ...session,
-    result: session.result ? { ...session.result } : undefined,
-  }
-}
-
-function phaseForStatus(status: AiEditorAgentSessionStatus): AiEditorAgentPhase {
-  if (status === 'completed') return 'completed'
-  if (status === 'failed') return 'failed'
-  if (status === 'cancelled') return 'cancelled'
-  return 'waiting'
-}
-
+import { AgentSessionError, ACTIVE_STATUSES, TERMINAL_STATUSES, MAX_EVENTS, DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS,
+  EXPORT_CONFIRMATION_TIMEOUT_MS, nowIso, clampProgress, copySession, phaseForStatus } from './agentSessionState.ts'
+import type { AgentToolError, AgentToolResult, AgentWaitResult, AgentRequestResult, AgentToolGate, AgentRequestContext,
+  Waiter, ExportConfirmationDecision, ExportConfirmationWaiter, Listener, AgentEventInput } from './agentSessionState.ts'
+export { AgentSessionError } from './agentSessionState.ts'
+export type { AgentToolError, AgentToolResult, AgentWaitResult, AgentRequestResult, AgentToolGate, AgentRequestContext } from './agentSessionState.ts'
 export class AgentSessionManager {
   private session: AiEditorAgentSession | null = null
   private activeSessionId: string | null = null
@@ -137,12 +22,10 @@ export class AgentSessionManager {
   private readonly listeners = new Set<Listener>()
   private readonly waiters: Waiter[] = []
   private exportConfirmationWaiter: ExportConfirmationWaiter | null = null
-
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
-
   snapshot(): AiEditorAgentSnapshot {
     return {
       session: this.session ? copySession(this.session) : null,
@@ -153,21 +36,20 @@ export class AgentSessionManager {
       })),
     }
   }
-
-  createRequest(request: string, projectId: string | null = null): AiEditorAgentSession {
+  createRequest(request: string, projectId: string | null = null, purpose: 'editing' | 'director-plan' = 'editing'): AiEditorAgentSession {
     const trimmed = request.trim()
     if (!trimmed) throw new Error('剪辑要求不能为空')
-
     if (this.session && ACTIVE_STATUSES.has(this.session.status)) {
+      if ((this.session.purpose ?? 'editing') !== purpose) throw new AgentSessionError('TASK_TYPE_CONFLICT', '请先完成或停止当前任务')
       return this.updateRequest(this.session.sessionId, trimmed)
     }
-
     const timestamp = nowIso()
     this.session = {
       sessionId: randomUUID(),
       request: trimmed,
       revision: 1,
       projectId,
+      purpose,
       status: 'queued',
       phase: 'waiting',
       progress: 0,
@@ -186,22 +68,22 @@ export class AgentSessionManager {
     this.resolveNextWaiter()
     return copySession(this.session)
   }
-
   startExternalRequest(
     request: string,
     agentId: string | null = null,
     projectId: string | null = null,
     agentType: string | null = null,
     agentModel: string | null = null,
+    purpose?: 'editing' | 'director-plan',
   ): AgentWaitResult {
     const trimmed = request.trim()
     if (!trimmed) throw new AgentSessionError('INVALID_REQUEST', '剪辑要求不能为空')
-
     const normalizedAgentId = agentId?.trim() || null
     const normalizedAgentType = agentType?.trim() || null
     const normalizedAgentModel = agentModel?.trim() || null
     const current = this.session
     if (current && ACTIVE_STATUSES.has(current.status)) {
+      if (purpose && purpose !== (current.purpose ?? 'editing')) throw new AgentSessionError('TASK_TYPE_CONFLICT', '当前任务类型不同，请先完成或停止当前任务')
       const sameRequest = current.request === trimmed
       const sameAgent = !normalizedAgentId || !current.agentId || current.agentId === normalizedAgentId
       if (sameRequest && sameAgent) {
@@ -213,8 +95,7 @@ export class AgentSessionManager {
       }
       throw new AgentSessionError('SESSION_ALREADY_ACTIVE', '已有其他剪辑任务正在执行，请先完成或停止当前任务')
     }
-
-    const created = this.createRequest(trimmed, projectId)
+    const created = this.createRequest(trimmed, projectId, purpose ?? 'editing')
     if (created.status !== 'queued') {
       if (this.session?.agentId === normalizedAgentId) {
         return { ok: true, state: 'claimed', session: copySession(this.session) }
@@ -225,7 +106,6 @@ export class AgentSessionManager {
     this.resolveWaitersAsIdle()
     return claimed
   }
-
   updateRequest(sessionId: string, request: string): AiEditorAgentSession {
     const current = this.requireSession(sessionId)
     const trimmed = request.trim()
@@ -238,7 +118,6 @@ export class AgentSessionManager {
       code: 'REQUEST_UPDATED',
       message: '用户更新了剪辑要求，已取消待确认的导出',
     })
-
     this.session = {
       ...current,
       request: trimmed,
@@ -254,17 +133,14 @@ export class AgentSessionManager {
     })
     return copySession(this.session)
   }
-
   cancelRequest(sessionId: string): AiEditorAgentSession {
     const current = this.requireSession(sessionId)
     if (TERMINAL_STATUSES.has(current.status)) return copySession(current)
-
     this.resolveExportConfirmation({
       approved: false,
       code: AI_EDITOR_USER_STOPPED_ERROR.code,
       message: AI_EDITOR_USER_STOPPED_ERROR.message,
     })
-
     this.session = {
       ...current,
       status: 'cancelled',
@@ -279,7 +155,6 @@ export class AgentSessionManager {
     this.resolveWaitersAsIdle()
     return copySession(this.session)
   }
-
   async waitForRequest(
     agentId: string | null,
     timeoutSeconds?: number,
@@ -300,7 +175,6 @@ export class AgentSessionManager {
         session: copySession(this.session ?? current),
       }
     }
-
     const waitSeconds = Math.max(
       5,
       Math.min(MAX_WAIT_SECONDS, Math.round(timeoutSeconds ?? DEFAULT_WAIT_SECONDS)),
@@ -320,7 +194,6 @@ export class AgentSessionManager {
       })
     })
   }
-
   async waitForExportConfirmation(
     sessionId: string,
     revision: number,
@@ -340,7 +213,6 @@ export class AgentSessionManager {
         message: '已经在等待用户确认导出',
       }
     }
-
     this.session = {
       ...gate.session,
       phase: 'exporting',
@@ -353,7 +225,6 @@ export class AgentSessionManager {
       session: this.session,
       message: '请确认是否导出视频',
     })
-
     return await new Promise<ExportConfirmationDecision>((resolve) => {
       const timer = setTimeout(() => {
         if (this.exportConfirmationWaiter?.resolve !== resolve) return
@@ -373,19 +244,16 @@ export class AgentSessionManager {
       this.exportConfirmationWaiter = { sessionId, revision, resolve, timer }
     })
   }
-
   confirmExport(sessionId: string): AiEditorAgentSession {
     this.requirePendingExportConfirmation(sessionId)
     this.resolveExportConfirmation({ approved: true, message: '用户已确认导出' })
     return copySession(this.requireSession(sessionId))
   }
-
   denyExport(sessionId: string): AiEditorAgentSession {
     this.requirePendingExportConfirmation(sessionId)
     this.resolveExportConfirmation({ approved: false, code: 'EXPORT_DENIED', message: '用户暂不导出' })
     return copySession(this.requireSession(sessionId))
   }
-
   recordExportResult(sessionId: string, revision: number, exportPath: string | null): void {
     if (!exportPath) return
     const gate = this.gate(sessionId, revision)
@@ -399,7 +267,6 @@ export class AgentSessionManager {
       updatedAt: nowIso(),
     }
   }
-
   getRequest(sessionId: string, knownRevision?: number): AgentRequestResult {
     const current = this.requireSession(sessionId)
     const changed = knownRevision !== undefined
@@ -408,7 +275,6 @@ export class AgentSessionManager {
     this.acknowledgedRevision = current.revision
     return { ok: true, session: copySession(current), changed }
   }
-
   reportProgress(
     sessionId: string,
     revision: number,
@@ -418,7 +284,6 @@ export class AgentSessionManager {
   ): AgentToolResult {
     const gate = this.gate(sessionId, revision)
     if (!gate.allowed) return { ok: false, summary: gate.error?.message ?? '任务不可用', error: gate.error }
-
     this.session = {
       ...gate.session,
       status: 'running',
@@ -434,7 +299,6 @@ export class AgentSessionManager {
       data: { sessionId, revision: this.session.revision, phase, progress: this.session.progress },
     }
   }
-
   reportResult(
     sessionId: string,
     revision: number,
@@ -455,7 +319,6 @@ export class AgentSessionManager {
       ? { session: copySession(current), allowed: true }
       : this.gate(sessionId, revision)
     if (!gate.allowed) return { ok: false, summary: gate.error?.message ?? '任务不可用', error: gate.error }
-
     const message = summary?.trim() || (status === 'completed' ? '剪辑已完成' : status === 'cancelled' ? '任务已取消' : '剪辑失败')
     const nextProjectId = projectId?.trim() || gate.session.projectId
     this.session = {
@@ -482,7 +345,6 @@ export class AgentSessionManager {
     })
     return { ok: true, summary: message, data: { session: copySession(this.session) } }
   }
-
   gateActiveTool(): AgentToolGate | null {
     if (!this.session) return null
     if (!this.activeSessionId || this.session.sessionId !== this.activeSessionId) {
@@ -519,7 +381,6 @@ export class AgentSessionManager {
     }
     return { session: copySession(session), allowed: true }
   }
-
   activeContext(): AgentRequestContext | null {
     const session = this.session
     if (!session || !this.activeSessionId || session.sessionId !== this.activeSessionId) return null
@@ -530,7 +391,6 @@ export class AgentSessionManager {
       changed: this.acknowledgedRevision !== session.revision,
     }
   }
-
   toolStarted(callId: string, toolName: string, args: Record<string, unknown>): void {
     const active = this.gateActiveTool()
     if (!active || !active.allowed) return
@@ -547,7 +407,6 @@ export class AgentSessionManager {
       args,
     })
   }
-
   toolFinished(
     callId: string,
     toolName: string,
@@ -578,14 +437,12 @@ export class AgentSessionManager {
       durationMs,
     })
   }
-
   private requireSession(sessionId: string): AiEditorAgentSession {
     if (!sessionId || !this.session || this.session.sessionId !== sessionId) {
       throw new AgentSessionError('SESSION_NOT_FOUND', '剪辑任务不存在或已被替换，请重新调用 wait_for_edit_request')
     }
     return this.session
   }
-
   private gate(sessionId: string, revision: number): AgentToolGate {
     const current = this.requireSession(sessionId)
     if (!this.activeSessionId || current.sessionId !== this.activeSessionId || TERMINAL_STATUSES.has(current.status)) {
@@ -620,7 +477,6 @@ export class AgentSessionManager {
     }
     return { session: copySession(current), allowed: true }
   }
-
   private claim(
     session: AiEditorAgentSession,
     agentId: string | null,
@@ -643,14 +499,12 @@ export class AgentSessionManager {
     this.emit({ type: 'session-claimed', session: this.session, message: '外部 Agent 已领取任务' })
     return { ok: true, state: 'claimed', session: copySession(this.session) }
   }
-
   private resolveNextWaiter(): void {
     const waiter = this.waiters.shift()
     if (!waiter || !this.session || this.session.status !== 'queued') return
     clearTimeout(waiter.timer)
     waiter.resolve(this.claim(this.session, waiter.agentId, waiter.agentType, waiter.agentModel))
   }
-
   private resolveWaitersAsIdle(): void {
     while (this.waiters.length > 0) {
       const waiter = this.waiters.shift()
@@ -659,7 +513,6 @@ export class AgentSessionManager {
       waiter.resolve({ ok: true, state: 'idle' })
     }
   }
-
   private emit(input: AgentEventInput): void {
     const event = {
       ...input,
@@ -670,7 +523,6 @@ export class AgentSessionManager {
     this.events = [...this.events.slice(-(MAX_EVENTS - 1)), event]
     for (const listener of this.listeners) listener(event)
   }
-
   private setAgentIdentity(agentId: string | null, agentType: string | null, agentModel: string | null): void {
     const current = this.session
     if (!current) return
@@ -689,7 +541,6 @@ export class AgentSessionManager {
     this.session = next
     this.emit({ type: 'session-claimed', session: this.session, message: '外部 Agent 身份已登记' })
   }
-
   private requirePendingExportConfirmation(sessionId: string): void {
     const current = this.requireSession(sessionId)
     if (
@@ -700,7 +551,6 @@ export class AgentSessionManager {
       throw new AgentSessionError('EXPORT_CONFIRMATION_NOT_PENDING', '当前没有等待确认的导出请求')
     }
   }
-
   private resolveExportConfirmation(decision: ExportConfirmationDecision): void {
     const pending = this.exportConfirmationWaiter
     if (!pending) return
@@ -723,5 +573,4 @@ export class AgentSessionManager {
     pending.resolve(decision)
   }
 }
-
 export const agentSessionManager = new AgentSessionManager()

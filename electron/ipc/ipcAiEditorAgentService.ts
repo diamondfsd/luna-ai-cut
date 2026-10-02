@@ -17,6 +17,7 @@ function requireRequest(value: unknown): string {
 }
 
 export function activateAgentWindow(context: IpcContext): void {
+  if (agentSessionManager.snapshot().session?.purpose === 'director-plan') return
   const window = context.win
   if (!window || window.isDestroyed()) throw new Error('Luna AI Cut 窗口不可用')
   for (const target of BrowserWindow.getAllWindows()) {

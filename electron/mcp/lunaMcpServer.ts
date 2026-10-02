@@ -1,5 +1,6 @@
+import { DIRECTOR_PLAN_HTTP_SKILL } from './directorPlanHttpSkill.ts'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -126,6 +127,12 @@ async function handleHttpRequest(
     return
   }
 
+  if (request.method === 'GET' && pathname === '/skills/director-plan.md') {
+    response.setHeader('Cache-Control', 'no-store')
+    writeText(response, 200, DIRECTOR_PLAN_HTTP_SKILL, 'text/markdown; charset=utf-8')
+    return
+  }
+
   if (request.method === 'GET' && pathname === '/skill.md') {
     response.setHeader('Cache-Control', 'no-store')
     writeText(response, 200, LUNA_HTTP_SKILL, 'text/markdown; charset=utf-8')
@@ -234,7 +241,11 @@ export function createLunaMcpServer(options: LunaMcpServerOptions): LunaMcpServe
           pid: process.pid,
         }
         await mkdir(path.dirname(endpointPath), { recursive: true })
-        await writeFile(endpointPath, `${JSON.stringify(endpoint, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+        const temporaryEndpoint = `${endpointPath}.${randomUUID()}.tmp`
+        try {
+          await writeFile(temporaryEndpoint, `${JSON.stringify(endpoint, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+          await rename(temporaryEndpoint, endpointPath)
+        } finally { await rm(temporaryEndpoint, { force: true }) }
         return endpoint
       })()
 

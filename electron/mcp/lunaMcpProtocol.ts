@@ -1,3 +1,4 @@
+import type { LunaToolModule } from './lunaToolModule.ts'
 import type { AiEditorMcpRequest, AiEditorMcpResponse, AiEditorMcpContent } from '../../src/shared/types/aiEditor.ts'
 import type { GeneratedMusic, MusicTemplateDocument, MusicTemplateSummary } from '../features/music/musicGenerationService.ts'
 import type { AgentSessionManager, AgentToolError } from './agentSessionManager.ts'
@@ -43,6 +44,7 @@ export interface LunaHttpConnection {
 }
 
 export interface LunaMcpServerOptions {
+  toolModules?: readonly LunaToolModule[]
   directorPlanTools?: DirectorPlanAgentService
   homeDir?: string
   requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse>
