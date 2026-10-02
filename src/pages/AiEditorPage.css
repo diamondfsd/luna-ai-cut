@@ -2,6 +2,8 @@
   position: relative;
   width: 100%;
   height: calc(100vh - 44px);
+  box-sizing: border-box;
+  padding-top: 12px;
   overflow: hidden;
 }
 .ai-editor-component { width: 100%; height: 100%; }
