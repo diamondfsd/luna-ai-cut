@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -26,6 +27,7 @@ import {
 } from '../src/ai-selection/aiSelectionView.ts'
 import { buildCoPhotoGroups } from '../src/ai-selection/aiCoPhotoGroups.ts'
 import { coverFittedFaceBounds } from '../src/ai-selection/aiFaceOverlayGeometry.ts'
+import { reportEvidenceResult } from '../electron/features/ai-selection/aiSelectionEvidenceProgress.ts'
 
 function quality(score = 80) {
   return {
@@ -226,7 +228,7 @@ const evidenceProgress = aiSelectionAnalysisProgress({
     }),
   ],
 })
-assert.deepEqual([evidenceProgress.phaseCompleted, evidenceProgress.phaseTotal], [5, 5], '混合素材的画面、人物和构图进度应完整计数')
+assert.deepEqual([evidenceProgress.phaseCompleted, evidenceProgress.phaseTotal], [3, 3], '视频不计入画面、人物和构图分析进度')
 const manuallyKept = item('manual-reanalysis', '2026-07-18T01:01:03.000Z', { state: 'kept', decisionSource: 'user', personEvidence: { detected: true } })
 const reanalysisSession = { status: 'ready', phase: 'done', error: '旧错误', items: [manuallyKept, item('ai-reanalysis', '2026-07-18T01:01:04.000Z', { state: 'kept' })] }
 prepareAiSelectionReanalysis(reanalysisSession)
@@ -498,7 +500,8 @@ try {
 
   const legacyStoreRoot = path.join(peopleStoreRoot, 'legacy')
   await fs.mkdir(legacyStoreRoot)
-  const { coverUrl: _coverUrl, coverBounds: _coverBounds, mergedIntoId: _ignored, sourceGroupId: _sourceGroupId, automaticMatching: _automaticMatching, hidden: _hidden, confirmed: _confirmed, ...legacyIdentity } = { ...registeredIdentity, avatarDataUrl: null }
+  const legacyIdentity = Object.fromEntries(Object.entries({ ...registeredIdentity, avatarDataUrl: null })
+    .filter(([key]) => !['coverUrl', 'coverBounds', 'mergedIntoId', 'sourceGroupId', 'automaticMatching', 'hidden', 'confirmed'].includes(key)))
   await fs.writeFile(path.join(legacyStoreRoot, 'people.json'), JSON.stringify({ schemaVersion: 1, identities: [legacyIdentity] }))
   const legacyPeople = await loadPeopleStore(legacyStoreRoot)
   assert.equal(legacyPeople[0].mergedIntoId, null, '旧人物库应无损迁移为未合并身份')
@@ -609,5 +612,22 @@ applyAiSelectionUserOperation(sceneSession, { type: 'set-state', itemId: 'scene-
 assert.equal(sceneSession.preferenceProfile.sampleCount, 1)
 applyAiSelectionUserOperation(sceneSession, { type: 'set-items-state', itemIds: ['scene-best', 'scene-alt'], state: 'kept' })
 assert.deepEqual(sceneSession.items.map((entry) => entry.state), ['kept', 'kept'])
+
+{
+  let finishSlow
+  const slow = new Promise(resolve => { finishSlow = resolve })
+  const events = []
+  const fastTask = reportEvidenceResult(Promise.resolve('people'), value => events.push(value), () => assert.fail(), () => events.push('progress'))
+  const slowTask = reportEvidenceResult(slow, value => events.push(value), () => assert.fail(), () => events.push('progress'))
+  await fastTask
+  assert.deepEqual(events, ['people', 'progress'], '单项完成立即更新进度，不等待其他分析')
+  finishSlow('composition')
+  await slowTask
+  const controller = new AbortController()
+  controller.abort()
+  await assert.rejects(reportEvidenceResult(Promise.resolve('late'), () => assert.fail('取消后不得写入结果'), () => assert.fail(), () => assert.fail(), controller.signal), { name: 'AbortError' })
+  await reportEvidenceResult(Promise.reject(new Error('failed')), () => assert.fail(), () => events.push('failed'), () => events.push('progress'))
+  assert.deepEqual(events.slice(-2), ['failed', 'progress'], '失败的分析也应更新进度')
+}
 
 console.log('AI selection algorithm tests passed')

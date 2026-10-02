@@ -234,7 +234,7 @@ export async function analyzeIndexedMedia(
   const metadata = await probe(media, signal).catch(() => ({ width: null, height: null, duration: null, capturedAt: null, device: null }))
   const exif = media.kind === 'image' ? await imageExif(media) : { capturedAt: null, device: null }
   const capturedAt = exif.capturedAt ?? metadata.capturedAt ?? new Date(media.mtimeMs).toISOString()
-  // 视频只读取基础信息，用于拍摄时段和人物分组；不做画质、内容或片段分析。
+  // 视频只读取基础信息，仅用于拍摄时段归组；不做画质、内容或片段分析。
   const analyses = media.kind === 'image'
     ? [analyzeRgb(await decodeRgb(media, null, signal), 64, 64)]
     : []
@@ -269,7 +269,7 @@ export async function analyzeIndexedMedia(
     duration: metadata.duration,
     // 原图不能作为 thumbnailUrl，否则前端会绕过缩略图缓存直接加载大图。
     thumbnailUrl: null,
-    exactHash: computeExactHash ? await fullFileHash(media.path, signal) : null,
+    exactHash: media.kind === 'image' && computeExactHash ? await fullFileHash(media.path, signal) : null,
     perceptualHash: media.kind === 'image' ? analyses[0].perceptualHash : null,
     luminanceHistogram: media.kind === 'image' ? analyses[0].histogram : null,
     visualSignature: media.kind === 'image' ? analyses[0].visualSignature : null,
