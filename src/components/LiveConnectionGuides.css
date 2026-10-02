@@ -17,6 +17,8 @@
   gap: 24px;
 }
 
+.live-connection-guide-body-harmony { grid-template-columns: minmax(0, 1fr); }
+
 .live-guide-instructions {
   display: flex;
   flex-direction: column;

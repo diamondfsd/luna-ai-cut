@@ -48,6 +48,12 @@ export default async function afterPack(context) {
     ], { stdio: 'inherit' })
   }
 
+  const hdcDir = join(appPath, 'Contents', 'Resources', 'harmony-hdc')
+  for (const name of ['libusb_shared.dylib', 'hdc']) {
+    const binary = join(hdcDir, name)
+    if (existsSync(binary)) execFileSync('codesign', ['--force', '--sign', '-', binary], { stdio: 'inherit' })
+  }
+
   execFileSync('codesign', [
     '--deep',
     '--force',

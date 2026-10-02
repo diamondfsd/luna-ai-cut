@@ -1,4 +1,6 @@
-use ort::{session::Session, value::Tensor};
+use crate::onnx_session::load;
+use ort::session::Session;
+use ort::value::Tensor;
 use std::sync::{Mutex, OnceLock};
 
 const INPUT_SIZE: usize = 1024;
@@ -77,18 +79,10 @@ pub fn segment(
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(2);
-        let encoder = Session::builder()
-            .map_err(|error| format!("初始化 SAM 失败: {error}"))?
-            .with_intra_threads(threads)
-            .map_err(|error| format!("配置 SAM 失败: {error}"))?
-            .commit_from_file(&vision_encoder_path)
+        let encoder = load(&vision_encoder_path, threads)
             .map_err(|error| format!("加载 SAM 图像模型失败: {error}"))?;
-        let decoder = Session::builder()
-            .map_err(|error| format!("初始化 SAM 失败: {error}"))?
-            .with_intra_threads(threads)
-            .map_err(|error| format!("配置 SAM 失败: {error}"))?
-            .commit_from_file(&prompt_decoder_path)
-            .map_err(|error| format!("加载 SAM 点选模型失败: {error}"))?;
+        let decoder = load(&prompt_decoder_path, threads)
+        .map_err(|error| format!("加载 SAM 点选模型失败: {error}"))?;
         *guard = Some((vision_encoder_path, prompt_decoder_path, encoder, decoder));
     }
     let (_, _, encoder, decoder) = guard.as_mut().ok_or_else(|| "SAM 模型未加载".to_string())?;

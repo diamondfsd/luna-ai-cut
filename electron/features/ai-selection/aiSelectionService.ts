@@ -10,14 +10,13 @@ import { normalizeFaceGroupingThreshold } from './aiSelectionFaceGroups'
 import { readAiSelectionItemCache, writeAiSelectionItemCache } from './aiSelectionItemCache'
 import { analyzeIndexedMedia, failedItem, indexMediaSource, pendingItem } from './aiSelectionMedia'
 import { applyAiSelectionUserOperation, createAiSelectionSnapshot } from './aiSelectionOperations'
-import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence, analyzeVideosOnDemand } from './aiSelectionOnDemandAnalysis'
+import { analyzeContentOnDemand, analyzePeopleOnDemand, analyzeRecommendationEvidence } from './aiSelectionOnDemandAnalysis'
 import { createAiSelectionPersonAvatar } from './aiSelectionPersonAvatar'
 import { buildGlobalFaceGroups, hideGlobalPerson, listHiddenGlobalPeople, loadGlobalPeople, mergeGlobalPeople, reconcileGlobalPeopleSources, renameGlobalPerson, restoreGlobalPerson, setGlobalPersonAvatar, unmergeGlobalPerson } from './aiSelectionPeopleManager'
 import { prepareAiSelectionReanalysis, preserveAiSelectionUserDecisions } from './aiSelectionReanalysis'
 import { rebuildSelectionResult } from './aiSelectionResult'
 import { refreshAiSelectionCounts } from './aiSelectionSessionState'
 import { publicAiSelectionSession, restoreAiSelectionSnapshot, type StoredAiSelectionSession } from './aiSelectionSessionSnapshot'
-import { ensureVideoFaceGroupCoverFrames } from './aiSelectionVideoFaceFrames'
 import { currentBaseDir, getSettings } from '../../storage/settingsService'
 import { createWorkspaceProject } from '../workspace/workspaceProjectService'
 import { workspaceAssetsFromSelection } from './aiSelectionWorkspaceAssets'
@@ -44,7 +43,7 @@ async function readCachedItem(id: string, preset: AiSelectionSession['preset']):
 async function writeCachedItem(item: AiSelectionItem, preset: AiSelectionSession['preset']): Promise<void> { await writeAiSelectionItemCache(rootDir(), ANALYSIS_VERSION, item, preset) }
 function publicSession(session: StoredSession): AiSelectionSession { return publicAiSelectionSession(session) }
 function touch(session: StoredSession): void { session.revision += 1; session.updatedAt = new Date().toISOString(); refreshAiSelectionCounts(session) }
-function recommendationsFinalized(session: AiSelectionSession): boolean { return session.status === 'ready' || session.status === 'completed' }
+function canRecommend(session: AiSelectionSession): boolean { return session.items.some((item) => item.kind === 'image' && item.analysisState === 'ready') }
 function replaceAnalyzedItem(session: StoredSession, item: AiSelectionItem): void { const index = session.items.findIndex((candidate) => candidate.id === item.id); session.items.splice(index, 1, preserveAiSelectionUserDecisions(session.items[index], item)) }
 
 async function persist(session: StoredSession): Promise<void> {
@@ -75,7 +74,7 @@ async function ensureLoaded(): Promise<void> {
       parsed.faceGroupingThreshold = normalizeFaceGroupingThreshold(parsed.faceGroupingThreshold)
       await reconcileGlobalPeopleSources(peopleStoreDir(), parsed.items, parsed.faceGroups, parsed.faceGroupingThreshold)
       parsed.faceGroups = buildGlobalFaceGroups(parsed.items, parsed.faceGroupingThreshold)
-      rebuildSelectionResult(parsed, recommendationsFinalized(parsed))
+      rebuildSelectionResult(parsed, canRecommend(parsed))
       if (parsed.status === 'indexing' || parsed.status === 'analyzing') parsed.status = 'interrupted'
       refreshAiSelectionCounts(parsed)
       sessions.set(parsed.id, parsed)
@@ -125,7 +124,7 @@ async function runSession(session: StoredSession): Promise<void> {
     session.counts.total = indexed.length
     const previousItems = new Map(session.items.map((item) => [item.id, item]))
     session.items = indexed.map((media) => previousItems.get(media.id) ?? pendingItem(media))
-    rebuildSelectionResult(session, recommendationsFinalized(session))
+    rebuildSelectionResult(session, canRecommend(session))
     await updateAndPersist(session)
     const completed = new Set(session.items.filter((item) => item.analysisState !== 'pending').map((item) => item.id))
     const sizeCounts = new Map<number, number>()
@@ -161,13 +160,13 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) replaceAnalyzedItem(session, item)
-      rebuildSelectionResult(session, recommendationsFinalized(session))
+      rebuildSelectionResult(session, canRecommend(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
     controller.signal.throwIfAborted()
     session.phase = 'grouping'
-    rebuildSelectionResult(session, recommendationsFinalized(session))
+    rebuildSelectionResult(session, canRecommend(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
@@ -191,11 +190,11 @@ async function runSession(session: StoredSession): Promise<void> {
         }
       }))
       for (const item of analyzed) replaceAnalyzedItem(session, item)
-      rebuildSelectionResult(session, recommendationsFinalized(session))
+      rebuildSelectionResult(session, canRecommend(session))
       await updateAndPersist(session, batch[batch.length - 1]?.name ?? null)
     }
 
-    rebuildSelectionResult(session, recommendationsFinalized(session))
+    rebuildSelectionResult(session, canRecommend(session))
     session.phase = 'ranking'
     await updateAndPersist(session)
 
@@ -203,7 +202,7 @@ async function runSession(session: StoredSession): Promise<void> {
     try {
       await analyzeRecommendationEvidence(analysisContext(session), [...photos, ...videos].map((item) => item.id), controller.signal)
       session.faceGroups = buildGlobalFaceGroups(session.items, session.faceGroupingThreshold)
-      rebuildSelectionResult(session, recommendationsFinalized(session))
+      rebuildSelectionResult(session, canRecommend(session))
       await updateAndPersist(session)
     } catch (error) {
       if (abortLike(error)) throw error
@@ -293,10 +292,6 @@ export async function getAiSelectionSession(id: string): Promise<AiSelectionSess
   await ensureLoaded()
   const session = sessions.get(id)
   if (!session) return null
-  if (await ensureVideoFaceGroupCoverFrames(session.items, session.faceGroups, rootDir())) {
-    rebuildSelectionResult(session, recommendationsFinalized(session))
-    await updateAndPersist(session)
-  }
   return publicSession(session)
 }
 export async function pauseAiSelection(id: string): Promise<AiSelectionSession> {
@@ -346,7 +341,7 @@ export async function applyAiSelectionOperation(id: string, revision: number, op
   session.undoStack.push(createAiSelectionSnapshot(session))
   session.undoStack = session.undoStack.slice(-20)
   session.redoStack = []
-  applyAiSelectionUserOperation(session, operation, recommendationsFinalized(session))
+  applyAiSelectionUserOperation(session, operation, canRecommend(session))
   await updateAndPersist(session)
   return publicSession(session)
 }
@@ -378,14 +373,14 @@ export async function setAiSelectionFaceGroupingThreshold(id: string, threshold:
   const nextThreshold = normalizeFaceGroupingThreshold(threshold)
   if (nextThreshold !== session.faceGroupingThreshold) {
     session.faceGroupingThreshold = nextThreshold
-    rebuildSelectionResult(session, recommendationsFinalized(session))
+    rebuildSelectionResult(session, canRecommend(session))
     await updateAndPersist(session)
   }
   return publicSession(session)
 }
 async function persistPeopleAndRefreshSessions(): Promise<void> {
   for (const session of sessions.values()) {
-    rebuildSelectionResult(session, recommendationsFinalized(session))
+    rebuildSelectionResult(session, canRecommend(session))
     await updateAndPersist(session)
   }
 }
@@ -451,9 +446,10 @@ export async function analyzeAiSelectionContentTags(id: string, itemIds: string[
 }
 
 export async function analyzeAiSelectionVideos(id: string, itemIds: string[]): Promise<AiSelectionSession> {
+  // Keep the existing IPC contract; videos only participate in shooting events.
+  void itemIds
   await ensureLoaded()
   const session = requireSession(id)
-  await analyzeVideosOnDemand(analysisContext(session), itemIds)
   return publicSession(session)
 }
 
@@ -463,7 +459,12 @@ function analysisContext(session: StoredSession) {
     cacheRoot: rootDir(),
     writeCachedItem: (item: AiSelectionItem) => writeCachedItem(item, session.preset),
     update: (label?: string | null) => updateAndPersist(session, label),
-    rebuild: () => rebuildSelectionResult(session, recommendationsFinalized(session)),
+    rebuild: () => rebuildSelectionResult(session, canRecommend(session)),
+    reportProgress: (label: string) => {
+      touch(session)
+      emitProgress(session, label)
+      emitSession(session)
+    },
   }
 }
 

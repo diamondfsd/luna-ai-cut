@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Archive, ArrowRightLeft, FolderOpen, Settings2, Trash2 } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 import { formatBytes } from '../lib/format'
 import { useApp } from '../context/AppContext'
@@ -86,6 +86,7 @@ export function SettingsPage({
   setSettings,
 }: SettingsPageProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const { hiddenDevMode, setHiddenDevMode } = useApp()
   const [freshCacheStats, setFreshCacheStats] = useState<CacheStats | null>(null)
   const [logDir, setLogDir] = useState('')
@@ -421,6 +422,12 @@ export function SettingsPage({
             <section id="settings-general" className="settings-group">
               <h2 className="settings-group-title">通用设置</h2>
               <div className="settings-card">
+                <article className="settings-row">
+                  <div className="settings-row-copy">
+                    <span>实验室</span>
+                  </div>
+                  <Button variant="secondary" size="compact" onClick={() => navigate('/lab')}>打开</Button>
+                </article>
                 <article className="settings-row">
                   <div className="settings-row-copy">
                     <span>关闭窗口时隐藏</span>

@@ -6,6 +6,8 @@ import process from 'node:process'
 import { stageIosUsbResources, verifyIosUsbResources } from './ios-usb-resources.mjs'
 import { stageAndroidAdbResources, verifyAndroidAdbResources } from './android-adb-resources.mjs'
 
+import { stageHarmonyHdcResources } from './harmony-hdc-resources.mjs'
+
 const root = resolve(import.meta.dirname, '..')
 const targetIndex = process.argv.indexOf('--target')
 const target = targetIndex >= 0 ? process.argv[targetIndex + 1] : process.platform
@@ -91,5 +93,7 @@ if (target === 'win32') {
   stageIosUsbResources(join(stageRoot, 'ios-usb'), sourceDirectories.iosUsb)
   stageAndroidAdbResources(join(stageRoot, 'android-adb'))
 }
+
+stageHarmonyHdcResources(join(stageRoot, 'harmony-hdc'), target, arch)
 
 console.log(`[stage-package-resources] ${targetName} -> ${stageRoot}`)

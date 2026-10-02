@@ -43,6 +43,13 @@ export function LiveConnectionGuides({ status }: { status: LiveStreamStatus }) {
         </div>
         <GuideDownload platform="android" />
       </Dialog>
+      <Dialog title="鸿蒙原生连接指引" className="live-connection-guide-dialog" bodyClassName="live-connection-guide-body live-connection-guide-body-harmony"
+        trigger={<Button variant="ghost" size="mini">鸿蒙原生连接指引</Button>}>
+        <div className="live-guide-instructions">
+          <LiveConnectionGuideSteps platform="harmony" />
+          <p>使用支持直播的鸿蒙原生 Luna 咔版本，保持相机页面在前台。</p>
+        </div>
+      </Dialog>
     </div>
   )
 }

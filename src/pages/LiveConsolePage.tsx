@@ -29,6 +29,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -45,27 +46,35 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   }, [refreshStatus])
 
   useEffect(() => {
-    if (!status?.startedAt || status.state === 'stopping') return undefined
+    if (!busy && (!status?.startedAt || status.state === 'stopping')) return undefined
     const timer = window.setInterval(() => void refreshStatus(), 1_000)
     return () => window.clearInterval(timer)
-  }, [refreshStatus, status?.startedAt, status?.state])
+  }, [busy, refreshStatus, status?.startedAt, status?.state])
 
   const runAction = useCallback(async (action: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
     setError(null)
+    let timeout: number | undefined
     try {
-      await action()
+      await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => reject(new Error('操作超时')), 10_000)
+        }),
+      ])
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
+      window.clearTimeout(timeout)
       setBusy(false)
       void refreshStatus()
     }
   }, [busy, refreshStatus])
 
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
-  const outputTone = status?.usbState === 'streaming' ? 'active' : error || status?.state === 'error' ? 'danger' : 'neutral'
+  const visibleError = error || previewError || (status?.localPreviewError ? '画面播放异常' : null)
+  const outputTone = visibleError || status?.state === 'error' ? 'danger' : status?.usbState === 'streaming' ? 'active' : 'neutral'
 
   const toggleLivePreviewWindow = () => {
     void runAction(async () => {
@@ -125,13 +134,14 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
         </div>
       </header>
 
-      {error && <p className="live-console-error" role="alert" data-live-window-controls>{error}</p>}
+      {visibleError && <p className="live-console-error" role="alert" data-live-window-controls>{visibleError}</p>}
       {!status ? (
         windowLiveMode ? null : <LoadingIndicator label="正在检查直播状态" />
       ) : (
         <LiveControlPanel
           status={status}
           busy={busy}
+          onPreviewErrorChange={setPreviewError}
           onStatusChanged={() => void refreshStatus()}
           onStart={() => void runAction(async () => {
             await window.luna.liveStream.start()
