@@ -9,9 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { DirectorLanPlanSummary, DirectorLanShot } from '../../../src/shared/types'
 import { parseDirectorPlanImport } from '../../../src/lib/directorPlanImport'
 import { directorPlanContentSignature } from '../../../src/lib/directorPlanSync'
-import { directorLocalEditHasConflict } from '../../../src/lib/directorPlanLocalEdit'
-import { validateDirectorTakeRange } from '../../../src/lib/directorTakeRange'
-import { validateDirectorTakeMarkers } from '../../../src/lib/directorTakeMarkers'
+import { applyDirectorLocalPlanEdit } from '../../../src/lib/directorPlanLocalEdit'
 import { appendDirectorLocalShots } from '../../../src/lib/directorLocalShots'
 import { deleteDirectorLocalMaterial } from './directorLabMaterialDelete'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
@@ -117,29 +115,8 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
     if (current.shots.some((item) => item.id === shot.id)) return current
     return appendDirectorLocalShots(current, [{ ...shot, name: shot.name.trim(), completed_takes: 0, takes: [] }])
   }))
-  ipcMain.handle('director-lab:save-local-plan', async (_event, plan: DirectorLanPlanSummary, expectedSignature?: string) => save(plan, (current) => {
-    if (directorLocalEditHasConflict(current, plan, expectedSignature)) {
-      throw new Error('计划已更新，请刷新后重试')
-    }
-    if (!plan.title?.trim() || plan.title.length > 120 || plan.shots.length > 500
-      || new Set(plan.shots.map((shot) => shot.id)).size !== plan.shots.length
-      || plan.shots.some((shot) => !shot.name.trim() || shot.name.length > 120 || shot.remark.length > 4000
-        || !Number.isSafeInteger(shot.duration_ms) || shot.duration_ms < 1000 || shot.duration_ms > 3600000
-        || shot.attributes.some((field) => field.description.length > 4000))) throw new Error('计划内容无效')
-    const requestedIds = new Set(plan.shots.map((shot) => shot.id))
-    const shots = plan.shots.map((shot, index) => ({ ...shot, order: index + 1,
-      takes: (current.shots.find((item) => item.id === shot.id)?.takes ?? []).map(take => {
-        const requested = shot.takes?.find(item => item.id === take.id)
-        return requested && take.kind === 'video'
-          ? { ...take, selected_range: validateDirectorTakeRange(requested.selected_range, take.duration_ms),
-            markers: requested.markers === undefined ? take.markers ?? [] : validateDirectorTakeMarkers(requested.markers, take.duration_ms) }
-          : take
-      }) }))
-    return { ...current, title: plan.title, shots, shot_count: shots.length,
-      updated_at: new Date().toISOString(),
-      pending_shot_ids: current.pending_shot_ids?.filter((id) => requestedIds.has(id)),
-      pending_take_ids: current.pending_take_ids?.filter((id) => shots.some((shot) => shot.takes.some((take) => take.id === id))) }
-  }))
+  ipcMain.handle('director-lab:save-local-plan', async (_event, plan: DirectorLanPlanSummary, expectedSignature?: string) =>
+    save(plan, current => applyDirectorLocalPlanEdit(current, plan, expectedSignature)))
   ipcMain.handle('director-lab:import-materials', async (_event, plan: DirectorLanPlanSummary, shotId: string) => {
     const selection = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'],
       filters: [{ name: '素材', extensions: ['mp4', 'mov', 'm4v', 'mkv', 'webm', 'jpg', 'jpeg', 'png', 'heic', 'webp'] }] })
