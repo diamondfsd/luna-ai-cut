@@ -5,8 +5,7 @@ import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
 import { ToolcraftNumberInputControl } from "@openreel/ui";
 import { ToolcraftSelectControl as Selector } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl as TextInput } from "@openreel/ui";
-import { useSettingsStore, SERVICE_REGISTRY, type TtsProvider, type LlmProvider } from "../../../stores/settings-store";
+import { useSettingsStore, SERVICE_REGISTRY, type TtsProvider } from "../../../stores/settings-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { EDITING_FRAME_RATE_OPTIONS } from "../editing-frame-rate";
 import { getServiceDisplayLabel } from "./localization";
@@ -39,15 +38,9 @@ export const GeneralPanel: React.FC = () => {
     autoSave,
     autoSaveInterval,
     defaultTtsProvider,
-    defaultLlmProvider,
-    llmBaseUrl,
-    llmModel,
     setAutoSave,
     setAutoSaveInterval,
     setDefaultTtsProvider,
-    setDefaultLlmProvider,
-    setLlmBaseUrl,
-    setLlmModel,
   } = useSettingsStore();
 
   const projectWidth = useProjectStore((s) => s.project.settings.width);
@@ -91,9 +84,6 @@ export const GeneralPanel: React.FC = () => {
 
   const ttsProviders = SERVICE_REGISTRY.filter((s) => s.id === "elevenlabs");
 
-  const llmProviders = SERVICE_REGISTRY.filter(
-    (s) => s.id === "openai-compatible" || s.id === "anthropic-compatible",
-  );
 
   return (
     <div className="space-y-6 pb-4">
@@ -328,67 +318,6 @@ export const GeneralPanel: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <Text type="supporting" color="secondary" className="text-sm">
-              AI 助手 API 格式
-            </Text>
-            <Selector
-              label="AI 助手 API 格式"
-              isLabelHidden
-              size="md"
-              width={180}
-              value={defaultLlmProvider ?? ""}
-              onChange={(value) =>
-                setDefaultLlmProvider((value || null) as LlmProvider | null)
-              }
-              options={[
-                { label: "选择 API 格式…", value: "" },
-                ...llmProviders.map((s) => ({ label: getServiceDisplayLabel(s), value: s.id })),
-              ]}
-            />
-          </div>
-
-          {defaultLlmProvider ? (
-            <div className="space-y-3 rounded-lg border border-border bg-background-tertiary p-3">
-              <div>
-                <Text type="supporting" color="secondary" className="text-sm font-medium">
-                  {defaultLlmProvider === "anthropic-compatible"
-                    ? "Anthropic 兼容接口"
-                    : "OpenAI 兼容接口"}
-                </Text>
-                <Text type="supporting" color="secondary" className="mt-0.5 block text-xs">
-                  输入 API 主机地址，以及该地址提供的可调用工具模型 ID。
-                </Text>
-              </div>
-              <TextInput
-                label="基础 URL"
-                value={llmBaseUrl}
-                onChange={setLlmBaseUrl}
-                placeholder={
-                  defaultLlmProvider === "anthropic-compatible"
-                    ? "https://gateway.example/v1"
-                    : "http://localhost:11434/v1"
-                }
-                width="100%"
-              />
-              <TextInput
-                label="模型 ID"
-                value={llmModel}
-                onChange={setLlmModel}
-                placeholder="输入接口提供的任意模型 ID"
-                width="100%"
-              />
-              <Text type="supporting" color="secondary" className="block text-[11px] leading-relaxed">
-                可从 AI 聊天设置加载可用模型；无法发现时也可手动输入 ID。API 密钥可选。
-              </Text>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-border bg-background-tertiary p-3">
-              <Text type="supporting" color="secondary" className="block text-xs">
-                选择 API 格式以配置主机地址和模型。
-              </Text>
-            </div>
-          )}
 
         </div>
       </div>

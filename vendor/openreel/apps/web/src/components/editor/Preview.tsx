@@ -102,6 +102,7 @@ import { ProcessingOverlay } from "./ProcessingOverlay";
 import { editingFrameDurationMs } from "./editing-frame-rate";
 import {
   getPersonSegmentationEngine,
+  PERSON_SEGMENTATION_AVAILABLE,
   getBackgroundRemovalEngine,
   createMotionAwareOcclusionMask,
   getStabilizedTransform,
@@ -537,7 +538,7 @@ const renderAllLayersWithGPU = async (
 };
 
 const hasBehindSubjectText = (textClips: TextClip[]): boolean =>
-  textClips.some((textClip) => textClip.behindSubject);
+  PERSON_SEGMENTATION_AVAILABLE && textClips.some((textClip) => textClip.behindSubject);
 
 const getBehindSubjectStreamId = (
   tracks: readonly Track[],
@@ -784,7 +785,7 @@ const renderTextClipWithSubjectMask = async (
   streamId = "editor:text-behind-subject:canvas",
 ): Promise<void> => {
   let subjectMask: SegmentationResult | null = null;
-  if (textClip.behindSubject && subjectFrame) {
+  if (PERSON_SEGMENTATION_AVAILABLE && textClip.behindSubject && subjectFrame) {
     const segEngine = getPersonSegmentationEngine();
     if (segEngine.isInitialized()) {
       subjectMask = await getSubjectMaskForFrame(

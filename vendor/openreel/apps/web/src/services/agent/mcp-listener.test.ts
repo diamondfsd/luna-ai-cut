@@ -563,7 +563,7 @@ describe("handleMcpBridgeRequest", () => {
     expect(res.result).toEqual({ ok: true, summary: "Deleted" });
   });
 
-  it("focuses the Motion Creator surface after successful MCP motion edits", async () => {
+  it("keeps the editor focused after successful MCP motion edits", async () => {
     h.getTool.mockReturnValue({ domain: "motion" });
     h.executeTool.mockResolvedValue({
       ok: true,
@@ -584,7 +584,7 @@ describe("handleMcpBridgeRequest", () => {
     );
     expect(h.motionState.setPlayhead).toHaveBeenCalledWith(1.25);
     expect(h.motionState.selectLayer).toHaveBeenCalledWith("layer-scene");
-    expect(h.setDesktopPage).toHaveBeenCalledWith("motion");
+    expect(h.setDesktopPage).toHaveBeenCalledWith("edit");
   });
 
   it("opens newly activated scene3d compositions on their resolved preview frame", async () => {
@@ -669,7 +669,7 @@ describe("handleMcpBridgeRequest", () => {
     );
     expect(h.motionState.setPlayhead).toHaveBeenCalledWith(2.5);
     expect(h.motionState.selectLayer).toHaveBeenCalledWith("layer-synced-scene");
-    expect(h.setDesktopPage).toHaveBeenCalledWith("motion");
+    expect(h.setDesktopPage).toHaveBeenCalledWith("edit");
   });
 
   it("focuses the editor after an MCP motion insert", async () => {

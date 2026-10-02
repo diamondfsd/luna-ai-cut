@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React from "react";
 import {
   ToolcraftDropdownMenu as DropdownMenu,
   ToolcraftIconButton as IconButton,
@@ -48,7 +48,7 @@ const RailButton: React.FC<{
 );
 
 export const EditorActionRail: React.FC = () => {
-  const { undo, redo, createMotionComposition } = useProjectStore();
+  const { undo, redo } = useProjectStore();
   const {
     openModal,
     toggleKeyframeEditor,
@@ -77,13 +77,6 @@ export const EditorActionRail: React.FC = () => {
     );
   const themeActionLabel = `Theme: ${themeLabel}. Switch to ${nextThemeLabel}`;
 
-  const handleCreateMotionScene = useCallback(async () => {
-    const composition = await createMotionComposition("Motion Scene");
-    if (composition) {
-      navigate("motion", { compositionId: composition.id });
-    }
-  }, [createMotionComposition, navigate]);
-
   return (
     <nav
       data-tour="toolbar"
@@ -103,7 +96,7 @@ export const EditorActionRail: React.FC = () => {
       <div className="my-1.5 h-px w-6 bg-border" />
 
       <RailButton
-        label="Search tools, effects, or ask AI"
+        label="搜索工具和效果"
         icon="magnifyingglass"
         onClick={() => openModal("search")}
       />
@@ -121,11 +114,6 @@ export const EditorActionRail: React.FC = () => {
       <div className="my-1.5 h-px w-6 bg-border" />
 
       <RailButton
-        label="Create Motion Scene"
-        icon="cube"
-        onClick={() => void handleCreateMotionScene()}
-      />
-      <RailButton
         label="Action history"
         icon="clock"
         onClick={() => openModal("history")}
@@ -142,12 +130,6 @@ export const EditorActionRail: React.FC = () => {
         icon="music.note"
         onClick={() => togglePanel("audioMixer")}
         active={Boolean(panels.audioMixer?.visible)}
-      />
-      <RailButton
-        label="AI Editor chat"
-        icon="bubble.left.and.text.bubble.right"
-        onClick={() => togglePanel("agentChat")}
-        active={Boolean(panels.agentChat?.visible)}
       />
       <RailButton
         label="Project JSON / Comments"

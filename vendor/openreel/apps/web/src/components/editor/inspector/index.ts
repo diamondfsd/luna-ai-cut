@@ -11,10 +11,8 @@ export { MaskSection } from "./MaskSection";
 export { SpeedRampSection } from "./SpeedRampSection";
 export { PiPSection } from "./PiPSection";
 export { NoiseReductionSection } from "./NoiseReductionSection";
-export { BackgroundRemovalSection } from "./BackgroundRemovalSection";
 export { CropSection } from "./CropSection";
 export { SpeedSection } from "./SpeedSection";
-export { StabilizationSection } from "./StabilizationSection";
 
 // Color Grading
 export { ColorGradingSection } from "./ColorGradingSection";
@@ -93,5 +91,4 @@ export { SceneNavigatorPanel } from "./SceneNavigatorPanel";
 export { ParticleEffectsSection } from "./ParticleEffectsSection";
 
 // Text Behind Subject
-export { BehindSubjectSection } from "./BehindSubjectSection";
 

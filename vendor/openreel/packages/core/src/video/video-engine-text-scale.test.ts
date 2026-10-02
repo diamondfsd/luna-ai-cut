@@ -68,4 +68,50 @@ describe("VideoEngine text output scaling", () => {
     });
     expect(ctx.drawImage).toHaveBeenCalledWith(renderedCanvas, 0, 0);
   });
+
+  it("renders persisted behind-subject text normally without browser inference", async () => {
+    vi.stubGlobal("self", { onmessage: null, postMessage: vi.fn() });
+    const { VideoEngine } = await import("./video-engine");
+    const engine = new VideoEngine() as unknown as {
+      renderTextClipWithSubjectMask(
+        ctx: OffscreenCanvasRenderingContext2D,
+        clip: TextClip,
+        time: number,
+        width: number,
+        height: number,
+        projectWidth: number,
+        projectHeight: number,
+        subject: ImageBitmap,
+        realtime: boolean,
+        streamId: string,
+      ): Promise<void>;
+      renderTextClipToCanvasCtx(): Promise<void>;
+      getSubjectMaskForFrame(): Promise<null>;
+    };
+    const render = vi.spyOn(engine, "renderTextClipToCanvasCtx").mockResolvedValue();
+    const infer = vi.spyOn(engine, "getSubjectMaskForFrame").mockResolvedValue(null);
+    const clip: TextClip = {
+      id: "legacy-title",
+      trackId: "text-track",
+      startTime: 0,
+      duration: 5,
+      text: "Preserved title",
+      behindSubject: true,
+      style: DEFAULT_TEXT_STYLE,
+      transform: DEFAULT_TEXT_TRANSFORM,
+      keyframes: [],
+      effects: [],
+    };
+    for (const realtime of [true, false]) {
+      await engine.renderTextClipWithSubjectMask(
+        {} as OffscreenCanvasRenderingContext2D,
+        clip, 0, 1920, 1080, 1920, 1080,
+        {} as ImageBitmap, realtime, "legacy-title",
+      );
+    }
+    expect(render).toHaveBeenCalledTimes(2);
+    expect(infer).not.toHaveBeenCalled();
+    expect(clip.behindSubject).toBe(true);
+  });
+
 });

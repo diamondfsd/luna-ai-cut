@@ -1,10 +1,9 @@
 import { useState, useCallback } from "react";
-import { Upload, Cloud, HardDrive, Check, AlertCircle } from "@/icons/lucide-compat";
+import { Upload, Check, AlertCircle } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftCard as Card } from "@openreel/ui";
 import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
 import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
 import { ToolcraftSelectControl as Selector } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
 import { ToolcraftTextAreaControl } from "@openreel/ui";
@@ -20,7 +19,6 @@ import {
   type SVGClip,
   type StickerClip,
 } from "@openreel/core";
-import { templateCloudService } from "../../services/template-cloud-service";
 
 interface TemplateWithGraphics extends Template {
   timeline: Template["timeline"] & {
@@ -50,7 +48,6 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
   const [category, setCategory] = useState<TemplateCategory>("custom");
   const [tags, setTags] = useState("");
   const [author, setAuthor] = useState("");
-  const [saveLocation, setSaveLocation] = useState<"local" | "cloud">("cloud");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -109,15 +106,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
         }
       }
 
-      if (saveLocation === "cloud") {
-        const result =
-          await templateCloudService.uploadTemplate(templateWithMeta);
-        if (!result.success) {
-          throw new Error(result.error || "Failed to upload to cloud");
-        }
-      } else {
-        await templateEngine.saveTemplate(templateWithMeta);
-      }
+      await templateEngine.saveTemplate(templateWithMeta);
 
       setSuccess(true);
       setTimeout(() => {
@@ -140,7 +129,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
     category,
     tags,
     author,
-    saveLocation,
+
     project,
     getTemplateEngine,
     getGraphicsEngine,
@@ -235,42 +224,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
             width="100%"
           />
 
-          <div className="space-y-2">
-            <Text type="supporting" color="secondary" weight="bold" display="block">
-              Save Location
-            </Text>
-            <div className="grid grid-cols-2 gap-2">
-              <SelectableCard
-                label="Cloud"
-                isSelected={saveLocation === "cloud"}
-                onChange={() => setSaveLocation("cloud")}
-                padding={3}
-                variant={saveLocation === "cloud" ? "green" : "default"}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Cloud size={16} aria-hidden />
-                  <Text type="label" weight="bold">Cloud</Text>
-                </div>
-              </SelectableCard>
-              <SelectableCard
-                label="Local"
-                isSelected={saveLocation === "local"}
-                onChange={() => setSaveLocation("local")}
-                padding={3}
-                variant={saveLocation === "local" ? "green" : "default"}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <HardDrive size={16} aria-hidden />
-                  <Text type="label" weight="bold">Local</Text>
-                </div>
-              </SelectableCard>
-            </div>
-            <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-              {saveLocation === "cloud"
-                ? "Saved to cloud and accessible from any device"
-                : "Saved locally in your browser storage"}
-            </Text>
-          </div>
+
         </div>
           </LayoutContent>
         }

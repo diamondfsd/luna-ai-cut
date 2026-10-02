@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/Augani/openreel-video",
+  "upstreamCommit": "2dac9a6bbfcf5c4d9883a839f981732ea6519d92",
+  "previousUpstreamCommit": "5f3c85e5fc223c86060bf4b12e1b4dec58e9b8a9",
+  "syncedAt": "2026-10-02",
+  "scope": [
+    "apps/web",
+    "packages",
+    "README.md",
+    "pnpm-lock.yaml",
+    "patches"
+  ],
+  "excluded": [
+    "apps/cloud",
+    "apps/desktop",
+    "infra",
+    "upstream deployment services"
+  ],
+  "localPolicy": "See ../../docs/openreel-upstream-sync.md; browser model inference, OpenReel cloud services, and embedded AI chat UI are removed."
+}

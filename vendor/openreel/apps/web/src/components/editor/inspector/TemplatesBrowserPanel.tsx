@@ -13,7 +13,6 @@ import {
   Plus,
   Clock,
   Layers,
-  Cloud,
   ChevronLeft,
   Settings2,
 } from "@/icons/lucide-compat";
@@ -29,7 +28,6 @@ import {
   type Template,
   type TemplateReplacements,
 } from "@openreel/core";
-import { templateCloudService } from "../../../services/template-cloud-service";
 import { SaveTemplateDialog } from "../SaveTemplateDialog";
 import { TemplateVariablesPanel } from "./TemplateVariablesPanel";
 
@@ -47,7 +45,7 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
 };
 
 interface TemplateCardProps {
-  template: TemplateSummary & { source?: "local" | "cloud"; author?: string };
+  template: TemplateSummary & { source?: "local"; author?: string };
   isSelected: boolean;
   onSelect: () => void;
   onApply: () => void;
@@ -86,12 +84,6 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             {template.id.startsWith("builtin-") && (
               <span className="px-1.5 py-0.5 text-[8px] bg-status-info/20 text-status-info rounded shrink-0">
                 Built-in
-              </span>
-            )}
-            {template.source === "cloud" && (
-              <span className="px-1.5 py-0.5 text-[8px] bg-primary/20 text-primary rounded flex items-center gap-1 shrink-0">
-                <Cloud size={8} />
-                Cloud
               </span>
             )}
           </div>
@@ -137,7 +129,7 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
     TemplateCategory | "all"
   >("all");
   const [templates, setTemplates] = useState<
-    Array<TemplateSummary & { source?: "local" | "cloud"; author?: string }>
+    Array<TemplateSummary & { source?: "local"; author?: string }>
   >([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
     null,
@@ -158,11 +150,9 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
         const templateEngine = await getTemplateEngine();
         await templateEngine.initialize();
         const localTemplates = await templateEngine.listTemplates();
-        const cloudTemplates = await templateCloudService.listTemplates();
 
         const combined = [
           ...localTemplates.map((t) => ({ ...t, source: "local" as const })),
-          ...cloudTemplates.map((t) => ({ ...t, source: "cloud" as const })),
         ];
 
         const unique = Array.from(
@@ -194,12 +184,8 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
 
       const templateEngine = await getTemplateEngine();
 
-      const selectedTemplate = templates.find((t) => t.id === templateId);
-      let template = await templateEngine.loadTemplate(templateId);
+      const template = await templateEngine.loadTemplate(templateId);
 
-      if (!template && selectedTemplate?.source === "cloud") {
-        template = await templateCloudService.getTemplate(templateId);
-      }
 
       if (template) {
         setLoadedTemplate(template);
@@ -211,7 +197,7 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
         }
       }
     },
-    [getTemplateEngine, templates],
+    [getTemplateEngine],
   );
 
   const handleBackToTemplates = useCallback(() => {
@@ -232,14 +218,8 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
       let template = loadedTemplate;
 
       if (!template) {
-        const selectedTemplate = templates.find(
-          (t) => t.id === selectedTemplateId,
-        );
         template = await templateEngine.loadTemplate(selectedTemplateId);
 
-        if (!template && selectedTemplate?.source === "cloud") {
-          template = await templateCloudService.getTemplate(selectedTemplateId);
-        }
       }
 
       if (!template) {
@@ -315,7 +295,6 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
     onTemplateApplied,
     loadedTemplate,
     placeholderValues,
-    templates,
   ]);
 
   if (isLoading) {
@@ -478,16 +457,11 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
               const templateEngine = await getTemplateEngine();
               await templateEngine.initialize();
               const localTemplates = await templateEngine.listTemplates();
-              const cloudTemplates = await templateCloudService.listTemplates();
 
               const combined = [
                 ...localTemplates.map((t) => ({
                   ...t,
                   source: "local" as const,
-                })),
-                ...cloudTemplates.map((t) => ({
-                  ...t,
-                  source: "cloud" as const,
                 })),
               ];
 

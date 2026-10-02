@@ -44,6 +44,7 @@ resources/bgm/soundfonts/*.sha256
 .onnxruntime-cache/
 .package-resources/
 docs/*
+!docs/openreel-upstream-sync.md
 !docs/ai-editor-skills-memory-architecture.md
 !docs/director-plan-ai-editing-workflow.md
 !docs/external-agent-adapters.md

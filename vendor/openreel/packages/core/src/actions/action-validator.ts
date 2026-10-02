@@ -16,7 +16,8 @@ import type {
   MarkerAction,
 } from "../types/actions";
 import type { Project, Timeline, Track, Clip } from "../types";
-import { isTransitionType } from "../types/effects";
+import { EASING_TYPES } from "../types/timeline";
+import { TRANSITION_TYPES, isTransitionType } from "../types/effects";
 import { getActionHandler } from "./registry";
 
 function isLegacyTransitionType(value: unknown): boolean {
@@ -993,6 +994,8 @@ export class ActionValidator {
     const errors: ValidationError[] = [];
     const timeline = project.timeline;
 
+    // The registered bulk-set handler owns validation for this action. This
+    // branch also narrows the legacy validator's remaining action union.
     if (action.type === "keyframe/setAll") {
       return errors;
     }
@@ -1041,6 +1044,18 @@ export class ActionValidator {
       });
     }
 
+    if (
+      action.type === "keyframe/add" &&
+      action.params.easing !== undefined &&
+      !EASING_TYPES.includes(action.params.easing)
+    ) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Easing must be a supported easing type",
+        path: "params.easing",
+      });
+    }
+
     return errors;
   }
 
@@ -1079,6 +1094,17 @@ export class ActionValidator {
             code: "INVALID_PARAMS",
             message: "Clip B ID is required and must be a string",
             path: "params.clipBId",
+          });
+        }
+
+        if (
+          typeof action.params.transitionType !== "string" ||
+          !TRANSITION_TYPES.includes(action.params.transitionType)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Transition type must be supported",
+            path: "params.transitionType",
           });
         }
 
@@ -1303,11 +1329,18 @@ export class ActionValidator {
         break;
 
       case "audio/addEffect": {
-        const effect = action.params.effect as { id?: unknown } | undefined;
-        if (!effect || typeof effect.id !== "string") {
+        const effect = action.params.effect as
+          | { id?: unknown; type?: unknown }
+          | undefined;
+        if (
+          !effect ||
+          typeof effect.id !== "string" ||
+          typeof effect.type !== "string" ||
+          !effect.type
+        ) {
           errors.push({
             code: "INVALID_PARAMS",
-            message: "A valid effect object with an id is required",
+            message: "A valid effect object with an id and type is required",
             path: "params.effect",
           });
         }

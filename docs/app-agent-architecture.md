@@ -6,6 +6,7 @@
 
 本文件说明整体设计；实际修改时先读所属目录的 `AGENTS.md` 和索引。分层约束以目录规范为维护入口，不只保留在设计文档中。
 
+- [OpenReel 上游同步与已移除的模型、云服务、聊天页面](openreel-upstream-sync.md)
 - [本机服务与工具注册](../electron/mcp/README.md)
 - [应用级记忆与个人空间设计](app-memory-architecture.md) / [记忆目录](../electron/features/memory/README.md) / [个人空间目录](../electron/features/agent-space/README.md)
 - [领域服务扩展](../electron/features/AGENTS.md)，现有领域：[导演计划](../electron/features/director-lab/AGENTS.md)、[音乐](../electron/features/music/AGENTS.md)

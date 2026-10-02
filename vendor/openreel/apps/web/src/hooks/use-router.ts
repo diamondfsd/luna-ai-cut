@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { shareBaseOrigin } from "../services/share-origin";
+import { MOTION_CREATOR_ENABLED } from "../config/features";
 
 export type AppRoute =
   | "welcome"
@@ -59,6 +60,10 @@ function parseHash(hash: string): RouterState {
     params.shareId = pathParts[1];
   }
 
+  if (route === "share" || (route === "motion" && !MOTION_CREATOR_ENABLED)) {
+    route = "editor";
+  }
+
   return {
     route: validRoutes.includes(route) ? route : "welcome",
     params,
@@ -66,6 +71,10 @@ function parseHash(hash: string): RouterState {
 }
 
 function buildHash(route: AppRoute, params?: RouteParams): string {
+  if (route === "share" || (route === "motion" && !MOTION_CREATOR_ENABLED)) {
+    route = "editor";
+    params = undefined;
+  }
   let hash = `#/${route}`;
 
   if (params && Object.keys(params).length > 0) {

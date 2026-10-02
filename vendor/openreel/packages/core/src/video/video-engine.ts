@@ -74,6 +74,7 @@ import { getParticleEngine } from "../effects/particle-engine";
 import {
   createMotionAwareOcclusionMask,
   getPersonSegmentationEngine,
+  PERSON_SEGMENTATION_AVAILABLE,
   type SegmentationResult,
 } from "../ai/person-segmentation-engine";
 import {
@@ -706,7 +707,7 @@ export class VideoEngine {
 
     let subjectFrame: ImageBitmap | null = null;
     const activeTextNeedsSubject = activeTextClips.some(
-      (clip) => clip.behindSubject,
+      (clip) => PERSON_SEGMENTATION_AVAILABLE && clip.behindSubject,
     );
     const subjectStreamId = `video-engine:text-behind-subject:${allRenderableTracks
       .flatMap(({ track }) =>
@@ -1722,7 +1723,7 @@ export class VideoEngine {
     streamId: string,
   ): Promise<void> {
     let subjectMask: SegmentationResult | null = null;
-    if (textClip.behindSubject && subjectFrame) {
+    if (PERSON_SEGMENTATION_AVAILABLE && textClip.behindSubject && subjectFrame) {
       try {
         subjectMask = await this.getSubjectMaskForFrame(
           subjectFrame,

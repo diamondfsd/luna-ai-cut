@@ -9,7 +9,6 @@ import {
   type ScriptableTemplate,
   type Clip,
 } from "@openreel/core";
-import { templateCloudService } from "../../services/template-cloud-service";
 import { CategoryTabs } from "./CategoryTabs";
 import { TemplateCard } from "./TemplateCard";
 import { TemplatePreviewModal } from "./TemplatePreviewModal";
@@ -45,8 +44,6 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         const templateEngine = await getTemplateEngine();
         await templateEngine.initialize();
         const builtinTemplates = templateEngine.getBuiltinTemplates();
-        const cloudTemplates =
-          await templateCloudService.listScriptableTemplates();
 
         const allTemplates = [
           ...(builtinTemplates.map((t) => {
@@ -87,7 +84,6 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
               socialCategory: mapCategoryToSocial(t.category),
             };
           }) as ScriptableTemplate[]),
-          ...cloudTemplates,
         ];
 
         const unique = Array.from(

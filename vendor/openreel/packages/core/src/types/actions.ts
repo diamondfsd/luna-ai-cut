@@ -307,6 +307,7 @@ export type KeyframeAction =
         property: string;
         time: number;
         value: unknown;
+        easing?: EasingType;
       };
     }
   | {

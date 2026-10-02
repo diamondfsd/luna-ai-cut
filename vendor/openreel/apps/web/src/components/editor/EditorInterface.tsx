@@ -1,4 +1,3 @@
-import { EditorDockTabs, type RightDockTab } from './EditorDockTabs';
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   ToolcraftText as Text,
@@ -40,10 +39,6 @@ import {
   initializeTransitionBridge,
   disposeTransitionBridge,
 } from "../../bridges/transition-bridge";
-
-const ChatPanel = React.lazy(() =>
-  import("./chat/ChatPanel").then((module) => ({ default: module.ChatPanel })),
-);
 
 // Timeline area (bottom band) is sized as a vh fraction so the
 // top workspace (media | stage | inspector) gets the rest. The grid
@@ -323,16 +318,6 @@ export const EditorInterface: React.FC = () => {
   const [rightDockWidth, setRightDockWidth] = useState(DEFAULT_RIGHT_DOCK_W);
   const [timelineVh, setTimelineVh] = useState(DEFAULT_TIMELINE_VH);
 
-  const localChatEnabled = !window.openreel?.lunaAgent;
-  const chatVisible = localChatEnabled && (panels.agentChat?.visible ?? false);
-  const [rightDockTab, setRightDockTab] = useState<RightDockTab>(
-    chatVisible ? "chat" : "inspector",
-  );
-
-  useEffect(() => {
-    setRightDockTab(chatVisible ? "chat" : "inspector");
-  }, [chatVisible]);
-
   const mediaRef = useRef(mediaWidth);
   const rightDockRef = useRef(rightDockWidth);
   useEffect(() => {
@@ -406,7 +391,6 @@ export const EditorInterface: React.FC = () => {
     const tlVh = timelineMaximized ? COMPACT_TIMELINE_VH : timelineVh;
     r.style.setProperty("--media-w", `${mediaWidth}px`);
     r.style.setProperty("--inspector-w", `${rightDockWidth}px`);
-    r.style.setProperty("--chat-w", `${rightDockWidth}px`);
     r.style.setProperty("--tl-height", `${tlVh}vh`);
   }, [mediaWidth, rightDockWidth, timelineVh, timelineMaximized]);
 
@@ -490,30 +474,11 @@ export const EditorInterface: React.FC = () => {
           className="bg-bg-1 min-w-0 min-h-0 overflow-hidden rounded-xl border border-border shadow-sm flex flex-col"
           style={{ gridArea: "inspector" }}
         >
-          <EditorDockTabs value={rightDockTab} chatEnabled={localChatEnabled} onSelect={next => {
-            if (next === "chat") setPanelVisible("agentChat", true);
-            setRightDockTab(next);
-          }} />
+          <div className="h-9 shrink-0 border-b border-border bg-bg-1 px-3 py-2 text-[12px] text-fg-3">素材详情</div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            {rightDockTab === "chat" && chatVisible ? (
-              <PanelErrorBoundary name="AI Editor">
-                <React.Suspense
-                  fallback={
-                    <div className="grid h-full place-items-center text-xs text-fg-muted">
-                      Loading AI Editor…
-                    </div>
-                  }
-                >
-                  <ChatPanel
-                    onClose={() => setPanelVisible("agentChat", false)}
-                  />
-                </React.Suspense>
-              </PanelErrorBoundary>
-            ) : (
-              <PanelErrorBoundary name="Inspector">
-                <InspectorPanel />
-              </PanelErrorBoundary>
-            )}
+            <PanelErrorBoundary name="Inspector">
+              <InspectorPanel />
+            </PanelErrorBoundary>
           </div>
         </div>
 

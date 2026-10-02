@@ -7,8 +7,6 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist --project-name=openreel",
-    "deploy:preview": "wrangler pages deploy dist --project-name=openreel --branch=preview",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "eslint src",
@@ -19,7 +17,6 @@
     "@astryxdesign/core": "^0.1.1",
     "@astryxdesign/theme-neutral": "^0.1.1",
     "@gsap/react": "^2.1.2",
-    "@mediapipe/tasks-vision": "^0.10.35",
     "@openreel/agent": "workspace:*",
     "@openreel/core": "workspace:*",
     "@openreel/ui": "workspace:*",
@@ -30,7 +27,6 @@
     "gsap": "^3.14.2",
     "idb-keyval": "^6.2.2",
     "lucide-react": "^0.555.0",
-    "posthog-js": "^1.335.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
@@ -61,7 +57,6 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.4.5",
     "vite": "^5.3.1",
-    "vitest": "^1.6.0",
-    "wrangler": "^3.114.17"
+    "vitest": "^1.6.0"
   }
 }

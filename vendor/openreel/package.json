@@ -9,8 +9,6 @@
     "build:wasm": "pnpm --filter @openreel/core build:wasm",
     "build": "pnpm build:wasm && pnpm --filter @openreel/web build",
     "preview": "pnpm --filter @openreel/web preview",
-    "deploy": "pnpm build && pnpm --filter @openreel/web deploy",
-    "deploy:preview": "pnpm build && pnpm --filter @openreel/web deploy:preview",
     "test": "pnpm -r test:run",
     "test:watch": "pnpm -r test",
     "lint": "pnpm -r lint",

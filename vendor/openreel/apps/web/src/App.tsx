@@ -6,7 +6,6 @@ import { MobileBlocker } from "./components/MobileBlocker";
 import { WelcomeScreen } from "./components/welcome";
 import { RecoveryDialog } from "./components/welcome/RecoveryDialog";
 import { ProjectListScreen } from "./components/projects/ProjectListScreen";
-import { SharePage } from "./pages/SharePage";
 import { useUIStore } from "./stores/ui-store";
 import { useProjectStore } from "./stores/project-store";
 import { useRouter } from "./hooks/use-router";
@@ -23,12 +22,6 @@ const EditorInterface = lazy(() =>
     default: m.EditorInterface,
   }))
 );
-const MotionCreatorApp = lazy(() =>
-  import("./motion/MotionCreatorApp").then((module) => ({
-    default: module.MotionCreatorApp,
-  }))
-);
-
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
   <div className="h-screen w-screen bg-background flex flex-col items-center justify-center">
     <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
@@ -73,10 +66,6 @@ function App() {
   const hasHandledInitialRoute = useRef(false);
   const [lunaProjectReady, setLunaProjectReady] = useState(false);
   const [lunaProjectError, setLunaProjectError] = useState(false);
-  const isMotionHost =
-    typeof window !== "undefined" &&
-    window.location.hostname.startsWith("motion.");
-  const isMotionSurface = isMotionHost || route === "motion";
   const isLunaEditor = route === "luna-editor";
 
   useEffect(() => {
@@ -84,14 +73,6 @@ function App() {
     // local job runner here for MCP export tools.
     getLiveEditorHost().setJobRunner(createExportJobRunner());
     return installMcpListener();
-  }, []);
-
-  useEffect(() => {
-    const agent = window.openreel?.lunaAgent;
-    if (!agent) return;
-    return agent.onActivate(() => {
-      useUIStore.getState().setPanelVisible("agentChat", true);
-    });
   }, []);
 
   useEffect(() => {
@@ -133,9 +114,7 @@ function App() {
   useEffect(() => {
     if (hasHandledInitialRoute.current) return;
 
-    if (isMotionSurface) {
-      hasHandledInitialRoute.current = true;
-    } else if (route === "luna-editor") {
+    if (route === "luna-editor") {
       hasHandledInitialRoute.current = true;
     } else if (route === "new") {
       hasHandledInitialRoute.current = true;
@@ -184,7 +163,6 @@ function App() {
     }
   }, [
     route,
-    isMotionSurface,
     params,
     parsedDimensions,
     fps,
@@ -220,18 +198,11 @@ function App() {
       : route === "recent"
         ? "recent"
         : undefined;
-  const isSharePage = route === "share" && params.shareId;
 
   return (
     <div className="h-screen w-screen bg-background text-text-primary overflow-hidden">
       <MobileBlocker />
-      {isMotionSurface ? (
-        <Suspense fallback={<LoadingSpinner message="正在加载动效编辑器..." />}>
-          <MotionCreatorApp />
-        </Suspense>
-      ) : isSharePage ? (
-        <SharePage shareId={params.shareId!} />
-      ) : isLunaEditor ? (
+      {isLunaEditor ? (
         lunaProjectError ? (
           <LoadingSpinner message="项目打开失败" />
         ) : lunaProjectReady ? (

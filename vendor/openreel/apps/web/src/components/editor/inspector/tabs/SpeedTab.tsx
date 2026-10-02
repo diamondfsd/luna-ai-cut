@@ -1,6 +1,6 @@
 import React from "react";
 import type { Clip } from "@openreel/core";
-import { SpeedSection, StabilizationSection, SpeedRampSection } from "../";
+import { SpeedSection, SpeedRampSection } from "../";
 import { InspectorSection } from "../shell/InspectorSection";
 
 interface SpeedTabClip {
@@ -34,20 +34,6 @@ export const SpeedTab: React.FC<SpeedTabProps> = ({
               <SpeedSection clip={selectedClip as Clip} />
             </InspectorSection>
           </>
-        )}
-      {showVideoControls &&
-        selectedClip &&
-        !selectedClip.mediaId.startsWith("text-") &&
-        !selectedClip.mediaId.startsWith("shape-") &&
-        !selectedClip.mediaId.startsWith("svg-") &&
-        !selectedClip.mediaId.startsWith("sticker-") && (
-          <InspectorSection
-            title="稳定"
-            sectionId="stabilization"
-            defaultOpen={false}
-          >
-            <StabilizationSection clip={selectedClip as Clip} />
-          </InspectorSection>
         )}
       {showVideoControls &&
         selectedClip &&

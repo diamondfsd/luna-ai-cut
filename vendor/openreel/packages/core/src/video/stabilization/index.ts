@@ -15,7 +15,6 @@ export {
   disposeStabilizationEngine,
   getStabilizedTransform,
 } from "./stabilization-engine";
-export type { VidstabProgress } from "./vidstab-engine";
 export {
   VidstabEngine,
   getVidstabEngine,

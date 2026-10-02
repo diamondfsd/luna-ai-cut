@@ -1,13 +1,4 @@
-/**
- * API proxy utility for third-party service calls.
- *
- * In development: calls third-party APIs directly (for convenience).
- * In production: built-in services route through Cloudflare Pages Functions.
- * User-defined compatible endpoints are called directly to avoid
- * turning the hosted proxy into an arbitrary-destination relay.
- */
-
-const isDev = import.meta.env.DEV;
+/** User-configured provider access; no OpenReel hosted relay. */
 
 const DIRECT_CONFIG = {
   elevenlabs: {
@@ -77,8 +68,7 @@ export function normalizeCompatibleBaseUrl(input: string): string {
 export const normalizeOpenAICompatibleBaseUrl = normalizeCompatibleBaseUrl;
 
 /**
- * Fetch from a third-party API, automatically routing through the proxy
- * in production builds.
+ * Fetch using the native host or the user's provider credentials directly.
  *
  * @param service - Target built-in service or a compatible endpoint
  * @param path - API path including leading slash, e.g. "/models" or "/text-to-speech/voiceId"
@@ -151,25 +141,9 @@ export async function apiFetch(
     });
   }
 
-  if (isDev) {
-    const config = DIRECT_CONFIG[service];
-    const url = `${config.baseUrl}${path}`;
-    return fetch(url, {
-      ...requestOptions,
-      headers: {
-        ...config.authHeaders(apiKey),
-        ...extraHeaders,
-      },
-    });
-  }
-
-  // Production: route through same-origin proxy
-  const url = `/api/proxy/${service}${path}`;
-  return fetch(url, {
+  const config = DIRECT_CONFIG[service];
+  return fetch(`${config.baseUrl}${path}`, {
     ...requestOptions,
-    headers: {
-      "x-proxy-api-key": apiKey,
-      ...extraHeaders,
-    },
+    headers: { ...config.authHeaders(apiKey), ...extraHeaders },
   });
 }

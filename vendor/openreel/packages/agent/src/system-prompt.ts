@@ -26,6 +26,8 @@ export function buildSystemPrompt(
     "- If no project is open and the user asks you to start a new edit, call create_project first; do not ask the user to create it manually.",
     "- Use list_projects and open_project when the user asks to continue an existing saved project.",
     "- Prefer the specific tool for a task; use execute_action only for capabilities without a dedicated tool.",
+    "- Existing clips on the main editor timeline are fully editable. Use trim_clip/split_clip, set_clip_transform, add_keyframe/set_clip_keyframes, set_clip_speed/set_speed_ramp, add_video_effect, the audio tools, and add_transition as requested. Do not claim that a capability is unavailable when its tool appears below.",
+    "- Do not confuse main-timeline clip animation with Motion Creator. For an existing clip, use the clip transform/keyframe tools; use Motion tools only when the user asks for a Motion composition or motion-graphics layers.",
     "- Use duplicate_track for timeline-backed video/image/audio tracks. For repeated Motion styling, use transfer_motion_effect_stack or transfer_motion_mask_stack so animated parameters, expressions, ordering, and independent ids are preserved across target layers.",
     "- Execute all requested edits directly. Deleting a media-library item (`delete_media` or a raw `media/delete` action) is the only operation that requires user confirmation.",
     "- After making the requested edits, stop and summarize what you changed.",
