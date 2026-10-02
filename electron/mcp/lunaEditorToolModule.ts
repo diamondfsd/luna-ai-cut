@@ -102,6 +102,7 @@ export async function executeEditorTool(name: string, args: Record<string, unkno
       }
   }
   options.agentSession?.toolStarted(callId, name, args)
+  const execution = options.agentSession?.activeContext()
   const startedAt = Date.now()
   const bridgeResponse = await requestRendererWithCancellation(options, {
       callId,
@@ -109,6 +110,11 @@ export async function executeEditorTool(name: string, args: Record<string, unkno
       name,
       args,
   })
+  const currentExecution = options.agentSession?.snapshot().session
+  if (execution && (currentExecution?.sessionId !== execution.sessionId || currentExecution?.revision !== execution.revision)) {
+    const stale = { ok: false, error: { code: 'REQUEST_UPDATED', message: '请读取最新任务要求' } }
+    return { content: [{ type: 'text', text: textForResult(stale) }], isError: true, structuredContent: stale }
+  }
   const durationMs = Date.now() - startedAt
   if (!bridgeResponse.ok) {
       const failure = addAgentContext({

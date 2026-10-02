@@ -256,6 +256,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     importPlanText: (text) => ipcRenderer.invoke('director-lab:import-plan-text', text),
     saveLocalPlan: (plan, expectedSignature) => ipcRenderer.invoke('director-lab:save-local-plan', plan, expectedSignature),
     importMaterials: (plan, shotId) => ipcRenderer.invoke('director-lab:import-materials', plan, shotId),
+    deleteLocalPlan: (planId, signature) => ipcRenderer.invoke('director-lab:delete-local-plan', planId, signature),
     deleteLocalMaterial: (planId, takeId) => ipcRenderer.invoke('director-lab:delete-local-material', planId, takeId),
     syncMaterials: (endpoint, planId, operationId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId, operationId),
     onMaterialSyncProgress: (callback) => {

@@ -22,3 +22,5 @@
 
 相邻目录：[领域规范](../features/AGENTS.md)、[外部 Agent 与历史](../features/external-agents/README.md)、[全局面板](../../src/components/agent-chat/README.md)、[IPC 接入](../ipc/AGENTS.md)。
 完整分层与现有限制见 [架构文档](../../docs/app-agent-architecture.md)。
+
+任务可持续续聊：`agentSessionArchive.ts` 维护任务查找与延续校验；`update_task_request` 用原编号开启新执行版本。完成、失败和停止不代表任务永久结束。持久化读取由 external-agents 注入。

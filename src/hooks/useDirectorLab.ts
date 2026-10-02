@@ -504,6 +504,12 @@ export function useDirectorLab(active: boolean) {
         : '已同步'
 
     return {
+    handlePlanDeleted: (deleted: DirectorLanPlanSummary) => {
+      setPlans(current => current.flatMap(plan => plan.id !== deleted.id ? [plan] : plan.remote_plan ? [plan.remote_plan] : []))
+      setActivePlanId(current => current === deleted.id ? null : current)
+      setPreviewTakeId(null)
+      setEditingPlanTitle(false)
+    },
     connectedEndpoint,
     schema,
     importOpen,

@@ -91,7 +91,7 @@ export type AgentEventInput =
     }
 
 export const ACTIVE_STATUSES = new Set<AiEditorAgentSessionStatus>(['queued', 'running'])
-export const TERMINAL_STATUSES = new Set<AiEditorAgentSessionStatus>(['completed', 'failed', 'cancelled'])
+export const INACTIVE_EXECUTION_STATUSES = new Set<AiEditorAgentSessionStatus>(['completed', 'failed', 'cancelled'])
 export const MAX_EVENTS = 200
 export const DEFAULT_WAIT_SECONDS = 300
 export const MAX_WAIT_SECONDS = 900

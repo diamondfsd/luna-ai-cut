@@ -58,3 +58,26 @@ export async function reconcileDirectorPlanDeletions(
     return removed
   })
 }
+
+/** Resolve the directory from trusted storage, never from renderer input. */
+export async function deleteLocalDirectorPlan(
+  rootDirectory: string,
+  planId: string,
+  expectedSignature: string,
+  listPlans: () => Promise<import('../../../src/shared/types/directorLab.ts').DirectorLanPlanSummary[]>,
+  trash: (directory: string) => Promise<void>,
+): Promise<void> {
+  if (typeof planId !== 'string' || !planId.trim()
+    || typeof expectedSignature !== 'string' || !expectedSignature.trim()) throw new Error('计划参数无效')
+  await serializePlanWrite(async () => {
+    const plan = (await listPlans()).find(item => item.id === planId)
+    if (!plan?.local_directory) throw new Error('本地计划不存在')
+    if (plan.local_content_signature !== expectedSignature) throw new Error('计划已更新，请重新确认删除')
+    const root = await fs.realpath(rootDirectory)
+    const directory = await fs.realpath(plan.local_directory)
+    const relative = path.relative(root, directory)
+    if (!relative || path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)
+      || relative.includes(path.sep)) throw new Error('计划目录无效')
+    await trash(directory)
+  })
+}

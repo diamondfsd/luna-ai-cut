@@ -3,17 +3,18 @@ import { ArrowLeft, Box, FolderSync, FolderDown, FolderOpen, ListFilter, Pencil,
 import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip } from '../ui'
 import { DirectorMediaPreviewDialog } from './DirectorMediaPreviewDialog'
+import { DirectorPlanDeleteControl } from './DirectorPlanDeleteControl'
 import { DirectorLabPlanList } from './DirectorLabPlanList'
 import { DirectorLabShotList } from './DirectorLabShotList'
 import { DirectorPlanConflictDialog } from './DirectorPlanConflictDialog'
 import { DirectorPlanImportDialog } from './DirectorPlanImportDialog'
 import { DirectorPlanMainContent } from './DirectorPlanMainContent'
 import { useDirectorLab } from '../hooks/useDirectorLab'
+import '../styles/lab.css'
 import './DirectorLabView.css'
 
 interface DirectorLabViewProps {
   active: boolean
-  onBack: () => void
 }
 
 function formatPlanCreatedAt(value: string | null | undefined): string {
@@ -31,8 +32,9 @@ function formatPlanCreatedAt(value: string | null | undefined): string {
 }
 
 
-export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
+export function DirectorLabView({ active }: DirectorLabViewProps) {
   const {
+    handlePlanDeleted,
     connectedEndpoint,
     schema,
     importOpen,
@@ -94,17 +96,13 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     <div className="lab-page lab-director-page">
       <header className="lab-director-page-header">
         <div className="lab-title-block">
-          <Tooltip content={activePlan ? '返回计划列表' : '返回实验室'}>
+          {activePlan && <Tooltip content="返回计划列表">
             <IconButton
               variant="ghost"
               size="compact"
               icon={<ArrowLeft size={15} />}
-              aria-label={activePlan ? '返回计划列表' : '返回实验室'}
+              aria-label="返回计划列表"
               onClick={() => {
-                if (!activePlan) {
-                  onBack()
-                  return
-                }
                 setActivePlanId(null)
                 setEditingPlanTitle(false)
                 setPreviewTakeId(null)
@@ -112,8 +110,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
                 setShotSort('order')
               }}
             />
-          </Tooltip>
-          <h1>导演计划</h1>
+          </Tooltip>}
+          <h1>AI导拍</h1>
         </div>
         <div className="lab-director-sync-actions">
           {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
@@ -160,6 +158,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
       {!activePlan && plans.length > 0 && (
         <DirectorLabPlanList
           plans={plans}
+          onDeleted={handlePlanDeleted}
+          deletingDisabled={downloading != null || syncStatus === 'syncing'}
           onSelect={(planId) => {
             setActivePlanId(planId)
             setShotQuery('')
@@ -240,6 +240,8 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
               </div>
             </div>
             <div className="lab-director-actions">
+              <DirectorPlanDeleteControl plan={activePlan} onDeleted={handlePlanDeleted}
+                disabled={downloading != null || savingPlanTitle || syncStatus === 'syncing'} />
               {activePlan.local_directory && (
                 <IconButton
                   variant="outline"

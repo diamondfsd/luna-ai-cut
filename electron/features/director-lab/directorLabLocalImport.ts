@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron'
+import { dialog, ipcMain, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
@@ -16,7 +16,7 @@ import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
 import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
 import { mediaFileName, mediaFolder, serializePlanWrite, writeDirectorPlanFilesUnlocked } from './directorLabPlanStorage'
-import { reconcileDirectorPlanDeletions } from './directorLabPlanDeletion'
+import { deleteLocalDirectorPlan, reconcileDirectorPlanDeletions } from './directorLabPlanDeletion'
 import { createMaterialProgress } from './directorMaterialProgress'
 import { createDirectorPlanWriter } from './directorLabPlanWriter'
 
@@ -34,6 +34,10 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
       const next = await deleteDirectorLocalMaterial(plan, takeId, next => writeDirectorPlanFilesUnlocked(plan.local_directory!, next))
       return { ...next, local_content_signature: directorPlanContentSignature(next) }
     })
+  })
+  ipcMain.handle('director-lab:delete-local-plan', async (_event, planId: string, signature: string) => {
+    const root = getDirectorPlanDir(await getSettings())
+    await deleteLocalDirectorPlan(root, planId, signature, listPlans, directory => shell.trashItem(directory))
   })
   async function importText(text: string, title = '导演计划'): Promise<DirectorLanPlanSummary> {
     if (typeof text !== 'string' || !text.trim()) throw new Error('请输入计划文本')
