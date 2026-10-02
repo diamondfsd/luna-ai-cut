@@ -54,16 +54,6 @@
   visibility: visible;
 }
 
-.live-preview-watermark {
-  position: absolute;
-  z-index: 2;
-  display: block;
-  height: auto;
-  max-width: 96%;
-  pointer-events: none;
-  object-fit: contain;
-}
-
 .live-preview-overlay {
   position: absolute;
   inset: 0;

@@ -16,7 +16,8 @@ import { LiveCameraControlPanel } from './LiveCameraControlPanel'
 import { LiveConnectionGuides } from './LiveConnectionGuides'
 import { MobileAppDownloadButton } from './MobileAppDownload'
 import { AndroidUsbConnectionMode } from './AndroidUsbConnectionMode'
-import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
+import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning } from './htmlPreviewGeometry'
+import { LiveWatermarkOverlay } from './LiveWatermarkOverlay'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
 import type { LivePreviewWindowSettings, LiveStreamStatus, NormalizedVideoPoint } from '../shared/types'
@@ -77,7 +78,7 @@ export function LiveControlPanel({
     setLutThumbnailFrame(thumbnail)
   }
   const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettingsType>({
-    enabled: true,
+    enabled: false,
     style: 'luna_ultra_cn',
     position: 'bottom-center',
     sourceKind: 'builtin',
@@ -255,12 +256,13 @@ export function LiveControlPanel({
           )}
 
           {watermarkPositioning && watermarkSrc && (
-            <img
-              className="live-preview-watermark"
+            <LiveWatermarkOverlay
               src={watermarkSrc}
-              alt=""
-              draggable={false}
-              style={{ ...watermarkPositionStyle(watermarkPositioning), opacity: watermarkLayer?.opacity ?? 1 }}
+              positioning={watermarkPositioning}
+              opacity={watermarkLayer?.opacity ?? 1}
+              settings={watermarkSettings}
+              editable={activeSettingsPanel === 'watermark'}
+              onChange={setWatermarkSettings}
             />
           )}
 
@@ -358,11 +360,9 @@ export function LiveControlPanel({
             >
               <WatermarkSettings
                 settings={watermarkSettings}
-                onChange={(settings) => setWatermarkSettings({ ...settings, sourceKind: 'builtin', style: 'luna_ultra_cn' })}
+                onChange={setWatermarkSettings}
                 mediaKind="video"
                 showToggle={false}
-                showSourceSelector={false}
-                showStyleSelector={false}
                 deviceMetadata={{ sourceDeviceId: 'luna-ultra', watermarkProfileId: 'luna-ultra' }}
               />
             </Accordion>
