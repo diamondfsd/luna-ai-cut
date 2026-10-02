@@ -79,6 +79,8 @@ luna-render-core/luna-smb2-worker
 luna-render-core/luna-smb2-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
+luna-render-core/DirectML.dll
+luna-render-core/onnxruntime*.dll
 luna-render-core/av*.dll
 luna-render-core/sw*.dll
 luna-render-core/*.dll.tmp

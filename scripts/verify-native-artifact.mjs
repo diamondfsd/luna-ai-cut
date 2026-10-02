@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import process from 'node:process'
 
 import { verifyHarmonyHdcResources } from './harmony-hdc-resources.mjs'
 
@@ -17,6 +18,7 @@ const windowsNativeFiles = [
   'luna-asr-worker.exe',
   'dxcompiler.dll',
   'dxil.dll',
+  'DirectML.dll',
 ]
 
 function parsePeHeader(buffer, filePath) {

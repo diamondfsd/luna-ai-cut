@@ -52,6 +52,8 @@
     "test:e2e": "pnpm run build:app && playwright test",
     "test:model-loader": "node scripts/test-model-loader.mjs",
     "test:model-resources": "node scripts/test-model-resource-release.mjs",
+    "test:onnx:macos": "node scripts/test-onnx-platform.mjs --platform darwin",
+    "test:onnx:windows": "node scripts/test-onnx-platform.mjs --platform win32",
     "test:downloads": "node scripts/test-resumable-download.mjs && node scripts/test-media-download.mjs",
     "test:download-organization": "node --experimental-strip-types scripts/test-download-organization.mjs",
     "test:director-plan-storage": "node --experimental-strip-types scripts/test-director-lab-plan-storage.mjs",

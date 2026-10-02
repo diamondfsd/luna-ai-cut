@@ -1,4 +1,8 @@
-use ort::{session::Session, value::Tensor};
+#[path = "../onnx_session.rs"]
+mod onnx_session;
+
+use crate::onnx_session::Session;
+use ort::value::Tensor;
 use std::{env, fs, process::ExitCode, time::Instant};
 
 const INPUT_SIZE: usize = 256;
@@ -15,13 +19,12 @@ impl NeuralPresetSession {
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(2);
-        let session = Session::builder()
-            .map_err(|error| format!("初始化 AI 追色模型失败: {error}"))?
-            .with_intra_threads(threads)
-            .map_err(|error| format!("配置 AI 追色模型失败: {error}"))?
-            .commit_from_file(model_path)
+        let session = Session::load(model_path, threads)
             .map_err(|error| format!("加载 AI 追色模型失败: {error}"))?;
-        Ok(Self { session, model_load_ms: started.elapsed().as_millis() })
+        Ok(Self {
+            session,
+            model_load_ms: started.elapsed().as_millis(),
+        })
     }
 
     fn image_tensor(raw: &[u8]) -> Result<Tensor<f32>, String> {

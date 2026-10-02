@@ -1,0 +1,55 @@
+[package]
+name = "luna-onnx-provider-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["dynamic-runtime"]
+dynamic-runtime = ["ort/load-dynamic"]
+linked-runtime = ["ort/ndarray", "ort/download-binaries", "ort/copy-dylibs", "ort/tls-native"]
+
+[dependencies]
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "api-23"] }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+rustfft = "6.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "=2.0.0-rc.12", features = ["coreml"], default-features = false }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "=2.0.0-rc.12", features = ["directml"], default-features = false }
+
+[[bin]]
+name = "luna-onnx-provider-probe"
+path = "src/main.rs"
+required-features = ["dynamic-runtime"]
+
+[[bin]]
+name = "check-sam-segmentation-worker"
+path = "../../luna-render-core/src/bin/sam_segmentation_worker.rs"
+
+[[bin]]
+name = "check-semantic-segmentation-worker"
+path = "../../luna-render-core/src/bin/semantic_segmentation_worker.rs"
+
+[[bin]]
+name = "check-specialized-segmentation-worker"
+path = "../../luna-render-core/src/bin/specialized_segmentation_worker.rs"
+
+[[bin]]
+name = "check-luna-inpaint-worker"
+path = "../../luna-render-core/src/bin/luna_inpaint_worker.rs"
+
+[[bin]]
+name = "check-luna-asr-worker"
+path = "../../luna-render-core/src/bin/luna_asr_worker.rs"
+
+[[bin]]
+name = "check-luna-punctuation-worker"
+path = "../../luna-render-core/src/bin/luna_punctuation_worker.rs"
+
+[[bin]]
+name = "check-neural-preset-worker"
+path = "../../luna-render-core/src/bin/neural_preset_worker.rs"

@@ -1,3 +1,6 @@
+#[path = "../onnx_session.rs"]
+mod onnx_session;
+
 use std::env;
 use std::fs;
 use std::process::ExitCode;
