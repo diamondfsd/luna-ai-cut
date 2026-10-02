@@ -202,8 +202,8 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const referenceAssetRef = useRef(media.referenceAsset)
   referenceAssetRef.current = media.referenceAsset
   const activeProjectAsset = media.currentProject?.assets[media.activeIndex]
-  // 对比只切换预览图层参数，保持同一个源媒体，避免重新创建视频元素和预览画布。
-  const activeSourcePath = removalSourcePath(activeProjectAsset) ?? media.activeMedia?.path
+  // 消除结果是独立图片；对比时必须回到源图片，不能只清除调色参数。
+  const activeSourcePath = (edit.compareOriginal ? activeProjectAsset?.path : removalSourcePath(activeProjectAsset)) ?? media.activeMedia?.path
 
   const enterImmersive = useCallback(() => {
     setImmersive(true)
