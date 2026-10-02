@@ -27,7 +27,7 @@ if (runtime && !existsSync(runtime)) throw new Error('ONNX Runtime library does 
 const modelRoot = resolve(option('--models', platform === 'darwin'
   ? join(homedir(), 'Library', 'Application Support', 'luna-ai-cut', 'models')
   : join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'luna-ai-cut', 'models')))
-const output = resolve(option('--output', join(root, 'test-results', 'onnx-platform', `${platform}-${Date.now()}`)))
+const output = resolve(option('--output', join(root, 'test-results', 'onnx-cpu', `${platform}-${Date.now()}`)))
 const only = option('--model', '')
 
 async function definitions(file) {
@@ -72,7 +72,7 @@ if (problems.length) throw new Error(`${problems.join('\n')}\nDownload these mod
 await mkdir(output, { recursive: true })
 const catalogPath = join(output,'catalog.json')
 await writeFile(catalogPath, JSON.stringify(selected,null,2))
-const name = platform === 'darwin' ? 'macos_coreml_all_models_and_cpu_fallback' : 'windows_directml_all_models_and_cpu_fallback'
+const name = 'all_models_cpu'
 console.log(`Testing ${selected.length}/${catalog.length} ONNX files; report: ${join(output,'report.json')}`)
 // Match cargo and rustc from the same rustup toolchain, including Homebrew hosts.
 const toolchainCargo = spawnSync('rustup',['which','cargo'],{ encoding:'utf8' })
@@ -88,9 +88,9 @@ if (!runtime && platform === 'darwin' && process.arch === 'x64') {
   environment.ORT_PREFER_DYNAMIC_LINK = '1'
 }
 const cargoArgs = [
-  'test','--release','--manifest-path',join(root,'scripts','onnx-provider-probe','Cargo.toml'),
+  'test','--release','--manifest-path',join(root,'scripts','onnx-cpu-tests','Cargo.toml'),
   ...(runtime ? [] : ['--no-default-features','--features','linked-runtime']),
-  '--test','platform_models',
+  '--test','cpu_models',
 ]
 // Build only the test harness first. Stage runtime dependencies before it runs,
 // including on Windows machines without Developer Mode (ORT copy fallback).
@@ -100,11 +100,11 @@ const prepared = spawnSync(cargo,[...cargoArgs,'--no-run','--message-format=json
 if (prepared.status !== 0) process.exit(prepared.status ?? 1)
 const artifacts = prepared.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line))
 const executable = artifacts.find(item => item.reason === 'compiler-artifact'
-  && item.target?.name === 'platform_models' && item.executable)?.executable
+  && item.target?.name === 'cpu_models' && item.executable)?.executable
 if (!executable) throw new Error('Platform test executable was not produced')
 const cargoTarget = environment.CARGO_TARGET_DIR
   ? resolve(root,environment.CARGO_TARGET_DIR)
-  : join(root,'scripts','onnx-provider-probe','target')
+  : join(root,'scripts','onnx-cpu-tests','target')
 const runtimeRoot = join(cargoTarget,'release')
 const deps = join(runtimeRoot,'deps')
 const dependencyRoot = runtime ? dirname(resolve(runtime)) : runtimeRoot
@@ -145,10 +145,9 @@ for (const model of selected) {
   report.log = logPath
   reports.push(report)
   await writeFile(join(output,'report.json'),JSON.stringify(reports,null,2))
-  console.log(`${model.id}: ${report.error ? `FAILED: ${report.error}` : report.acceleratedExecution ? 'PASS (platform EP)' : 'PASS (CPU compatibility)'}`)
+  console.log(`${model.id}: ${report.error ? `FAILED: ${report.error}` : report.cpu ? 'PASS (CPU)' : 'PASS'}`)
 }
 const failures = reports.filter(report => report.error)
-const accelerated = reports.filter(report => report.acceleratedExecution)
-console.log(`${reports.length - failures.length}/${reports.length} passed; ${accelerated.length} used platform EP; report: ${join(output,'report.json')}`)
-if (!accelerated.length) console.error('No model executed on the platform EP; CPU-only compatibility is insufficient')
-process.exit(failures.length || !accelerated.length ? 1 : 0)
+const cpuReports = reports.filter(report => report.cpu)
+console.log(`${reports.length - failures.length}/${reports.length} passed; ${cpuReports.length} used CPU; report: ${join(output,'report.json')}`)
+process.exit(failures.length ? 1 : 0)

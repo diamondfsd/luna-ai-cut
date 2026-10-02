@@ -1,10 +1,12 @@
 use super::{Model, Result};
-use crate::onnx_session::Session;
+use ort::session::Session;
 use ort::value::{DynValue, Tensor, TensorElementType, ValueType};
 
 pub fn inputs(session: &Session, model: &Model) -> Result<Vec<(String, DynValue)>> {
     session
-        .input_specs()
+        .inputs()
+        .iter()
+        .map(|i| (i.name().to_owned(), i.dtype().clone()))
         .into_iter()
         .map(|(name, dtype)| {
             let ValueType::Tensor { ty, shape, .. } = dtype else {

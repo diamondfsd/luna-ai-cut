@@ -79,7 +79,6 @@ luna-render-core/luna-smb2-worker
 luna-render-core/luna-smb2-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
-luna-render-core/DirectML.dll
 luna-render-core/onnxruntime*.dll
 luna-render-core/av*.dll
 luna-render-core/sw*.dll
@@ -88,3 +87,6 @@ luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/
 *com*.jpg
+
+# Local artifacts from the retired ONNX provider probe
+scripts/onnx-provider-probe/target/

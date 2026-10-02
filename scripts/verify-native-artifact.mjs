@@ -18,7 +18,6 @@ const windowsNativeFiles = [
   'luna-asr-worker.exe',
   'dxcompiler.dll',
   'dxil.dll',
-  'DirectML.dll',
 ]
 
 function parsePeHeader(buffer, filePath) {

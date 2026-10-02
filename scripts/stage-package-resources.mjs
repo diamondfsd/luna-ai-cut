@@ -59,7 +59,6 @@ function isNativeFile(fileName) {
       || fileName.endsWith('.exe')
       || fileName === 'dxcompiler.dll'
       || fileName === 'dxil.dll'
-      || /^(?:onnxruntime.*|DirectML)\.dll$/i.test(fileName)
       || /^DXC-LICENSE-.*\.txt$/i.test(fileName)
   }
   return fileName === 'luna-render-core.node' || fileName === 'luna-smb2-worker' || fileName === 'luna-smb2-worker.exe'
