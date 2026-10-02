@@ -1,4 +1,6 @@
 import { IosTcpReceiver } from './iosTcpReceiver'
+import { bundledHdcBinary } from './harmonyHdcClient'
+import { HarmonyHdcReceiver } from './harmonyHdcReceiver'
 import { AndroidAdbReceiver } from './androidAdbReceiver'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { AndroidConnectionMode } from '../../../src/shared/types'
@@ -23,6 +25,9 @@ class MultiTransportReceiver implements LiveMediaReceiver {
       : new UsbAoaReceiver(onFrame, onDisconnected)
     const ios = new IosTcpReceiver(onFrame, onDisconnected)
     this.receivers = [android, ios]
+    if (bundledHdcBinary()) this.receivers.push(new HarmonyHdcReceiver(onFrame, onDisconnected, {
+      log: (level, message, details) => level === 'warn' ? logMainWarn(message, details) : logMainInfo(message, details),
+    }))
     this.lastActive = android
   }
 
@@ -30,7 +35,7 @@ class MultiTransportReceiver implements LiveMediaReceiver {
     const statuses = this.receivers.map((receiver) => receiver.status())
     if (statuses.every((status) => status.state === 'waiting' && !status.deviceLabel && !status.error && !status.deviceDetectionUnavailable)) {
       this.lastActive = this.receivers[0]
-      return { ...statuses[0], message: '等待 Android 或 iPhone 通过 USB 连接' }
+      return { ...statuses[0], message: '等待手机通过 USB 连接' }
     }
     const receiver = this.activeReceiver()
     this.lastActive = receiver

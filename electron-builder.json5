@@ -19,6 +19,11 @@
   ],
   "extraResources": [
     {
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/harmony-hdc",
+      "to": "harmony-hdc",
+      "filter": ["hdc", "hdc.exe", "*.dylib", "*.dll", "manifest.json", "README.md", "NOTICE*", "LICENSE*"]
+    },
+    {
       "from": "build/icon.png",
       "to": "icon.png"
     },

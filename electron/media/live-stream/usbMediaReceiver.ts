@@ -24,7 +24,7 @@ export type UsbAoaState = 'idle' | 'waiting' | 'switching' | 'connected' | 'stre
 
 export interface UsbAoaStatus {
   state: UsbAoaState
-  transport: 'usb-aoa' | 'ios-tcp' | 'android-adb'
+  transport: 'usb-aoa' | 'ios-tcp' | 'android-adb' | 'harmony-hdc'
   message: string
   deviceLabel: string | null
   vendorId: number | null

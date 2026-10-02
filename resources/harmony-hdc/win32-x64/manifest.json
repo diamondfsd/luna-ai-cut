@@ -1,0 +1,56 @@
+{
+  "platform": "Windows x64",
+  "source": "/Users/zhouchao/Downloads/command-line-tools/sdk/default/openharmony/toolchains",
+  "validation": "PE import dependency analysis only; not executed on Windows",
+  "files": [
+    {
+      "file": "hdc.exe",
+      "bytes": 5726136,
+      "sha256": "0f0bf56db98bde235285c47a1a3777aa27a47e37fefd852084ff7272ab270fed",
+      "imports": [
+        "libusb_shared.dll",
+        "PSAPI.DLL",
+        "USER32.dll",
+        "ADVAPI32.dll",
+        "IPHLPAPI.DLL",
+        "USERENV.dll",
+        "WS2_32.dll",
+        "dbghelp.dll",
+        "ole32.dll",
+        "SHELL32.dll",
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-filesystem-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-private-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll",
+        "api-ms-win-crt-utility-l1-1-0.dll",
+        "KERNEL32.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-multibyte-l1-1-0.dll",
+        "api-ms-win-crt-math-l1-1-0.dll",
+        "CRYPT32.dll"
+      ]
+    },
+    {
+      "file": "libusb_shared.dll",
+      "bytes": 208312,
+      "sha256": "8a3126c9aef4a7f413a4cb3e236be54a676e6ce2130f99c2a2fa1224647e2588",
+      "imports": [
+        "api-ms-win-crt-convert-l1-1-0.dll",
+        "api-ms-win-crt-environment-l1-1-0.dll",
+        "api-ms-win-crt-heap-l1-1-0.dll",
+        "api-ms-win-crt-private-l1-1-0.dll",
+        "api-ms-win-crt-runtime-l1-1-0.dll",
+        "api-ms-win-crt-stdio-l1-1-0.dll",
+        "api-ms-win-crt-string-l1-1-0.dll",
+        "KERNEL32.dll",
+        "api-ms-win-crt-locale-l1-1-0.dll",
+        "api-ms-win-crt-time-l1-1-0.dll"
+      ]
+    }
+  ]
+}

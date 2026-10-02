@@ -115,7 +115,7 @@ export interface LiveStreamStatus {
   lastControlResult: LiveStreamControlResult | null
   capabilities: LiveStreamControlCapabilities | null
   receiverConnected: boolean
-  transport: 'usb-aoa' | 'ios-tcp' | 'android-adb'
+  transport: 'usb-aoa' | 'ios-tcp' | 'android-adb' | 'harmony-hdc'
   usbState: 'idle' | 'waiting' | 'switching' | 'connected' | 'streaming' | 'error'
   usbMessage: string
   usbDeviceLabel: string | null
