@@ -15,6 +15,7 @@ import type {
 } from '../../../src/shared/types'
 import { getFfmpegPath } from '../../platform/ffmpeg/pipeline'
 import { getAiEditorLocalMediaFiles } from './aiEditorLocalMediaService'
+import { getAiEditorLocalMediaMetadata } from './aiEditorMediaMetadataService'
 
 const execFileAsync = promisify(execFile)
 const DEFAULT_MAX_WIDTH = 480
@@ -68,7 +69,8 @@ function normalizeContactSheetColumns(value: number | undefined): number {
 
 function frameTimes(kind: 'image' | 'video', duration: number | undefined, mode: AiEditorLocalMediaInspectionMode): number[] {
   if (kind === 'image') return [0]
-  const length = Number.isFinite(duration) && (duration ?? 0) > 0 ? duration as number : 1
+  if (!Number.isFinite(duration) || (duration ?? 0) <= 0) throw new Error('无法读取视频时长')
+  const length = duration as number
   if (mode === 'overview') return [Math.max(0, length / 2)]
   return [length * 0.15, length * 0.5, length * 0.85]
 }
@@ -149,8 +151,13 @@ export async function inspectAiEditorLocalMedia(
     return file as typeof file & { kind: 'image' | 'video' }
   })
   const items = await mapWithConcurrency(visualFiles, ANALYSIS_CONCURRENCY, async (file): Promise<AiEditorLocalMediaInspectionItem> => {
-    const times = frameTimes(file.kind, file.duration, mode)
+    let duration = file.duration
     try {
+      if (file.kind === 'video' && (!Number.isFinite(duration) || (duration ?? 0) <= 0)) {
+        const [metadata] = await getAiEditorLocalMediaMetadata([file.mediaId])
+        duration = metadata?.durationSec ?? undefined
+      }
+      const times = frameTimes(file.kind, duration, mode)
       const frames = await mapWithConcurrency(times, 2, async (timeSec) => ({
         timeSec: Number(timeSec.toFixed(3)),
         mimeType: 'image/jpeg' as const,
@@ -160,7 +167,7 @@ export async function inspectAiEditorLocalMedia(
         mediaId: file.mediaId,
         name: file.name,
         kind: file.kind,
-        ...(file.duration === undefined ? {} : { duration: file.duration }),
+        ...(duration === undefined ? {} : { duration }),
         capturedAt: file.capturedAt,
         frames,
       }

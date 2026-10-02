@@ -16,13 +16,16 @@ try {
   let installed = true
   let failLaunch = false
   let expectedPurpose = 'director-plan'
+  let expectedRequest = '  帮我创建导演计划\n'
   const adapters = {
     list: () => [{ id: 'test', name: 'Test Agent' }],
     isInstalled: async () => installed,
     startTask: async (_id, { prompt }) => {
       launches++
       const saved = JSON.parse(await readFile(join(dir, 'conversations.json'), 'utf8')).at(-1)
-      assert.equal(saved.request, '  帮我创建导演计划\n')
+      assert.equal(saved.request, expectedRequest)
+      const originalSection = prompt.split('用户原始要求：\n')[1]?.split('\n\nLuna 已创建任务：')[0]
+      assert.equal(originalSection, expectedRequest, 'internal execution rules must not be appended to the user request')
       assert.equal(saved.prompt, prompt)
       assert.match(prompt, /技能清单查询工具/)
       assert.doesNotMatch(prompt, /\/skills\/|\/skill\.md/)
@@ -64,14 +67,15 @@ try {
   assert.equal(new Set(events.map(e => e.sequence)).size, events.length)
   failLaunch = false
   expectedPurpose = 'auto'
-  const automatic = await launch('test', { request: input.request })
+  expectedRequest = '帮我把这些视频剪个轻快的一日游，多换点画面，跟音乐走'
+  const automatic = await launch('test', { request: expectedRequest })
   assert.equal(automatic.conversation.session.purpose, 'auto', 'no local keyword routing')
-  manager.startExternalRequest(input.request, 'external', null, null, null, 'auto')
+  manager.startExternalRequest(expectedRequest, 'external', null, null, null, 'auto')
   manager.selectWorkflow(automatic.conversation.id, 1, 'director-plan')
   manager.updateRequest(automatic.conversation.id, '用户在外部 Agent 的后续要求')
   await store.flush()
   assert.equal((await store.list())[0].purpose, 'director-plan')
-  assert.equal((await store.list())[0].request, input.request)
+  assert.equal((await store.list())[0].request, expectedRequest)
   assert.equal((await reopened.list()).length, 3, 'legacy explicit-purpose archives remain readable')
   manager.cancelRequest(automatic.conversation.id)
   await store.flush()

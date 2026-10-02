@@ -1,13 +1,15 @@
 import { app } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
 import { safeName } from '../../media/filePathUtils.ts'
 import { getSettings } from '../../storage/fileService.ts'
 import { assignAiEditorMediaId } from '../ai-editor/aiEditorMediaCatalog.ts'
+import { timingFromMidi } from './musicScoreTiming.ts'
+import type { GeneratedMusicTiming } from '../../../src/shared/types/aiEditor'
 
 const execFileAsync = promisify(execFile)
 const WORKER_TIMEOUT_MS = 180_000
@@ -38,6 +40,7 @@ export interface GeneratedMusic {
   durationSec: number
   bytes: number
   source: 'luna-bgm'
+  musicTiming: GeneratedMusicTiming
 }
 
 interface MusicTemplateCatalogEntry {
@@ -165,12 +168,16 @@ export async function generateBackgroundMusic(dsl: string, name?: string): Promi
       requestPath,
       '--output',
       outputPath,
+      '--keep-midi',
     ])
     const file = await stat(outputPath)
     if (!file.isFile() || file.size <= 44) throw new Error('音乐生成没有产生有效文件')
     const durationSec = typeof result.duration_seconds === 'number' && Number.isFinite(result.duration_seconds)
       ? result.duration_seconds
       : 0
+    const musicTiming = timingFromMidi(await readFile(outputPath.replace(/\.wav$/i, '.mid')), durationSec)
+    await writeFile(`${outputPath}.bgm`, dsl, 'utf8')
+    await writeFile(`${outputPath}.timing.json`, JSON.stringify(musicTiming), 'utf8')
     return {
       mediaId: await assignAiEditorMediaId(settings.baseDir, outputPath, 'audio'),
       name: fileName,
@@ -178,6 +185,7 @@ export async function generateBackgroundMusic(dsl: string, name?: string): Promi
       durationSec,
       bytes: file.size,
       source: 'luna-bgm',
+      musicTiming,
     }
   } finally {
     await rm(requestPath, { force: true }).catch(() => undefined)
