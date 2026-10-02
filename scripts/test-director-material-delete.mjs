@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { deleteDirectorLocalMaterial } from '../electron/features/director-lab/directorLabMaterialDelete.ts'
 import { overlayDirectorLocalPlan, buildDirectorPlanUpdate } from '../src/lib/directorPlanSync.ts'
 import { writeDirectorPlanFiles, reconcileLocalDirectorPlan } from '../electron/features/director-lab/directorLabPlanStorage.ts'
+import { cleanupDirectorMedia } from '../electron/features/director-lab/directorLabMediaCleanup.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'director-material-delete-'))
 try {
@@ -65,6 +66,39 @@ try {
   assert.equal(manifest.shots[0].media[0].available, false)
   assert.equal(await reconcileLocalDirectorPlan(root, externalPlan), false)
   await assert.rejects(fs.stat(externalFile), { code: 'ENOENT' })
+
+  const cleanupDirectory = path.join(root, 'Cleanup')
+  const cleanupPlan = { ...externalPlan, id: 'cleanup-plan', title: 'Cleanup' }
+  await writeDirectorPlanFiles(cleanupDirectory, cleanupPlan)
+  const cleanupManifestPath = path.join(cleanupDirectory, 'manifest.json')
+  const previousManifest = JSON.parse(await fs.readFile(cleanupManifestPath, 'utf8'))
+  const oldFile = path.join(cleanupDirectory, previousManifest.shots[0].media[0].path)
+  const manualFile = path.join(path.dirname(oldFile), 'manual.mp4')
+  await fs.writeFile(manualFile, 'manual')
+  const removedPlan = { ...cleanupPlan, shots: [{ ...cleanupPlan.shots[0], takes: [] }] }
+  assert.equal(await reconcileLocalDirectorPlan(root, removedPlan), true)
+  await assert.rejects(fs.stat(oldFile), { code: 'ENOENT' })
+  assert.equal(await fs.readFile(manualFile, 'utf8'), 'manual')
+  assert.equal(await reconcileLocalDirectorPlan(root, removedPlan), false)
+
+  await writeDirectorPlanFiles(cleanupDirectory, cleanupPlan)
+  const renamedPlan = { ...cleanupPlan, shots: [{ ...cleanupPlan.shots[0], name: 'Renamed' }] }
+  await writeDirectorPlanFiles(cleanupDirectory, renamedPlan)
+  const renamedManifest = JSON.parse(await fs.readFile(cleanupManifestPath, 'utf8'))
+  const renamedFile = path.join(cleanupDirectory, renamedManifest.shots[0].media[0].path)
+  await assert.rejects(fs.stat(oldFile), { code: 'ENOENT' })
+  assert.equal(await fs.readFile(renamedFile, 'utf8'), 'other')
+
+  await fs.writeFile(path.join(cleanupDirectory, 'manifest.conflict-test.json'), JSON.stringify(renamedManifest))
+  await writeDirectorPlanFiles(cleanupDirectory, removedPlan)
+  assert.equal(await fs.readFile(renamedFile, 'utf8'), 'other')
+
+  const escaped = path.join(cleanupDirectory, 'media', 'escape')
+  await fs.symlink(root, escaped)
+  await cleanupDirectorMedia(cleanupDirectory, { format: 'luna-director-plan-v1', plan_id: cleanupPlan.id,
+    shots: [{ media: [{ path: 'media/escape/outside.mp4' }, { path: '../outside.mp4' }] }] },
+  { plan_id: cleanupPlan.id, shots: [] })
+  assert.equal(await fs.readFile(outside, 'utf8'), 'do-not-delete')
   console.log('director local material deletion checks passed')
 } finally {
   await fs.rm(root, { recursive: true, force: true })

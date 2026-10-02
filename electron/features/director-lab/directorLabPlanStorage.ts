@@ -10,6 +10,7 @@ import type {
   DirectorLanShotAttribute,
 } from '../../../src/shared/types'
 import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature } from '../../../src/lib/directorPlanSync.ts'
+import { cleanupDirectorMedia } from './directorLabMediaCleanup.ts'
 
 let planWriteTask: Promise<unknown> = Promise.resolve()
 
@@ -301,6 +302,7 @@ async function reconcileLocalDirectorPlanUnlocked(
     )
   let manifestNeedsUpdate = existing?.format !== 'luna-director-plan-v1'
     || existing.plan_id !== plan.id
+    || [...existingMedia.keys()].some(takeId => !plan.shots.some(shot => shot.takes.some(take => take.id === takeId)))
   const deletedLocalTakeIds = new Set(Array.isArray(existing?.deleted_local_take_ids)
     ? existing!.deleted_local_take_ids.filter((id): id is string => typeof id === 'string') : [])
   const shots = await Promise.all(plan.shots.map(async (shot) => ({
@@ -374,6 +376,11 @@ export async function writeDirectorPlanFilesUnlocked(
   metadata: Record<string, DirectorLabMediaMetadata> = {},
 ): Promise<void> {
     await fs.mkdir(directory, { recursive: true })
+    const manifestPath = path.join(directory, 'manifest.json')
+    const previous = await fs.readFile(manifestPath, 'utf8').then(value => JSON.parse(value) as ExistingManifest).catch(error => {
+      if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    })
     for (const shot of plan.shots) for (const [index, take] of shot.takes.entries()) {
       if (!take.available || !take.stream_url?.startsWith('file:')) continue
       const source = fileURLToPath(take.stream_url)
@@ -382,13 +389,16 @@ export async function writeDirectorPlanFilesUnlocked(
       await fs.mkdir(path.dirname(target), { recursive: true })
       if (!await localFileExists(target)) await fs.copyFile(source, target, constants.COPYFILE_EXCL)
     }
-    const manifestPath = path.join(directory, 'manifest.json')
+    const manifest = manifestForPlan(plan, metadata)
     const temporaryPath = `${manifestPath}.${process.pid}.${randomUUID()}.tmp`
     try {
       await fs.writeFile(path.join(directory, 'README.md'), readmeForPlan(plan), 'utf8')
-      await fs.writeFile(temporaryPath, manifestForPlan(plan, metadata), 'utf8')
+      await fs.writeFile(temporaryPath, manifest, 'utf8')
       await fs.rename(temporaryPath, manifestPath)
     } finally {
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     }
+    await cleanupDirectorMedia(directory, previous, JSON.parse(manifest)).catch(error => {
+      console.warn('[director-lab] Obsolete media cleanup failed', error)
+    })
 }
