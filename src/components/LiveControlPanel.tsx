@@ -18,6 +18,7 @@ import { MobileAppDownloadButton } from './MobileAppDownload'
 import { AndroidUsbConnectionMode } from './AndroidUsbConnectionMode'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning } from './htmlPreviewGeometry'
 import { LiveWatermarkOverlay } from './LiveWatermarkOverlay'
+import { LiveSettingsTabLabel } from './LiveSettingsTabLabel'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
 import type { LivePreviewWindowSettings, LiveStreamStatus, NormalizedVideoPoint } from '../shared/types'
@@ -119,7 +120,7 @@ export function LiveControlPanel({
   }, [controlReady, status.capabilities])
 
   const startPreviewGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (activeSettingsPanel !== 'control' || event.button !== 0 ||
+    if (event.button !== 0 ||
       (event.target instanceof Element && event.target.closest('button'))) return
     const rect = event.currentTarget.getBoundingClientRect()
     if (!rect.width || !rect.height) return
@@ -231,12 +232,13 @@ export function LiveControlPanel({
   const toneModified = liveColor.exposure !== 0 || liveColor.brightness !== 0 || liveColor.contrast !== 0
     || liveColor.highlights !== 0 || liveColor.shadows !== 0 || liveColor.whites !== 0 || liveColor.blacks !== 0
     || liveColor.vibrance !== 0 || liveColor.saturation !== 0
+  const colorModified = whiteBalanceModified || toneModified || liveColor.sharpen !== 0
   return (
     <section className="live-control-panel" aria-label="直播预览">
       <div ref={previewPaneRef} className="live-preview-pane">
         <div
           className="live-preview-stage"
-          data-control-active={activeSettingsPanel === 'control' ? '' : undefined}
+          data-control-active=""
           style={{ width: previewStageSize.width, height: previewStageSize.height }}
           onPointerDown={startPreviewGesture}
           onPointerUp={endPreviewGesture}
@@ -266,7 +268,7 @@ export function LiveControlPanel({
             />
           )}
 
-          {activeSettingsPanel === 'control' && focusPoint && (
+          {focusPoint && (
             <div className="live-preview-focus-marker" style={{ left: `${focusPoint.x * 100}%`, top: `${focusPoint.y * 100}%` }} />
           )}
           {!active && (
@@ -319,9 +321,9 @@ export function LiveControlPanel({
             className="live-settings-tabs-control"
             options={[
               { value: 'control', label: '控制' },
-              { value: 'watermark', label: '水印' },
-              { value: 'lut', label: 'LUT' },
-              { value: 'color', label: '调色' },
+              { value: 'watermark', label: <LiveSettingsTabLabel label="水印" modified={watermarkSettings.enabled} /> },
+              { value: 'lut', label: <LiveSettingsTabLabel label="LUT" modified={Boolean(lutPath) && lutIntensity > 0} /> },
+              { value: 'color', label: <LiveSettingsTabLabel label="调色" modified={colorModified} /> },
             ]}
             value={activeSettingsPanel}
             onChange={(panel) => {
