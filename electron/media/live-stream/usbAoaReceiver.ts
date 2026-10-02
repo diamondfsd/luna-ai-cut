@@ -73,7 +73,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
   private deviceSnapshot = ''
   private statusValue: UsbAoaStatus = idleUsbStatus('USB AOA 接收器未启动')
 
-  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {}) {
+  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {},
+    private readonly canProbe: (device: usb.Device) => Promise<boolean> = async () => true) {
     this.onFrame = onFrame
     this.onDisconnected = onDisconnected
   }
@@ -108,7 +109,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
     this.statusValue = {
       ...this.statusValue,
       state: 'waiting',
-      message: '等待 Android 手机通过 USB 连接',
+      message: '等待手机通过 USB 连接',
       error: null,
     }
     usb.usb.on('attach', this.handleAttach)
@@ -207,6 +208,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       let probeFailure: unknown = null
       for (const candidate of this.findAndroidCandidates()) {
         if (!this.running) return
+        if (!await this.canProbe(candidate)) continue
+        if (!this.running) return
         let switched: boolean
         try {
           switched = await this.switchToAccessory(candidate)
@@ -238,7 +241,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         this.statusValue = {
           ...this.statusValue,
           state: 'waiting',
-          message: '等待支持 USB AOA 的 Android 手机',
+          message: '等待手机通过 USB 连接',
           deviceLabel: null,
           vendorId: null,
           productId: null,
@@ -257,8 +260,8 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       this.statusValue = {
         ...this.statusValue,
         state: 'switching',
-        message: '已识别 Android 手机，正在切换 USB 模式',
-        deviceLabel: 'Android 手机',
+        message: '已识别手机，正在连接',
+        deviceLabel: '手机',
         vendorId: idVendor,
         productId: idProduct,
         error: null,

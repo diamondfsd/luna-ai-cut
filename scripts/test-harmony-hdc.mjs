@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { createHdcForward, createHdcRunner, parseHdcTargets, removeHdcForward } from '../electron/media/live-stream/harmonyHdcClient.ts'
 import { HarmonyHdcReceiver } from '../electron/media/live-stream/harmonyHdcReceiver.ts'
+import { canProbeUsbAccessory } from '../electron/media/live-stream/usbAccessoryProbe.ts'
 import { stageHarmonyHdcResources, verifyHarmonyHdcResources } from './harmony-hdc-resources.mjs'
 
 async function until(predicate) {
@@ -35,6 +36,20 @@ await test('HDC verbose discovery excludes network targets and exposes unavailab
   assert.deepEqual(parseHdcTargets('[Empty]\nPHONE USB Connected\nPHONE USB Connected\nLOCKED USB Unauthorized\nOFF USB Offline\n192.168.1.2:8710 TCP Connected'), [
     { serial: 'PHONE', state: 'device' }, { serial: 'LOCKED', state: 'unauthorized' }, { serial: 'OFF', state: 'offline' },
   ])
+})
+await test('only a currently connected USB HDC phone prevents Huawei accessory switching', async () => {
+  assert.equal(await canProbeUsbAccessory(0x12d1, async () => 'PHONE USB Connected'), false)
+  for (const listing of ['PHONE USB Offline', 'PHONE USB Unauthorized', '[Empty]', 'IP TCP Connected']) {
+    assert.equal(await canProbeUsbAccessory(0x12d1, async () => listing), true)
+  }
+  assert.equal(await canProbeUsbAccessory(0x1234, async () => assert.fail('unrelated phone queried HDC')), true)
+  assert.equal(await canProbeUsbAccessory(0x12d1, null), true)
+  assert.equal(await canProbeUsbAccessory(0x12d1, async () => { throw new Error('unavailable') }), true)
+  let listing = 'PHONE USB Connected'
+  const run = async () => listing
+  assert.equal(await canProbeUsbAccessory(0x12d1, run), false)
+  listing = 'PHONE USB Offline'
+  assert.equal(await canProbeUsbAccessory(0x12d1, run), true, 'old phone cannot retain ownership')
 })
 await test('forward creation retries a port conflict; cleanup only removes the owned forward direction', async () => {
   let calls = 0
