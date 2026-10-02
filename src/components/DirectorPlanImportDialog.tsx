@@ -1,3 +1,4 @@
+import { Textarea } from '../ui'
 import { useRef, useState } from 'react'
 import { FileUp } from 'lucide-react'
 import type { DirectorLanPlanSummary } from '../shared/types'
@@ -48,7 +49,7 @@ export function DirectorPlanImportDialog({ open, targetPlan, onOpenChange, onImp
       <Button variant="primary" size="compact" disabled={importing || !text.trim()}
         onClick={() => void importPlan(false)}>{importing ? '导入中' : targetPlan ? '导入镜头' : '创建计划'}</Button>
     </>}>
-    <textarea className="ui-input ui-input-compact lab-plan-import-text" aria-label={targetPlan ? '镜头文本' : '计划文本'} autoFocus
+    <Textarea className="lab-plan-import-text" aria-label={targetPlan ? '镜头文本' : '计划文本'} autoFocus
       value={text} disabled={importing} maxLength={512 * 1024}
       placeholder={`${targetPlan ? '' : '# 计划名称\n\n'}## 01 镜头名称\n画面说明：\n建议时长：5 秒\n运镜说明：`}
       onChange={(event) => { setText(event.target.value); setError(null) }} />

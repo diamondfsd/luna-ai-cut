@@ -1,3 +1,4 @@
+import { Textarea } from '../ui'
 import { MessageSquare } from 'lucide-react'
 import type { DirectorPlanSchema } from '../shared/types'
 import { Button, Dialog, Input } from '../ui'
@@ -50,15 +51,15 @@ export function DirectorShotEditorDialog({ draft, schema, saving, conflict, crea
       <div className="lab-shot-edit-attributes">
         {schema?.shot_fields.map((field) => <label className="lab-shot-edit-attribute" key={field.id}>
           <span>{field.label}</span>
-          {field.kind === 'multiline' ? <textarea
-            className="ui-input ui-input-compact lab-shot-edit-description"
+          {field.kind === 'multiline' ? <Textarea
+            className="lab-shot-edit-description"
             value={draft.values[field.id] ?? ''} rows={3} maxLength={field.max_length}
             onChange={(event) => onChange({ ...draft, values: { ...draft.values, [field.id]: event.target.value } })}
           /> : <Input variant="compact" value={draft.values[field.id] ?? ''} maxLength={field.max_length}
             onChange={(event) => onChange({ ...draft, values: { ...draft.values, [field.id]: event.target.value } })} />}
         </label>)}
         <label className="lab-shot-edit-remark"><span><MessageSquare size={13} />备注</span>
-          <textarea className="ui-input ui-input-compact lab-shot-edit-description" value={draft.remark} rows={3} maxLength={4000}
+          <Textarea className="lab-shot-edit-description" value={draft.remark} rows={3} maxLength={4000}
             onChange={(event) => onChange({ ...draft, remark: event.target.value })} />
         </label>
       </div>

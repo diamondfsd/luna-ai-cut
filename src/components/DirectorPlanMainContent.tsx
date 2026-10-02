@@ -1,3 +1,4 @@
+import { Textarea } from '../ui'
 import { useRef, useState } from 'react'
 import type { DirectorLanPlanSummary } from '../shared/types'
 import { directorPlanContentSignature } from '../lib/directorPlanSync'
@@ -68,7 +69,7 @@ export function DirectorPlanMainContent({ plan, onSaved, onWriteStateChange, ref
       trigger={<Button variant="ghost" size="mini">主要内容</Button>}
       footer={<><Button size="compact" disabled={saving} onClick={() => changeOpen(false)}>取消</Button>
         <Button variant="primary" size="compact" disabled={saving || !dirty} onClick={() => void save()}>{saving ? '保存中' : '保存'}</Button></>}>
-      <textarea className="ui-input ui-input-compact director-main-content-input" aria-label="主要内容" autoFocus
+      <Textarea className="director-main-content-input" aria-label="主要内容" autoFocus
         value={draft} disabled={saving} onChange={event => { setDraft(event.target.value); setError(null) }} />
       {error && <div role="alert"><Alert variant="error" message={error} /></div>}
     </Dialog>

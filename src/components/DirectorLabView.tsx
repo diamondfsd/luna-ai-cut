@@ -1,3 +1,4 @@
+import { ExternalAgentControl } from './ExternalAgentControl'
 import { ArrowLeft, Box, FolderSync, FolderDown, FolderOpen, ListFilter, Pencil, RefreshCw, Save, Search, WandSparkles, X, FileUp } from 'lucide-react'
 import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip } from '../ui'
@@ -108,6 +109,7 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           <h1>导演计划</h1>
         </div>
         <div className="lab-director-sync-actions">
+          {!activePlan && <ExternalAgentControl onReturn={() => { void refreshLocalPlans() }} />}
           {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
             onClick={() => setImportOpen(true)}>新建计划</Button>}
           {connectedEndpoint && (

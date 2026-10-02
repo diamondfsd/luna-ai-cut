@@ -37,3 +37,5 @@ export { Table } from './Table'
 export type { Column } from './Table'
 export { ErrorBoundary } from './ErrorBoundary'
 export { AppRoute } from './AppRoute'
+
+export { Textarea } from './Textarea'
