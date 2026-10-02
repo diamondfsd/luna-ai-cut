@@ -18,17 +18,35 @@
 }
 
 .mobile-app-download-image {
+  position: relative;
   display: grid;
   place-items: center;
   width: 200px;
   max-width: 100%;
   aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
 }
 
-.mobile-app-download-image img {
+.mobile-app-download-qr {
   display: block;
   width: 100%;
   height: auto;
+}
+
+.mobile-app-download-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20%;
+  height: 20%;
+  padding: 4px;
+  border-radius: 9px;
+  background: #fff;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .mobile-app-download-code figcaption {
