@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { HelpCircle, RefreshCw, Square, Video } from 'lucide-react'
+import { RefreshCw, Square, Video } from 'lucide-react'
 
-import { Button, Dialog, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
+import { LiveOperationGuideDialog } from '../components/LiveOperationGuideDialog'
 import { flushLiveUsage } from '../hooks/useLiveUsage'
 import type { LiveStreamStatus } from '../shared/types'
 import '../styles/live-console.css'
@@ -83,23 +84,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
-          <Dialog
-            trigger={(
-              <Button variant="secondary" size="compact" icon={<HelpCircle size={14} />}>
-                操作说明
-              </Button>
-            )}
-            title="操作说明"
-            tone="dark"
-          >
-            <ol className="live-console-instructions">
-              <li>在手机 Luna 咔中连接相机。</li>
-              <li>用 USB 线连接手机和电脑。</li>
-              <li>点击“获取画面”，等待预览区出现画面。</li>
-              <li>可调整水印和色彩；点击“打开直播窗口”打开独立预览。</li>
-              <li>打开抖音直播伴侣，在场景中添加“窗口画面”，选择直播预览窗口。</li>
-            </ol>
-          </Dialog>
+          <LiveOperationGuideDialog />
           {(status?.usbState === 'streaming' || windowLiveMode) && (
             <Button
               variant={windowLiveMode ? 'secondary' : 'primary'}

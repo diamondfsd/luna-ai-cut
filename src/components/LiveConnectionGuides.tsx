@@ -39,7 +39,7 @@ export function LiveConnectionGuides({ status }: { status: LiveStreamStatus }) {
         trigger={<Button variant="ghost" size="mini">安卓连接指引</Button>}>
         <div className="live-guide-instructions">
         <LiveConnectionGuideSteps platform="android" />
-        <p>无法连接时：在手机“关于手机”中连续点击“版本号”，开启开发者模式，再重新连接。</p>
+        <p>无法连接时：在手机“关于手机”中连续点击“版本号”，开启开发者模式，并开启 USB 调试，再重新连接。</p>
         </div>
         <GuideDownload platform="android" />
       </Dialog>
