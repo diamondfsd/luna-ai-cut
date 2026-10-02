@@ -52,9 +52,6 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/live-console" className={({ isActive }) => (isActive ? 'active' : '')}>
             直播控制台
           </NavLink>
-          <NavLink to="/lab" className={({ isActive }) => (isActive ? 'active' : '')}>
-            实验室
-          </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
