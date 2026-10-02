@@ -14,6 +14,7 @@ try {
   let launches = 0
   let installed = true
   let failLaunch = false
+  let expectedPurpose = 'director-plan'
   const adapters = {
     list: () => [{ id: 'test', name: 'Test Agent' }],
     isInstalled: async () => installed,
@@ -22,9 +23,12 @@ try {
       const saved = JSON.parse(await readFile(join(dir, 'conversations.json'), 'utf8')).at(-1)
       assert.equal(saved.request, '  帮我创建导演计划\n')
       assert.equal(saved.prompt, prompt)
-      assert.match(prompt, /skills\/director-plan.md/)
+      assert.match(prompt, /技能清单查询工具/)
+      assert.doesNotMatch(prompt, /\/skills\/|\/skill\.md/)
+      assert.doesNotMatch(prompt, /只要求拍摄方案|选择 director-plan|选择 editing/)
+      assert.match(prompt, /\/\.well-known\/agent/)
       assert.match(prompt, new RegExp(saved.id))
-      assert.equal(saved.purpose, 'director-plan')
+      assert.equal(saved.purpose, expectedPurpose)
       if (failLaunch) throw new Error('launch failed')
       return { mode: 'draft' }
     },
@@ -57,6 +61,19 @@ try {
   assert.equal((await store.list())[0].handoff, 'failed')
   const events = (await store.list())[0].events
   assert.equal(new Set(events.map(e => e.sequence)).size, events.length)
+  failLaunch = false
+  expectedPurpose = 'auto'
+  const automatic = await launch('test', { request: input.request })
+  assert.equal(automatic.conversation.session.purpose, 'auto', 'no local keyword routing')
+  manager.startExternalRequest(input.request, 'external', null, null, null, 'auto')
+  manager.selectWorkflow(automatic.conversation.id, 1, 'director-plan')
+  manager.updateRequest(automatic.conversation.id, '用户在外部 Agent 的后续要求')
+  await store.flush()
+  assert.equal((await store.list())[0].purpose, 'director-plan')
+  assert.equal((await store.list())[0].request, input.request)
+  assert.equal((await reopened.list()).length, 3, 'legacy explicit-purpose archives remain readable')
+  manager.cancelRequest(automatic.conversation.id)
+  await store.flush()
   await writeFile(join(dir, 'conversations.json'), '{broken')
   await assert.rejects(store.capture(creation))
   assert.equal(await readFile(join(dir, 'conversations.json'), 'utf8'), '{broken')

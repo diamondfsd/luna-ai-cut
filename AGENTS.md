@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## 全应用 Agent 架构索引
+
+修改外部 Agent、本机服务、聊天入口或新增 Agent 能力之前，先读取对应目录的规则。目录中的 `AGENTS.md` 是维护约束，`README.md` 是职责和文件索引；下表提供跨层入口。
+
+| 改动范围 | 规范与索引 |
+| --- | --- |
+| 全应用分层与扩展流程 | [架构设计](docs/app-agent-architecture.md) |
+| HTTP/MCP、工具注册和会话 | [服务索引](electron/mcp/README.md)、[服务规则](electron/mcp/AGENTS.md) |
+| 全应用技能发现与读取工具 | [技能工具索引](electron/features/agent-skills/README.md)、[维护规则](electron/features/agent-skills/AGENTS.md) |
+| Agent 自主选技能与执行流程 | [流程索引](electron/features/agent-workflows/README.md)、[维护规则](electron/features/agent-workflows/AGENTS.md) |
+| 新领域向 Agent 暴露能力 | [领域规则](electron/features/AGENTS.md)、[导演计划](electron/features/director-lab/AGENTS.md)、[音乐](electron/features/music/AGENTS.md) |
+| 外部应用适配、任务交接与历史 | [适配器索引](electron/features/external-agents/README.md)、[维护规则](electron/features/external-agents/AGENTS.md) |
+| IPC 和主进程装配 | [IPC 规则](electron/ipc/AGENTS.md) |
+| 全局 AI 助手 | [面板索引](src/components/agent-chat/README.md)、[面板规则](src/components/agent-chat/AGENTS.md) |
+| 共享接口、事件与历史结构 | [契约规则](src/shared/types/AGENTS.md) |
+| 任务提示词与服务发现 | [提示词规则](src/lib/AGENTS.md) |
+
+新增业务应在所属领域注册工具模块，不向 RPC、外部应用适配器或聊天面板追加工具名分支。维护架构时同步更新受影响目录的索引；写清已实现能力与未来规划，不让历史方案替代现行规则。
+
 ## UI 组件规则
 
 本项目使用 `src/ui` 目录下的本地 UI 层，以及 Radix 基元提供可访问的低级行为。

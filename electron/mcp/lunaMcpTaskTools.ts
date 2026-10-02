@@ -273,16 +273,16 @@ export async function handleAgentTaskTool(
       if (!request || !agentId || !agentType || !agentModel) {
         return agentInvalidParams('请同时上报 request、agentId、agentType 和 agentModel')
       }
-      if (args.purpose !== undefined && !['editing', 'director-plan'].includes(String(args.purpose))) return agentInvalidParams('任务类型无效')
+      if (args.purpose !== undefined && !['auto', 'editing', 'director-plan'].includes(String(args.purpose))) return agentInvalidParams('任务类型无效')
       const result = manager.startExternalRequest(
         request,
         agentId,
         stringArg(args, 'projectId'),
         agentType,
         agentModel,
-        args.purpose as 'editing' | 'director-plan' | undefined,
+        args.purpose as 'auto' | 'editing' | 'director-plan' | undefined,
       )
-      if (result.session?.purpose !== 'director-plan') await options.activateWindow?.()
+      if (!result.session?.purpose || result.session.purpose === 'editing') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
         summary: '已创建并领取外部剪辑任务',
@@ -303,7 +303,7 @@ export async function handleAgentTaskTool(
         agentType,
         agentModel,
       )
-      if (result.state === 'claimed' && result.session?.purpose !== 'director-plan') await options.activateWindow?.()
+      if (result.state === 'claimed' && (!result.session?.purpose || result.session.purpose === 'editing')) await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
         summary: result.state === 'claimed' ? '已领取 Luna 剪辑任务' : '当前没有新的剪辑任务',
@@ -356,7 +356,7 @@ export async function handleAgentTaskTool(
     }
 
     if (name === 'activate_luna_window') {
-      if (manager.snapshot().session?.purpose === 'director-plan') return agentToolResponse({ ok: true, summary: '导演计划进度已发送到 AI 助手' })
+      if (manager.snapshot().session?.purpose && manager.snapshot().session?.purpose !== 'editing') return agentToolResponse({ ok: true, summary: '任务进度已发送到 AI 助手' })
       await options.activateWindow?.()
       return agentToolResponse({ ok: true, summary: '已通知 Luna AI Cut 显示剪辑进度' })
     }

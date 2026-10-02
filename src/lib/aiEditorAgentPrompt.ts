@@ -1,4 +1,4 @@
-import { agentDiscoveryPrompt } from './agentDiscoveryPrompt.ts'
+import { buildAssistantAgentPrompt } from './assistantAgentPrompt.ts'
 import type { AiEditorHttpConnection } from '../shared/types'
 
 const MCP_LAUNCHER_PLACEHOLDER = '<LUNA_AI_CUT_ROOT>/scripts/luna-mcp.mjs'
@@ -113,22 +113,7 @@ ${requestBlock}
 `
 }
 
-export function buildAiEditorHttpAgentPrompt(
-  connection: AiEditorHttpConnection,
-  userRequest?: string,
-): string {
-  const requestBlock = userRequest?.trim()
-    ? `
-
-本次剪辑任务（用户原话）:
----
-${userRequest.trim()}
----`
-    : ''
-  return `你是外部 AI 剪辑 Agent，需要通过本机 HTTP 服务控制正在运行的 Luna AI Cut。
-
-${agentDiscoveryPrompt(connection, 'editing')}
-
-后续所有服务地址、工具名称、参数、执行流程、错误处理和导出确认规则，均以该 Skill 为准；不要配置或使用 MCP，也不要读取项目文件代替 HTTP 工具调用。将该链接的 origin 作为本机服务地址，严格使用 Skill 定义的 HTTP API，并检查每次响应中的 ok、error、data 和 content。${requestBlock}
-`
+/** Compatibility entry; the HTTP bootstrap does not choose a domain skill. */
+export function buildAiEditorHttpAgentPrompt(connection: AiEditorHttpConnection, userRequest?: string): string {
+  return buildAssistantAgentPrompt(connection, userRequest ?? '')
 }

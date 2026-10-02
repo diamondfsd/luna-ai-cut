@@ -3,8 +3,7 @@ import type { AiEditorHttpConnection } from '../../../src/shared/types'
 import type { AgentSessionManager } from '../../mcp/agentSessionManager'
 import type { createAgentConversationStore } from './agentConversationStore'
 import type { createExternalAgentService } from './externalAgentService'
-import { buildDirectorPlanAgentPrompt } from '../../../src/lib/directorPlanAgentPrompt.ts'
-import { buildAiEditorHttpAgentPrompt } from '../../../src/lib/aiEditorAgentPrompt.ts'
+import { buildAssistantAgentPrompt } from '../../../src/lib/assistantAgentPrompt.ts'
 
 export function createAgentTaskCoordinator(options: {
   manager: AgentSessionManager
@@ -17,8 +16,9 @@ export function createAgentTaskCoordinator(options: {
   return async (agentId: string, input: AgentTaskInput, copyOnly = false) => {
     if (busy) throw new Error('正在发起任务，请稍后')
     if (!input || typeof input.request !== 'string' || !input.request.trim() || input.request.length > 6000
-      || !['editing', 'director-plan'].includes(input.purpose)
+      || (input.purpose !== undefined && !['auto', 'editing', 'director-plan'].includes(input.purpose))
       || (input.projectId != null && typeof input.projectId !== 'string')) throw new Error('任务要求无效')
+    const purpose = input.purpose ?? 'auto'
     const agent = options.adapters.list().find(value => value.id === agentId)
     if (!agent) throw new Error('不支持此 Agent')
     busy = true
@@ -28,12 +28,10 @@ export function createAgentTaskCoordinator(options: {
       if (current && ['queued', 'running'].includes(current.status)) throw new Error('请先完成或停止当前任务')
       if (!copyOnly && !await options.adapters.isInstalled(agentId)) throw new Error(`未检测到 ${agent.name}`)
       const connection = await options.connection()
-      const session = options.manager.createRequest(input.request, input.purpose === 'editing' ? input.projectId ?? null : null, input.purpose)
+      const session = options.manager.createRequest(input.request, purpose !== 'director-plan' ? input.projectId ?? null : null, purpose)
       sessionId = session.sessionId
-      const base = input.purpose === 'director-plan'
-        ? buildDirectorPlanAgentPrompt(connection, input.request)
-        : buildAiEditorHttpAgentPrompt(connection, input.request)
-      const prompt = `${base}\n\nLuna 已创建任务：sessionId=${session.sessionId}，purpose=${input.purpose}，revision=${session.revision}。请通过 wait_for_edit_request 领取此任务并核对编号，不要新建其他任务。${session.projectId ? `现有剪辑项目 ID：${JSON.stringify(session.projectId)}，通过工具确认并打开。` : ''}`
+      const base = buildAssistantAgentPrompt(connection, input.request)
+      const prompt = `${base}\n\nLuna 已创建任务：sessionId=${session.sessionId}，purpose=${purpose}，revision=${session.revision}。请按技能工具返回的公共指引领取此任务并核对编号，不要新建其他任务。${session.projectId ? `上下文项目 ID：${JSON.stringify(session.projectId)}；仅当所选流程需要剪辑时通过工具确认并打开。` : ''}`
       // Capture and persist the first exact user request before any application is opened or clipboard is changed.
       const creation = options.manager.snapshot().events.find(event => event.type === 'session-created' && event.session.sessionId === sessionId)
       if (!creation) throw new Error('任务创建失败')

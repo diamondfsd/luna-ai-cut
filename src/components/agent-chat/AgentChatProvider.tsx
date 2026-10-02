@@ -5,7 +5,7 @@ import { AgentChatPanel } from './AgentChatPanel'
 
 export function AgentChatProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
-  const [context, setContext] = useState<AgentChatContext>({ purpose: 'director-plan' })
+  const [context, setContext] = useState<AgentChatContext>({})
   function show(next: AgentChatContext) { setContext(next); setOpen(true) }
   useEffect(() => window.luna.externalAgent.onOpenChat(show), [])
   return <ChatContext.Provider value={{ open: show, toggle: () => setOpen(value => !value), isOpen: open }}>
