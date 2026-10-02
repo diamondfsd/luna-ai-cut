@@ -46,7 +46,7 @@ interface ThumbImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src
 export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300, preloadBottom, unavailableFallback, onUnavailable, onCacheReady, onLoadingChange, cacheWhenUsingRemoteThumbnail = false, onError, onLoad, ...imgProps }: ThumbImageProps) {
   const embeddedImage = src.startsWith('data:image/')
   const [visible, setVisible] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const [remoteThumbnail, setRemoteThumbnail] = useState<string | null>(thumbnailSrc ?? null)
   const [remoteThumbnailFailed, setRemoteThumbnailFailed] = useState(false)
@@ -63,13 +63,15 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
 
   const renderedSrc = embeddedImage ? src : remoteThumbnail ?? thumbnailUrl ?? PLACEHOLDER_DATA_URL
 
-  // 后台缓存地址变化不一定会改变当前显示的图片（例如视频优先显示远程代理），
-  // 只有实际显示地址变化时才重置加载状态，避免已显示图片持续转圈。
+  // 将完成状态绑定到显示地址，避免地址变化后的 effect 覆盖先到达的 load 事件。
+  // 浏览器缓存命中时图片可能已完成加载，不能只依赖之后的 load 事件。
   useEffect(() => {
-    setImageLoaded(false)
+    const img = imgRef.current
+    if (renderedSrc !== PLACEHOLDER_DATA_URL && img?.complete && img.naturalWidth > 0
+      && img.getAttribute('src') === renderedSrc) setLoadedSrc(renderedSrc)
   }, [renderedSrc])
 
-  const loading = !imageLoaded && (
+  const loading = loadedSrc !== renderedSrc && (
     isLoading
     || Boolean(remoteThumbnail)
     || Boolean(thumbnailUrl)
@@ -171,7 +173,7 @@ export function ThumbImage({ src, previewSrc, thumbnailSrc, preloadMargin = 300,
       onLoad={(event) => {
         onLoad?.(event)
         if (renderedSrc !== PLACEHOLDER_DATA_URL) {
-          setImageLoaded(true)
+          setLoadedSrc(event.currentTarget.getAttribute('src'))
         }
         if (thumbnailUrl && renderedSrc !== PLACEHOLDER_DATA_URL) {
           retryCountRef.current = 0
