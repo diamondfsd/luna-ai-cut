@@ -48,6 +48,12 @@ function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Prom
   })
 }
 
+export async function getAgentHttpConnection() {
+  if (!mcpServer) throw new Error('暂时无法连接，请重试')
+  const endpoint = await mcpServer.getEndpoint()
+  return { ...endpoint, discoveryPath: mcpServer.endpointPath }
+}
+
 export function register(context: IpcContext): void {
   if (registered) return
   registered = true
@@ -57,17 +63,7 @@ export function register(context: IpcContext): void {
     return path.join(app.getAppPath(), 'scripts', 'luna-mcp.mjs')
   })
 
-  ipcMain.handle('ai-editor:mcp-http-connection', async () => {
-    if (!mcpServer) return null
-    const endpoint = await mcpServer.getEndpoint()
-    return {
-      baseUrl: endpoint.baseUrl,
-      skillUrl: endpoint.skillUrl,
-      toolsUrl: endpoint.toolsUrl,
-      openapiUrl: endpoint.openapiUrl,
-      apiUrl: endpoint.apiUrl,
-    }
-  })
+  ipcMain.handle('ai-editor:mcp-http-connection', getAgentHttpConnection)
 
   ipcMain.on('ai-editor:mcp-response', (_event, callId: unknown, response: unknown) => {
     if (typeof callId !== 'string') return

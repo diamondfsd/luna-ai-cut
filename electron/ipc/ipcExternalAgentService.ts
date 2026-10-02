@@ -1,8 +1,8 @@
+import { registerAgentConversations } from './externalAgentConversations'
 import { clipboard, ipcMain, shell } from 'electron'
 import { createExternalAgentService } from '../features/external-agents/externalAgentService'
 import { codexAdapter } from '../features/external-agents/codexAdapter'
 import { workBuddyAdapter } from '../features/external-agents/workBuddyAdapter'
-import type { ExternalAgentTaskRequest } from '../../src/shared/types/externalAgent'
 
 export function register(context: import('./context').IpcContext): void {
   ipcMain.handle('external-agent:open-chat', (_event, input: unknown) => {
@@ -29,5 +29,5 @@ export function register(context: import('./context').IpcContext): void {
   ipcMain.handle('external-agent:open', (_event, id: string) => service.open(id))
   ipcMain.handle('external-agent:download', (_event, id: string) => service.download(id))
   ipcMain.handle('external-agent:install-skill', (_event, id: string) => service.installSkill(id))
-  ipcMain.handle('external-agent:start-task', (_event, id: string, request: ExternalAgentTaskRequest) => service.startTask(id, request))
+  registerAgentConversations(service)
 }

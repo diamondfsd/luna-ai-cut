@@ -78,6 +78,7 @@ vm.runInNewContext(ts.transpileModule(ipcSource, { compilerOptions: { module: ts
   Error,
   require: name => {
     if (name === 'electron') return { ipcMain: { handle: (name, run) => handlers.set(name, run) }, shell: {}, clipboard: {} }
+    if (name.endsWith('externalAgentConversations')) return { registerAgentConversations: () => {} }
     if (name.endsWith('externalAgentService')) return { createExternalAgentService: () => ({}) }
     return {}
   },

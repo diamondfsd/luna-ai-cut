@@ -9,6 +9,7 @@ export const AGENT_TASK_TOOLS = [
         agentId: { type: 'string', minLength: 1, description: 'Stable identifier for this external Agent.' },
         agentType: { type: 'string', minLength: 1, description: 'Agent category or role, for example WorkBuddy external editing Agent.' },
         agentModel: { type: 'string', minLength: 1, description: 'The model name actually used by this Agent.' },
+        purpose: { type: 'string', enum: ['editing', 'director-plan'], description: 'Task type. Director-plan tasks never activate the editor.' },
         projectId: { type: 'string', description: 'Optional existing project id to associate with the session.' },
       },
       required: ['request', 'agentId', 'agentType', 'agentModel'],
