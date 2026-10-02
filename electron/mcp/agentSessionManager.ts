@@ -340,7 +340,7 @@ export class AgentSessionManager {
       ? { session: copySession(current), allowed: true }
       : this.gate(sessionId, revision)
     if (!gate.allowed) return { ok: false, summary: gate.error?.message ?? '任务不可用', error: gate.error }
-    const message = summary?.trim() || (status === 'completed' ? '剪辑已完成' : status === 'cancelled' ? '任务已取消' : '剪辑失败')
+    const message = summary?.trim() || (status === 'completed' ? '本次处理完成' : status === 'cancelled' ? '任务已取消' : '本次处理失败')
     const nextProjectId = projectId?.trim() || gate.session.projectId
     this.session = {
       ...gate.session,
@@ -417,7 +417,7 @@ export class AgentSessionManager {
     if (!active || !active.allowed) return
     this.session = {
       ...active.session,
-      message: '正在执行编辑操作',
+      message: '正在处理任务',
       updatedAt: nowIso(),
     }
     this.emit({

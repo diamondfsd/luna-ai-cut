@@ -16,4 +16,6 @@
 
 公共 API 见 `src/shared/types/externalAgent.ts`；任务/历史数据见 `agentConversation.ts`，通过 `electron/preloadExternalAgent.ts` 暴露。
 IPC 装配见 `electron/ipc/externalAgentConversations.ts`；前端展示见 [全局 AI 助手](../../../src/components/agent-chat/README.md)。
-历史路径为 `baseDir/agent-conversations/conversations.json`；服务地址通过固定发现文件获取，详见 [全应用架构](../../../docs/app-agent-architecture.md)。
+历史路径为 `~/.luna-ai-cut/conversations/conversations.json`；服务地址通过固定发现文件获取，详见 [全应用架构](../../../docs/app-agent-architecture.md)。
+
+路径统一由 [agent-space](../agent-space/README.md) 提供。旧 baseDir 历史仅在新存档不存在时校验后原子复制，旧文件保留；不覆盖新文件或重导入已删除记录。

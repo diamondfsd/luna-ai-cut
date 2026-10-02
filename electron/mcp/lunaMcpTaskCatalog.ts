@@ -1,11 +1,11 @@
 export const AGENT_TASK_TOOLS = [
   {
     name: 'start_edit_session',
-    description: 'Create and immediately claim an editing session for a request that came from outside Luna AI Cut. Include the exact user request, a stable agentId, the Agent category, and the actual model name; do not invent a sessionId or identity.',
+    description: 'Create and immediately claim a Luna app task from the external conversation, not an existing handoff or follow-up. Use purpose=auto for app tasks and discover matching skills. The legacy edit name does not imply video editing. Include the exact user request and actual Agent identity.',
     inputSchema: {
       type: 'object',
       properties: {
-        request: { type: 'string', minLength: 1, description: 'The exact user editing request received by the external Agent.' },
+        request: { type: 'string', minLength: 1, description: 'The exact user request received by the external Agent.' },
         agentId: { type: 'string', minLength: 1, description: 'Stable identifier for this external Agent.' },
         agentType: { type: 'string', minLength: 1, description: 'Agent category or role, for example WorkBuddy external editing Agent.' },
         agentModel: { type: 'string', minLength: 1, description: 'The model name actually used by this Agent.' },
@@ -18,7 +18,7 @@ export const AGENT_TASK_TOOLS = [
   },
   {
     name: 'wait_for_edit_request',
-    description: 'Wait for and claim the latest user editing request from Luna AI Cut. Register the Agent identity when waiting or claiming.',
+    description: 'Wait for and claim a Luna app task, including tasks with no editing workflow. Register the actual Agent identity and verify the handed-over sessionId. Claiming an auto task does not open the editor.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -33,7 +33,7 @@ export const AGENT_TASK_TOOLS = [
   },
   {
     name: 'get_edit_request',
-    description: 'Get the latest user editing request and revision. Call this whenever the user changes the request or before a major editing phase.',
+    description: 'Get the latest user task request and revision. Call after recording a follow-up or REQUEST_UPDATED and before a major write phase; reading does not choose a workflow.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -46,7 +46,7 @@ export const AGENT_TASK_TOOLS = [
   },
   {
     name: 'report_edit_progress',
-    description: 'Report the current editing phase and progress to Luna AI Cut. Do not write a natural-language status reply instead of using this tool.',
+    description: 'Report task progress to Luna AI Cut. For app tasks with no editing phase, use waiting. Does not require an editor or business workflow; a chat reply alone does not update app progress.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -62,7 +62,7 @@ export const AGENT_TASK_TOOLS = [
   },
   {
     name: 'report_edit_result',
-    description: 'Report the final edit result to Luna AI Cut. The Luna chat page uses this structured result as the authoritative completion message.',
+    description: 'Report this execution result for any Luna task. Completed/failed/cancelled are execution outcomes; the same task can accept later instructions. Non-video tasks need only a truthful summary, not a project or export path.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -137,4 +137,3 @@ export const AGENT_TASK_TOOLS = [
     },
   },
 ] as const
-

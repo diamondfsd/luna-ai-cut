@@ -43,7 +43,7 @@ export const agentWorkflowModule: LunaToolModule = {
       if (args.workflow === 'director-plan' && !context.directorPlanTools) throw new AgentSessionError('UNSUPPORTED', '导演计划暂不可用')
       const session = context.agentSession.selectWorkflow(args.sessionId, Number(args.revision), args.workflow)
       return { ok: true, result: { ok: true, summary: '已选择处理流程', data: { session,
-        nextAction: 'list_agent_skills', skillFilter: { workflow: session.purpose } } } }
+        guidance: 'Execute the already-read matching skill using its available tools. Workflow selection does not reveal new skills; do not repeat discovery just because it succeeded.' } } }
     } catch (error) {
       return { ok: true, result: { ok: false, error: {
         code: error instanceof AgentSessionError ? error.code : 'WORKFLOW_SELECTION_FAILED',

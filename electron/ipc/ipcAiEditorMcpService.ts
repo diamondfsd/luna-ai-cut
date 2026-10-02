@@ -15,6 +15,10 @@ import { getAiEditorWindow } from './ipcAiEditorService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
 import { createDirectorPlanAgentService } from '../features/director-lab/directorPlanAgentService'
 import { getDirectorPlanDir, getSettings } from '../storage/fileService'
+import { agentPersonalSpace } from '../features/agent-space/agentPersonalSpace.ts'
+import { createMemoryRepository } from '../features/memory/memoryRepository.ts'
+import { createMemoryService } from '../features/memory/memoryService.ts'
+import { createMemoryToolModule } from '../features/memory/memoryToolModule.ts'
 
 interface PendingRendererRequest {
   resolve: (response: AiEditorMcpResponse) => void
@@ -26,13 +30,13 @@ let registered = false
 let mcpServer: LunaMcpServer | null = null
 const pending = new Map<string, PendingRendererRequest>()
 
-function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Promise<AiEditorMcpResponse> {
+function requestRenderer(request: AiEditorMcpRequest): Promise<AiEditorMcpResponse> {
   const editorWindow = getAiEditorWindow()
-  // The main library window has no editor bridge. Native plan tools must remain discoverable.
-  if (request.kind === 'listTools' && !editorWindow) {
+  // No editor means no bridge for any editor operation. Never wait on the library window.
+  if (!editorWindow) {
     return Promise.resolve({ ok: false, error: 'AI 剪辑窗口未打开' })
   }
-  const window = editorWindow ?? context.win
+  const window = editorWindow
   if (!window || window.isDestroyed()) {
     return Promise.resolve({ ok: false, error: 'AI 剪辑窗口未打开' })
   }
@@ -78,9 +82,13 @@ export function register(context: IpcContext): void {
     request.resolve(response as AiEditorMcpResponse)
   })
 
+  const homeDir = process.env.LUNA_E2E_USER_DATA_DIR ?? app.getPath('home')
+  const space = agentPersonalSpace(homeDir)
+  const memory = createMemoryService(createMemoryRepository(async () => space.memoryDir))
   mcpServer = createLunaMcpServer({
-    homeDir: process.env.LUNA_E2E_USER_DATA_DIR ?? app.getPath('home'),
-    requestRenderer: (request) => requestRenderer(context, request),
+    homeDir,
+    toolModules: [createMemoryToolModule(memory)],
+    requestRenderer,
     agentSession: agentSessionManager,
     directorPlanTools: createDirectorPlanAgentService(async () => getDirectorPlanDir(await getSettings())),
     activateWindow: () => activateAgentWindow(context),
@@ -92,6 +100,19 @@ export function register(context: IpcContext): void {
   })
   void mcpServer.start().catch((error: unknown) => {
     console.error('[MCP] 本机服务启动失败', error)
+  })
+
+  let memoryDrained = false
+  let memoryDraining = false
+  app.on('before-quit', event => {
+    if (memoryDrained) return
+    event.preventDefault()
+    if (memoryDraining) return
+    memoryDraining = true
+    void memory.close().finally(() => {
+      // Let settled tool handlers archive their result before history's next drain.
+      setImmediate(() => { memoryDrained = true; app.quit() })
+    })
   })
 
   app.once('will-quit', () => {

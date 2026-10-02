@@ -15,6 +15,8 @@
 | 任务工具 | `lunaMcpTaskCatalog.ts`、`lunaMcpTaskTools.ts` | 当前包含历史音乐工具实现；新领域不要继续堆入 |
 | 原生导演计划工具 | `directorPlanTools.ts` | 调用导演领域服务，未来新增领域工具放回领域目录 |
 | 剪辑桥接兼容层 | `lunaEditorToolModule.ts` | 仅动态 iframe 工具 |
+| 应用级记忆 | `../features/memory/` | 无 workflow，不依赖编辑器，通用模块注册 |
+| 个人持久空间 | `../features/agent-space/` | ~/.luna-ai-cut，与安装/项目/缓存独立 |
 | 外部 Agent 实时指引 | `lunaHttpSkill.ts`、`directorPlanHttpSkill.ts` | 按业务任务提供最新流程 |
 
 新增工具：领域服务 → 领域 `LunaToolModule` → 组合入口 → 自动发现与调用。
@@ -24,3 +26,5 @@
 完整分层与现有限制见 [架构文档](../../docs/app-agent-architecture.md)。
 
 任务可持续续聊：`agentSessionArchive.ts` 维护任务查找与延续校验；`update_task_request` 用原编号开启新执行版本。完成、失败和停止不代表任务永久结束。持久化读取由 external-agents 注入。
+
+全局 /skill.md 返回实时应用索引及公共指引。业务手册只经技能全文/兼容业务端点读取。未打开剪辑窗口时主进程桥接立即返回不可用，不向主库窗口发送无人处理的编辑请求。

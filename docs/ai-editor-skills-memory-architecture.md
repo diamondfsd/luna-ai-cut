@@ -1,6 +1,6 @@
 # AI 剪辑：导演计划、可组合 Skill 与记忆架构
 
-日期：2026-10-02。状态：分阶段实现。导演计划编写、按计划剪辑与记忆使用 Skill 已加入；本地计划格式读取、列表/详情、Markdown 校验与创建、按 ID 校验和修改的七个接口已实现。本文中的剪辑上下文、导演剪辑方案应用、记忆服务及扩展计划管理能力仍待实现。
+日期：2026-10-02。状态：分阶段实现。导演计划编写、按计划剪辑与记忆使用 Skill 已加入；本地计划格式读取、列表/详情、Markdown 校验与创建、按 ID 校验和修改的七个接口已实现。应用级记忆首版已实现，当前契约、个人空间位置与限制以 [应用记忆架构](app-memory-architecture.md) 为准；本文中的剪辑上下文、导演剪辑方案应用及扩展计划管理仍待实现。下文早期记忆方案是扩展规划，不是已提供工具清单。
 
 从页面入口到预览、修改和视频导出的用户流程见 [全链路流程](director-plan-ai-editing-workflow.md)。
 
@@ -151,15 +151,15 @@ mediaId 是操作编号，内容指纹才是复用身份。先通过路径、大
 
 ## 6. 持久化与模块边界
 
-建议主进程本地 SQLite，首期结构检索与全文索引，后续按收益增加可替换向量索引。选择兼容当前 Electron 的驱动前单独验证三平台与打包，记忆设计不绑定某个驱动或 embedding 模型。
+当前应用级记忆采用串行原子文件仓储和结构化文本检索；未来数据量增长时可替换为主进程 SQLite/全文索引，再按收益增加可替换向量索引。选择兼容当前 Electron 的驱动前单独验证三平台与打包，记忆设计不绑定某个驱动或 embedding 模型。
 
-建议位置 `baseDir/ai-editor-memory/memory.sqlite`，作为新目录随设置迁移规则处理。与 `workspace-projects`、`ai-editor-projects` 和导演素材目录独立；重命名/删除项目不能误操作其他域。跨目录操作用事务日志协调，项目删除清理项目记忆及引用，全局偏好按来源保留规则处理。
+记忆固定保存到个人空间 `~/.luna-ai-cut/memory/`，不随 baseDir、项目目录或软件安装迁移/删除。与 `workspace-projects`、`ai-editor-projects` 和导演素材目录独立；重命名/删除项目不能误操作其他域。跨目录操作用事务日志协调，项目删除清理项目记忆及引用，全局偏好按来源保留规则处理。
 
 主要表：source_events、memories、memory_sources、memory_revisions、analysis_artifacts、context_snapshots、tombstones、schema_migrations。来源和派生记录通过关联表查询，便于删除与失效；写入事务与唯一幂等键保证崩溃恢复和并发一致性。
 
 模块建议：
 
-- `electron/features/ai-editor-memory/`：repository、source ingestion、retrieval、write validation、lifecycle；不调用 renderer 存储。
+- `electron/features/memory/`：repository、source ingestion、retrieval、write validation、lifecycle；不调用 renderer 存储。
 - `electron/features/ai-editor-context/`：任务快照、Skill 推荐、计划/media 映射、上下文预算。
 - `electron/features/ai-editor-director/`：约束规范化、方案校验与应用协调。
 - `src/shared/types/`：版本化请求响应类型；preload/IPC/iframe bridge 仅暴露明确能力。
@@ -170,7 +170,9 @@ renderer 的 `mcp-listener.ts` 已超过 600 行，后续扩展前必须按职�
 
 聊天历史可渐进导入，记录 importVersion 与 conversation/message ID 幂等去重，并标明被压缩或截断。服务必须先读取可靠来源再存记忆，不从压缩工具摘要恢复并不存在的画面证据。
 
-## 7. 对外接口（拟议，尚未实现）
+## 7. 对外接口（现有契约与后续规划）
+
+已实现的应用级记忆工具为 `search_memories`、`get_memory`、`save_memory`（含更正）、`forget_memory`。它们不要求 editing 流程，实时 schema 和当前限制见应用记忆架构。下面带 edit 前缀的记忆接口名是早期规划，不能作为当前工具名调用；镜头来源/上下文相关接口仍待实现。
 
 统一通过现有 `POST /api/tools/{toolName}`，同时适配现有 MCP。GET /tools 的实时 schema 为准，不新增让 Agent 绕过会话直接写数据库的 REST 通道。
 

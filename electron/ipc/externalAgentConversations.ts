@@ -7,9 +7,14 @@ import { getAgentHttpConnection } from './ipcAiEditorMcpService'
 import { getSettings } from '../storage/fileService'
 import type { createExternalAgentService } from '../features/external-agents/externalAgentService'
 import type { AgentTaskInput } from '../../src/shared/types/agentConversation'
+import { agentPersonalSpace } from '../features/agent-space/agentPersonalSpace.ts'
 
 export function registerAgentConversations(adapters: ReturnType<typeof createExternalAgentService>): void {
-  const store = createAgentConversationStore(async () => join((await getSettings()).baseDir, 'agent-conversations'))
+  const space = agentPersonalSpace(process.env.LUNA_E2E_USER_DATA_DIR ?? app.getPath('home'))
+  const store = createAgentConversationStore(async () => space.conversationsDir,
+    async () => process.env.LUNA_E2E_USER_DATA_DIR ? null : join((await getSettings()).baseDir, 'agent-conversations'))
+  let drained = false
+  let archiveVersion = 0
   agentSessionManager.archive.load = async id => {
     const item = (await store.list()).find(item => item.id === id)
     return item ? { session: item.session, sequence: Math.max(0, ...item.events.map(event => event.sequence)) } : null
@@ -20,6 +25,8 @@ export function registerAgentConversations(adapters: ReturnType<typeof createExt
     }
   }
   agentSessionManager.subscribe(event => {
+    drained = false
+    archiveVersion++
     void store.capture(event).then(notify).catch(error => console.error('[AI 助手] 保存任务历史失败', error))
   })
   const launch = createAgentTaskCoordinator({ manager: agentSessionManager, store, adapters,
@@ -38,10 +45,10 @@ export function registerAgentConversations(adapters: ReturnType<typeof createExt
     await store.remove(id)
     notify()
   })
-  let drained = false
   app.on('before-quit', event => {
     if (drained) return
     event.preventDefault()
-    void store.flush().finally(() => { drained = true; app.quit() })
+    const version = archiveVersion
+    void store.flush().finally(() => { drained = version === archiveVersion; app.quit() })
   })
 }

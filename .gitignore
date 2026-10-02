@@ -48,6 +48,7 @@ docs/*
 !docs/director-plan-ai-editing-workflow.md
 !docs/external-agent-adapters.md
 !docs/app-agent-architecture.md
+!docs/app-memory-architecture.md
 !docs/camera-media-architecture.md
 !docs/windows-ios-usb-live.md
 

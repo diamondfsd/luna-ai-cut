@@ -13,7 +13,7 @@ GET /tools for live schemas. POST /api/tools/{toolName} with {"arguments":{...}}
 7. Report key milestones through report_edit_progress and finish using report_edit_result (completed/failed/cancelled), with a concise summary containing planId. Do not invent projectId or claim a video was created. Chat replies alone do not update Luna.
 8. Before writes check the latest request revision. On requestChanged/REQUEST_UPDATED read get_edit_request. On USER_STOPPED stop immediately. On stale snapshot re-read and recompute. Never blindly retry errors.
 
-9. For user clarifications or follow-up changes in this Agent conversation, call update_task_request with the exact new user request and current sessionId/revision, then get_edit_request. For a genuinely new request after completion, create a new session; do not switch an active director-plan session into editing.
+9. For all follow-up changes, including after a result or cancellation, retain the same sessionId: call update_task_request with the exact new user request and current revision, then get_edit_request. Rediscover the matching skill and select its workflow only if declared and required by the new request; never silently expand an active plan task into editing.
 
 All generated plans represent filming intentions; do not invent footage analysis or user preferences. Continue the conversation in the selected external Agent; Luna displays task progress and results.
 `

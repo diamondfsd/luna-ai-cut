@@ -340,3 +340,8 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 单个源文件超过 600 行时，必须拆分为职责清晰的多个模块；除非存在明确且
   经过评审确认的技术原因，不得以新增代码为由继续扩大文件规模。
 - 拆分时优先按领域职责、生命周期或依赖边界划分，避免仅按行数机械切割。
+
+## 应用级 Agent 架构索引
+
+- 应用框架记忆：[设计](docs/app-memory-architecture.md)、[目录规范](electron/features/memory/AGENTS.md)。记忆不归属于剪辑或导演计划，不需要打开编辑器。
+- Agent 个人空间：[目录规范](electron/features/agent-space/AGENTS.md)。用户指定 ~/.luna-ai-cut；记忆和任务历史不得随卸载、更新、baseDir 切换或项目删除而自动清理。

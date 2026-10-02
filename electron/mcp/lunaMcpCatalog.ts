@@ -28,7 +28,7 @@ export async function getToolCatalog(options: LunaMcpServerOptions): Promise<Too
     return {
       tools: nativeTools,
       editorToolsReady: false,
-      message: bridgeResponse.error ?? 'AI 剪辑页面尚未加载，请领取任务后激活 Luna 并重新获取工具清单',
+      message: bridgeResponse.error ?? 'AI 剪辑尚未打开；应用级工具仍可使用',
     }
   }
   const rendererTools = Array.isArray(bridgeResponse.result) ? bridgeResponse.result : []
@@ -78,7 +78,7 @@ export function openApiDocument(baseUrl: string, catalog: ToolCatalog): Record<s
     info: {
       title: 'Luna AI Cut Local Agent API',
       version: '1.0.0',
-      description: 'Local HTTP tool API for controlling the Luna AI Cut desktop editor.',
+      description: 'Local HTTP tool API for Luna AI Cut app capabilities. An unavailable editor does not affect native app tools.',
     },
     servers: [{ url: baseUrl }],
     paths,

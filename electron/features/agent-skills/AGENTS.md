@@ -11,3 +11,5 @@
 - Markdown 索引/全文地址只保留兼容，不再作为主交接入口。公共会话规则由 agent-workflows 提供，领域规则由自己的技能全文提供。
 
 回归：`scripts/test-luna-tool-modules.mjs`（原生无副作用、动态模块、全文更新、未知编号、HTTP/MCP/OpenAPI）；`scripts/test-agent-conversations.mjs`（交接不固定技能路径及首次原文保存）。
+
+- /skill.md 返回与动态清单一致的应用级索引/公共指导，不返回 editing 等某个领域全文。workflow 缺省是合法的应用级能力，不默认归入剪辑；未提供所需能力时不能靠读取无关技能扩大目标。

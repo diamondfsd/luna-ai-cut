@@ -1,0 +1,21 @@
+.director-plan-delete {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.lab-plan-list-row:hover .director-plan-delete,
+.lab-plan-list-row:focus-within .director-plan-delete,
+.lab-director-actions:hover .director-plan-delete,
+.lab-director-actions:focus-within .director-plan-delete,
+.director-plan-delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .director-plan-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

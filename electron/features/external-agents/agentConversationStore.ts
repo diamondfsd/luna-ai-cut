@@ -5,15 +5,24 @@ import type { AgentConversation } from '../../../src/shared/types/agentConversat
 import type { AiEditorAgentEvent } from '../../../src/shared/types'
 
 /** Serial atomic commits: a failed write never replaces the last valid archive. */
-export function createAgentConversationStore(directory: () => Promise<string>) {
+export function createAgentConversationStore(directory: () => Promise<string>, legacyDirectory?: () => Promise<string | null>) {
   let queue: Promise<unknown> = Promise.resolve()
   const transact = <T>(operation: (items: AgentConversation[]) => Promise<{ items?: AgentConversation[]; result: T }>): Promise<T> => {
     const next = queue.then(async () => {
       const dir = await directory()
       const file = join(dir, 'conversations.json')
       let items: AgentConversation[] = []
+      let migrate = false
       try {
-        const saved: unknown = JSON.parse(await readFile(file, 'utf8'))
+        let content: string
+        try { content = await readFile(file, 'utf8') } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          const legacy = await legacyDirectory?.()
+          if (!legacy) throw error
+          content = await readFile(join(legacy, 'conversations.json'), 'utf8')
+          migrate = true
+        }
+        const saved: unknown = JSON.parse(content)
         if (!Array.isArray(saved) || saved.some(value => !value || typeof value.id !== 'string' || typeof value.request !== 'string' || typeof value.updatedAt !== 'string' || !['auto', 'editing', 'director-plan'].includes(value.purpose) || !value.session || !Array.isArray(value.events))) {
           throw new Error('任务历史内容无效')
         }
@@ -22,11 +31,11 @@ export function createAgentConversationStore(directory: () => Promise<string>) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
       const change = await operation(items)
-      if (change.items) {
-        await mkdir(dir, { recursive: true })
+      if (change.items || migrate) {
+        await mkdir(dir, { recursive: true, mode: 0o700 })
         const temporary = join(dir, `${randomUUID()}.tmp`)
         try {
-          await writeFile(temporary, JSON.stringify(change.items), { mode: 0o600 })
+          await writeFile(temporary, JSON.stringify(change.items ?? items), { mode: 0o600 })
           await rename(temporary, file)
         } finally { await rm(temporary, { force: true }) }
       }

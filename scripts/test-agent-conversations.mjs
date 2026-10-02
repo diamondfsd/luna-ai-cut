@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { createAgentConversationStore } from '../electron/features/external-agents/agentConversationStore.ts'
 import { createAgentTaskCoordinator } from '../electron/features/external-agents/agentTaskCoordinator.ts'
 import { AgentSessionManager } from '../electron/mcp/agentSessionManager.ts'
+import { agentPersonalSpace } from '../electron/features/agent-space/agentPersonalSpace.ts'
 
 const dir = await mkdtemp(join(tmpdir(), 'luna-conversations-'))
 try {
@@ -74,7 +75,21 @@ try {
   assert.equal((await reopened.list()).length, 3, 'legacy explicit-purpose archives remain readable')
   manager.cancelRequest(automatic.conversation.id)
   await store.flush()
+  const personal = agentPersonalSpace(join(dir, 'home'))
+  const migrating = createAgentConversationStore(async () => personal.conversationsDir, async () => dir)
+  const legacyContent = await readFile(join(dir, 'conversations.json'), 'utf8')
+  assert.equal((await migrating.list()).length, 3, 'existing task history migrates into the personal space')
+  assert.equal(await readFile(join(dir, 'conversations.json'), 'utf8'), legacyContent, 'migration never removes the legacy archive')
+  const personalFile = join(personal.conversationsDir, 'conversations.json')
+  assert.equal(JSON.parse(await readFile(personalFile, 'utf8')).length, 3)
+  await writeFile(personalFile, '[]')
+  assert.equal((await migrating.list()).length, 0, 'an existing personal archive is never replaced or repopulated from legacy data')
+  await writeFile(personalFile, '{broken')
+  await assert.rejects(migrating.list())
+  assert.equal(await readFile(personalFile, 'utf8'), '{broken', 'corrupt personal data cannot trigger a legacy overwrite')
   await writeFile(join(dir, 'conversations.json'), '{broken')
+  const invalidMigration = createAgentConversationStore(async () => join(dir, 'another-personal-space'), async () => dir)
+  await assert.rejects(invalidMigration.list(), 'corrupt legacy data cannot produce an empty personal archive')
   await assert.rejects(store.capture(creation))
   assert.equal(await readFile(join(dir, 'conversations.json'), 'utf8'), '{broken')
   const before = launches
