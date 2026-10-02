@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import path from 'node:path'
 import type { WindowCloseBehavior } from '../../src/shared/types'
+import { startupWindowState } from '../infrastructure/startupWindowState'
 
 let appQuitting = false
 let windowCloseBehavior: WindowCloseBehavior = 'hide'
@@ -30,7 +31,7 @@ interface MainWindowOptions {
 }
 
 export function activateMainWindow(win: BrowserWindow): void {
-  if (win.isDestroyed()) return
+  if (startupWindowState.pending || win.isDestroyed()) return
   if (win.isMinimized()) win.restore()
   if (!win.isVisible()) win.show()
   win.focus()

@@ -8,6 +8,7 @@ import { preloadWatermarkPaths } from './shared/watermarkAssets'
 import { preloadBorderLogoPaths } from './workspace/border/logoAssets'
 import { HotUpdateStartupDialog } from './components/HotUpdateStartupDialog'
 import { LivePreviewWindow } from './pages/LivePreviewWindow'
+import { StartupReadySignal } from './components/StartupReadySignal'
 
 function App() {
   const location = useLocation()
@@ -25,6 +26,7 @@ function App() {
   return (
     <AppProvider>
       <DeviceConnectionProvider>
+        <StartupReadySignal />
         <ToastProvider>
           <HotUpdateStartupDialog />
           <AppRoutes />

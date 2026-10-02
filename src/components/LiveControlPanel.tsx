@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Download, Video } from 'lucide-react'
+import { Video } from 'lucide-react'
 
 import { Accordion, Button, SegmentedControl, Switch } from '../ui'
 import { filePathToPreviewUrl } from '../lib/fileUtils'
@@ -14,14 +14,13 @@ import { captureLiveLutFrame } from '../workspace/lut/liveLutThumbnail'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveCameraControlPanel } from './LiveCameraControlPanel'
 import { LiveConnectionGuides } from './LiveConnectionGuides'
+import { MobileAppDownloadButton } from './MobileAppDownload'
 import { AndroidUsbConnectionMode } from './AndroidUsbConnectionMode'
 import { resolveWatermarkPositioning as resolvePreviewWatermarkPositioning, watermarkPositionStyle } from './htmlPreviewGeometry'
 import { buildResolvedWatermarkStaticLayer, WatermarkSettings } from './WatermarkSettings'
 import type { LiveVideoColorAdjustments } from './LiveVideoWebGpuRenderer'
 import type { LivePreviewWindowSettings, LiveStreamStatus, NormalizedVideoPoint } from '../shared/types'
 import '../styles/live-control-panel.css'
-
-const MOBILE_APP_DOWNLOAD_URL = 'https://lunaka.diamondfsd.com/'
 
 type LiveSettingsPanel = 'color' | 'lut' | 'watermark' | 'control'
 
@@ -275,14 +274,7 @@ export function LiveControlPanel({
                   <span>1</span>
                   <p>打开 Luna 咔，连接相机</p>
                   {!status.receiverConnected && (
-                    <Button
-                      variant="secondary"
-                      size="mini"
-                      icon={<Download size={14} />}
-                      onClick={() => void window.luna.openPath(MOBILE_APP_DOWNLOAD_URL)}
-                    >
-                      下载 App
-                    </Button>
+                    <MobileAppDownloadButton size="mini" />
                   )}
                 </li>
                 <li><span>2</span><p>用 USB 连接手机和电脑</p></li>

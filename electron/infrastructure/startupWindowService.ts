@@ -2,25 +2,13 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { currentBaseDir, logDirForBaseDir } from '../storage/settingsService'
 import { saveStartupFailure, type StartupFailureReport } from './startupDiagnostics'
+import { startupPage } from './startup-animation/startupPage'
+import { startupWindowState } from './startupWindowState'
 
 const STARTUP_READY_CHANNEL = 'luna:startup-ready'
 let startupWindow: BrowserWindow | null = null
-let startupPending = true
+let mainWindow: BrowserWindow | null = null
 let creatingStartupWindow = false
-
-function startupPage(failed = false): string {
-  const title = failed ? 'Luna AI Cut 暂时无法启动' : 'Luna AI Cut'
-  const message = failed ? '请关闭应用后重试。若仍无法打开，请重新安装最新版。' : '正在准备工作区…'
-  const spinner = failed ? '' : '<div class="spinner" aria-hidden="true"></div>'
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
-    :root{color-scheme:light;font-family:"Segoe UI","Microsoft YaHei UI",sans-serif;background:#f5f7fa;color:#182230}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;text-align:center}
-    main{width:100%;padding:32px}h1{margin:0 0 12px;font-size:24px;font-weight:650;letter-spacing:0}
-    p{margin:0;color:#667085;font-size:14px;line-height:1.6}.spinner{width:28px;height:28px;margin:0 auto 22px;border:3px solid #d9e2ec;border-top-color:#0066cc;border-radius:50%;animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-  </style><title>${title}</title></head><body><main>${spinner}<h1>${title}</h1><p id="status">${message}</p></main>
-  ${failed ? '' : '<script>setTimeout(()=>{document.getElementById("status").textContent="首次启动可能需要多一点时间，请稍候…"},15000)</script>'}</body></html>`
-}
 
 function writeStartupFailure(error: unknown): StartupFailureReport {
   const logPaths: string[] = []
@@ -79,17 +67,20 @@ function cleanupStartupListeners(): void {
   app.removeListener('browser-window-created', observeMainWindow)
 }
 
-function finishStartup(): void {
-  if (!startupPending) return
-  startupPending = false
+function finishStartup(event: Electron.IpcMainEvent): void {
+  if (!startupWindowState.pending || !mainWindow || mainWindow.isDestroyed()
+    || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return
+  startupWindowState.pending = false
   cleanupStartupListeners()
+  mainWindow.show()
+  mainWindow.focus()
   startupWindow?.close()
   startupWindow = null
 }
 
 export function failStartup(error: unknown): void {
-  if (!startupPending) return
-  startupPending = false
+  if (!startupWindowState.pending) return
+  startupWindowState.pending = false
   cleanupStartupListeners()
   const report = writeStartupFailure(error)
   if (startupWindow && !startupWindow.isDestroyed()) {
@@ -107,47 +98,48 @@ function createStartupWindow(): void {
   try {
     startupWindow = new BrowserWindow({
       title: 'Luna AI Cut',
-      width: 440,
-      height: 280,
-      minWidth: 440,
-      minHeight: 280,
+      width: 480,
+      height: 354,
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      show: false,
       resizable: false,
       maximizable: false,
       fullscreenable: false,
       autoHideMenuBar: true,
-      backgroundColor: '#f5f7fa',
+      backgroundColor: '#00000000',
       webPreferences: { contextIsolation: true, nodeIntegration: false },
     })
   } finally {
     creatingStartupWindow = false
   }
   startupWindow.center()
+  startupWindow.once('ready-to-show', () => {
+    if (startupWindowState.pending) startupWindow?.show()
+  })
   void startupWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupPage())}`)
   startupWindow.on('closed', () => { startupWindow = null })
 }
 
 function observeMainWindow(_event: Electron.Event, window: BrowserWindow): void {
-  if (creatingStartupWindow) return
-  let fallbackTimer: NodeJS.Timeout | undefined
-  window.webContents.once('did-finish-load', () => {
-    // 兼容尚未包含启动通知的旧热更新页面。
-    fallbackTimer = setTimeout(finishStartup, 5_000)
-  })
+  if (creatingStartupWindow || mainWindow) return
+  mainWindow = window
   window.webContents.once('did-fail-load', (_loadEvent, code, description, url, isMainFrame) => {
     if (!isMainFrame || code === -3) return
-    if (fallbackTimer) clearTimeout(fallbackTimer)
     window.hide()
     failStartup(new Error(`Main window failed to load (${code} ${description}): ${url}`))
   })
   window.webContents.once('render-process-gone', (_goneEvent, details) => {
-    if (fallbackTimer) clearTimeout(fallbackTimer)
     failStartup(new Error(`Renderer exited during startup: ${details.reason} (${details.exitCode})`))
   })
 }
 
 export function installStartupExperience(): void {
+  startupWindowState.pending = true
+  mainWindow = null
   app.on('browser-window-created', observeMainWindow)
-  ipcMain.once(STARTUP_READY_CHANNEL, finishStartup)
+  ipcMain.on(STARTUP_READY_CHANNEL, finishStartup)
   process.once('unhandledRejection', failStartup)
   createStartupWindow()
 }
