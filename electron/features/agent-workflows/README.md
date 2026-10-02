@@ -16,6 +16,6 @@
 
 剪辑还会通过 `list_editing_skills/get_editing_skill` 发现并读取风格、场景 Skill。注册一个新领域指引可自动进入索引，新增执行流程仍需明确服务端契约与准入规则。
 
-外部 Agent 后续沟通通过 `update_task_request` 记录用户要求；活动会话不可自动扩权，已结束任务须按用户新要求创建新会话。
+外部 Agent 后续沟通通过 `update_task_request` 记录用户要求；所有任务均沿用原 sessionId 继续；每次新要求递增 revision、取消旧导出确认，并重新发现技能和选择流程。
 
 相邻索引：[服务层](../../mcp/README.md)、[任务交接](../external-agents/README.md)、[全局面板](../../../src/components/agent-chat/README.md)。

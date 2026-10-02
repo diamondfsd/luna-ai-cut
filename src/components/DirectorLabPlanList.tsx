@@ -1,10 +1,13 @@
 import { ArrowRight, Film } from 'lucide-react'
 
+import { DirectorPlanDeleteControl } from './DirectorPlanDeleteControl'
 import type { DirectorLanPlanSummary } from '../shared/types'
 import '../styles/director-lab-plan-list.css'
 
 interface DirectorLabPlanListProps {
   plans: DirectorLanPlanSummary[]
+  onDeleted: (plan: DirectorLanPlanSummary) => void
+  deletingDisabled?: boolean
   onSelect: (planId: string) => void
 }
 
@@ -21,7 +24,7 @@ function formatUpdatedAt(value: string): string {
   }).format(date)
 }
 
-export function DirectorLabPlanList({ plans, onSelect }: DirectorLabPlanListProps) {
+export function DirectorLabPlanList({ plans, onSelect, onDeleted, deletingDisabled }: DirectorLabPlanListProps) {
   return (
     <section className="lab-plan-shell lab-plan-list-shell">
       <header className="lab-plan-list-header">
@@ -35,8 +38,8 @@ export function DirectorLabPlanList({ plans, onSelect }: DirectorLabPlanListProp
           const availableShots = plan.shots.filter((shot) =>
             shot.takes.some((take) => take.available)).length
           return (
+            <div key={plan.id} className="lab-plan-list-row">
             <button
-              key={plan.id}
               className="lab-plan-list-item"
               type="button"
               onClick={() => onSelect(plan.id)}
@@ -57,6 +60,8 @@ export function DirectorLabPlanList({ plans, onSelect }: DirectorLabPlanListProp
               </span>
               <ArrowRight size={16} />
             </button>
+            <DirectorPlanDeleteControl plan={plan} onDeleted={onDeleted} disabled={deletingDisabled} />
+            </div>
           )
         })}
       </div>

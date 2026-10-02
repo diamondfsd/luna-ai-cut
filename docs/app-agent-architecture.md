@@ -67,3 +67,9 @@ Agent 选择位于输入区，用户只描述需求；顶部下拉查看历史�
 
 `test-luna-tool-modules.mjs` 覆盖额外领域无需修改 RPC 的发现与执行、工具名冲突、任务类型拒绝、注册处理器不可落入剪辑桥接、导演任务不激活剪辑窗口以及发现文件生命周期。
 `test-agent-conversations.mjs` 覆盖首次原文先保存再交接、重启读取、乱序事件、交接失败取消、活动任务不替换与损坏历史不覆盖。
+
+### 任务延续与执行版本
+
+任务没有永久结束状态。completed / failed / cancelled 仅是单次执行结果；外部对话中的新要求通过 update_task_request 沿用 sessionId，并递增 revision。接口从内存历史或持久化记录恢复任务，保留创建时间、首次原话、项目关联和历史结果事件。重启不自动恢复执行，必须提供明确的新要求。
+
+继续后先 get_edit_request，再发现技能、选择 workflow。停止状态和旧导出确认清除，旧 revision 的结果不得写入新执行。正在等待的编辑调用在要求更新后返回 REQUEST_UPDATED；已经提交到编辑器的操作不能回滚，Agent 应读取最新编辑状态再继续。其他任务正在执行时禁止覆盖。AgentSessionArchive 负责历史查找，存储通过 load 注入，通用 RPC 不依赖历史文件。

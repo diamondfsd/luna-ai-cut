@@ -10,6 +10,10 @@ import type { AgentTaskInput } from '../../src/shared/types/agentConversation'
 
 export function registerAgentConversations(adapters: ReturnType<typeof createExternalAgentService>): void {
   const store = createAgentConversationStore(async () => join((await getSettings()).baseDir, 'agent-conversations'))
+  agentSessionManager.archive.load = async id => {
+    const item = (await store.list()).find(item => item.id === id)
+    return item ? { session: item.session, sequence: Math.max(0, ...item.events.map(event => event.sequence)) } : null
+  }
   const notify = () => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.webContents.send('external-agent:history-changed')

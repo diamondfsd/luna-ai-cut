@@ -102,6 +102,7 @@ export interface DirectorLabApi {
   importPlanText(text: string): Promise<DirectorLanPlanSummary>
   saveLocalPlan(plan: DirectorLanPlanSummary, expectedSignature?: string): Promise<DirectorLanPlanSummary>
   importMaterials(plan: DirectorLanPlanSummary, shotId: string): Promise<DirectorLanPlanSummary | null>
+  deleteLocalPlan(planId: string, expectedSignature: string): Promise<void>
   deleteLocalMaterial(planId: string, takeId: string): Promise<DirectorLanPlanSummary>
   syncMaterials(endpoint: string, planId: string, operationId?: string): Promise<void>
   onMaterialSyncProgress(callback: (progress: DirectorMaterialSyncProgress) => void): () => void

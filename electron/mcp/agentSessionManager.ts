@@ -1,3 +1,4 @@
+import { AgentSessionArchive } from './agentSessionArchive.ts'
 import { randomUUID } from 'node:crypto'
 import { AI_EDITOR_USER_STOPPED_ERROR } from '../../src/shared/types/aiEditor.ts'
 import type {
@@ -8,13 +9,14 @@ import type {
   AiEditorAgentSessionStatus,
   AiEditorAgentSnapshot,
 } from '../../src/shared/types'
-import { AgentSessionError, ACTIVE_STATUSES, TERMINAL_STATUSES, MAX_EVENTS, DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS,
+import { AgentSessionError, ACTIVE_STATUSES, INACTIVE_EXECUTION_STATUSES, MAX_EVENTS, DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS,
   EXPORT_CONFIRMATION_TIMEOUT_MS, nowIso, clampProgress, copySession, phaseForStatus } from './agentSessionState.ts'
 import type { AgentToolError, AgentToolResult, AgentWaitResult, AgentRequestResult, AgentToolGate, AgentRequestContext,
   Waiter, ExportConfirmationDecision, ExportConfirmationWaiter, Listener, AgentEventInput } from './agentSessionState.ts'
 export { AgentSessionError } from './agentSessionState.ts'
 export type { AgentToolError, AgentToolResult, AgentWaitResult, AgentRequestResult, AgentToolGate, AgentRequestContext } from './agentSessionState.ts'
 export class AgentSessionManager {
+  readonly archive = new AgentSessionArchive()
   private session: AiEditorAgentSession | null = null
   private activeSessionId: string | null = null
   private acknowledgedRevision = 0
@@ -122,9 +124,6 @@ export class AgentSessionManager {
     const current = this.requireSession(sessionId)
     const trimmed = request.trim()
     if (!trimmed) throw new Error('剪辑要求不能为空')
-    if (TERMINAL_STATUSES.has(current.status)) {
-      throw new Error('任务已经结束，不能修改剪辑要求')
-    }
     this.resolveExportConfirmation({
       approved: false,
       code: 'REQUEST_UPDATED',
@@ -134,10 +133,14 @@ export class AgentSessionManager {
       ...current,
       request: trimmed,
       revision: current.revision + 1,
+      status: 'running', phase: 'waiting', progress: 0,
+      cancelRequested: false, result: undefined,
       updatedAt: nowIso(),
       message: '用户已更新剪辑要求，等待 Agent 读取最新版本',
       exportConfirmation: 'idle',
     }
+    this.activeSessionId = sessionId
+    this.acknowledgedRevision = 0
     this.emit({
       type: 'request-updated',
       session: this.session,
@@ -145,9 +148,15 @@ export class AgentSessionManager {
     })
     return copySession(this.session)
   }
+  async continueRequest(sessionId: string, revision: number, request: string): Promise<AiEditorAgentSession> {
+    const saved = await this.archive.continuation(sessionId, revision, () => this.session)
+    this.sequence = Math.max(this.sequence, saved.sequence)
+    this.session = { ...saved.session, purpose: 'auto' }
+    return this.updateRequest(sessionId, request)
+  }
   cancelRequest(sessionId: string): AiEditorAgentSession {
     const current = this.requireSession(sessionId)
-    if (TERMINAL_STATUSES.has(current.status)) return copySession(current)
+    if (INACTIVE_EXECUTION_STATUSES.has(current.status)) return copySession(current)
     this.resolveExportConfirmation({
       approved: false,
       code: AI_EDITOR_USER_STOPPED_ERROR.code,
@@ -360,13 +369,13 @@ export class AgentSessionManager {
   gateActiveTool(): AgentToolGate | null {
     if (!this.session) return null
     if (!this.activeSessionId || this.session.sessionId !== this.activeSessionId) {
-      if (!TERMINAL_STATUSES.has(this.session.status)) return null
+      if (!INACTIVE_EXECUTION_STATUSES.has(this.session.status)) return null
       return {
         session: copySession(this.session),
         allowed: false,
         error: this.session.status === 'cancelled'
           ? { ...AI_EDITOR_USER_STOPPED_ERROR }
-          : { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束，不能继续修改' },
+          : { code: 'SESSION_NOT_ACTIVE', message: '当前执行已停止，请通过 update_task_request 记录后续要求' },
       }
     }
     const session = this.session
@@ -457,13 +466,13 @@ export class AgentSessionManager {
   }
   private gate(sessionId: string, revision: number): AgentToolGate {
     const current = this.requireSession(sessionId)
-    if (!this.activeSessionId || current.sessionId !== this.activeSessionId || TERMINAL_STATUSES.has(current.status)) {
+    if (!this.activeSessionId || current.sessionId !== this.activeSessionId || INACTIVE_EXECUTION_STATUSES.has(current.status)) {
       return {
         session: copySession(current),
         allowed: false,
         error: current.status === 'cancelled'
           ? { ...AI_EDITOR_USER_STOPPED_ERROR }
-          : { code: 'SESSION_NOT_ACTIVE', message: '剪辑任务已结束或尚未被 Agent 领取，不能继续修改' },
+          : { code: 'SESSION_NOT_ACTIVE', message: '当前执行未激活，请领取任务或记录后续要求' },
       }
     }
     if (current.cancelRequested) {
@@ -532,6 +541,7 @@ export class AgentSessionManager {
       timestamp: nowIso(),
       session: copySession(input.session),
     } as AiEditorAgentEvent
+    this.archive.capture(event)
     this.events = [...this.events.slice(-(MAX_EVENTS - 1)), event]
     for (const listener of this.listeners) listener(event)
   }

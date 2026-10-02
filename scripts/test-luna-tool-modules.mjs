@@ -84,7 +84,8 @@ assert.equal((await call('update_task_request', { sessionId: editAuto.sessionId,
 assert.equal((await pendingExport).code, 'REQUEST_UPDATED', 'new user request cancels stale export confirmation')
 await call('get_edit_request', { sessionId: editAuto.sessionId })
 manager.cancelRequest(editAuto.sessionId)
-assert.equal((await call('update_task_request', { sessionId: editAuto.sessionId, revision: 3, request: 'cannot modify stopped task' })).result.structuredContent.error.code, 'USER_STOPPED')
+assert.equal((await call('update_task_request', { sessionId: editAuto.sessionId, revision: 3, request: '继续修改' })).result.structuredContent.data.session.revision, 4)
+assert.equal(manager.snapshot().session.cancelRequested, false)
 const customSkill = { id: 'future-guide', description: 'A future domain skill', instructions: '# Future instructions' }
 options.toolModules = [{ ...module, skills: [customSkill] }]
 const futureList = (await call('list_agent_skills', { moduleId: module.id })).result.structuredContent.data.skills

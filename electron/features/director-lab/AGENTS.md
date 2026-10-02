@@ -13,6 +13,7 @@
 - Agent 创建遵守 `DIRECTOR_PLAN_FORMAT` 和现有 Markdown 解析器；格式调整同步修改格式查询、解析/校验、实时指引和测试。
 - 修改已有计划按 shotId 与 expectedSnapshot 校验，保护素材、范围、标记及原镜头身份；不得用重新导入 Markdown 替代精确编辑。
 - 写入保持原子提交、并发保护和幂等行为。调用方不能绕过领域路径及授权范围校验。
+- 本地计划删除通过 `deleteLocalDirectorPlan` 串行校验目录与内容版本，移入系统废纸篓；不删除手机原计划。回归见 `scripts/test-director-local-plan-deletion.mjs`。
 - 本地计划编辑不隐式同步手机、不移动或删除素材、不创建剪辑项目。计划到剪辑的绑定仍属待实现流程，不能从架构文档推断已支持。
 - Agent 任务使用 `purpose=director-plan`。工具适配当前位于 `electron/mcp/directorPlanTools.ts`，通过应用注册表接入；新业务继续按领域模块规则组织。
 

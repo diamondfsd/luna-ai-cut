@@ -14,7 +14,7 @@ export const agentWorkflowModule: LunaToolModule = {
     },
   }, {
     name: 'update_task_request',
-    description: 'Record a new user instruction or clarification from the current external conversation, verbatim. Requires the claimed session and current revision. Never rewrite the request on behalf of the user. Preserves the first archived message. Read get_edit_request after success to acknowledge the new revision.',
+    description: 'Record a new user instruction or clarification from the current external conversation, verbatim. Accepts any existing task and its current revision, including after a result or cancellation. Never rewrite the request on behalf of the user. Preserves the first archived message. Read get_edit_request after success to acknowledge the new revision.',
     inputSchema: { type: 'object', additionalProperties: false,
       properties: { sessionId: { type: 'string', minLength: 1 }, revision: { type: 'integer', minimum: 1 },
         request: { type: 'string', minLength: 1, maxLength: 6000 } }, required: ['sessionId', 'revision', 'request'],
@@ -29,14 +29,8 @@ export const agentWorkflowModule: LunaToolModule = {
           || Number(args.revision) < 1 || typeof args.request !== 'string' || !args.request.trim() || args.request.length > 6000) {
           throw new AgentSessionError('INVALID_PARAMS', '任务要求无效')
         }
-        const gate = context.agentSession?.gateActiveTool()
-        if (!gate) throw new AgentSessionError('SESSION_REQUIRED', '请先领取任务')
-        if (args.sessionId !== gate.session.sessionId) throw new AgentSessionError('SESSION_NOT_FOUND', '任务编号无效')
-        if (args.revision !== gate.session.revision) throw new AgentSessionError('REQUEST_UPDATED', '请先读取最新任务要求')
-        if (!gate.allowed && gate.error?.code !== 'EXPORT_CONFIRMATION_PENDING') {
-          throw new AgentSessionError(gate.error?.code ?? 'SESSION_NOT_ACTIVE', gate.error?.message ?? '任务不可用')
-        }
-        const session = context.agentSession!.updateRequest(args.sessionId, args.request)
+        if (!context.agentSession) throw new AgentSessionError('SESSION_REQUIRED', '任务服务不可用')
+        const session = await context.agentSession.continueRequest(args.sessionId, Number(args.revision), args.request)
         return { ok: true, result: { ok: true, summary: '任务要求已更新', data: { session, nextAction: 'get_edit_request' } } }
       }
       if (Object.keys(args).some(key => !['sessionId', 'revision', 'workflow'].includes(key))

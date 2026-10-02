@@ -71,10 +71,12 @@ export function requestRendererWithCancellation(
   return new Promise<AiEditorMcpResponse>((resolve, reject) => {
     let settled = false
     const unsubscribe = manager.subscribe((event) => {
-      if (event.type !== 'cancelled' || !event.session.cancelRequested || settled) return
+      if (settled || !['cancelled', 'request-updated'].includes(event.type)) return
       settled = true
       unsubscribe()
-      resolve(userStoppedResponse())
+      resolve(event.type === 'request-updated'
+        ? agentToolResponse({ ok: false, error: { code: 'REQUEST_UPDATED', message: '请读取最新任务要求' } })
+        : userStoppedResponse())
     })
     void options.requestRenderer(request).then(
       (response) => {
@@ -318,7 +320,10 @@ export async function handleAgentTaskTool(
       if (!sessionId) return agentInvalidParams('缺少 sessionId')
       const knownRevision = args.knownRevision === undefined ? undefined : integerArg(args, 'knownRevision')
       if (args.knownRevision !== undefined && knownRevision === undefined) return agentInvalidParams('knownRevision 必须是正整数')
-      const result = manager.getRequest(sessionId, knownRevision)
+      const current = manager.snapshot().session
+      const saved = current?.sessionId === sessionId ? null : await manager.archive.find(sessionId)
+      const result = saved ? { ok: true, session: saved.session, changed: knownRevision !== saved.session.revision }
+        : manager.getRequest(sessionId, knownRevision)
       return agentToolResponse({
         ok: true,
         summary: result.changed ? '用户剪辑要求已更新' : '剪辑要求没有变化',

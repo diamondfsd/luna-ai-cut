@@ -48,6 +48,9 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/ai-selection" className={({ isActive }) => (isActive ? 'active' : '')}>
             AI 选片
           </NavLink>
+          <NavLink to="/ai-director" className={({ isActive }) => (isActive ? 'active' : '')}>
+            AI导拍
+          </NavLink>
           <button
             type="button"
             className="nav-action"
@@ -61,9 +64,6 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           </NavLink>
           <NavLink to="/live-console" className={({ isActive }) => (isActive ? 'active' : '')}>
             直播控制台
-          </NavLink>
-          <NavLink to="/lab" className={({ isActive }) => (isActive ? 'active' : '')}>
-            实验室
           </NavLink>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置

@@ -21,7 +21,7 @@ import { AiEditorPage } from '../pages/AiEditorPage'
 import { SettingsPage } from '../pages/SettingsPage'
 import { WorkspacePage } from '../pages/WorkspacePage'
 import { LiveConsolePage } from '../pages/LiveConsolePage'
-import { LabPage } from '../pages/LabPage'
+import { AiDirectorPage } from '../pages/AiDirectorPage'
 import { logger } from '../lib/rendererLogger'
 import type { CacheStats } from '../shared/types'
 import type { CreativeModeId } from '../workspace/creative/creativeCatalog'
@@ -112,7 +112,7 @@ export function AppRoutes() {
     ['/ai-selection', true],
     ['/ai-editor', true],
     ['/workspace', true],
-    ['/lab', true],
+    ['/ai-director', true],
     ['/live-console', true],
     ['/settings', true],
     ['/developer', developerMode],
@@ -139,6 +139,7 @@ export function AppRoutes() {
   }, [activePath, isKnownRoute, location.pathname, settingsRoute])
 
   // ── 特殊处理 ──
+  if (location.pathname === '/lab') return <Navigate to="/ai-director" replace />
   if (location.pathname === '/') return <Navigate to="/library" replace />
   if (isActive('/downloads')) return <Navigate to="/local-resources" replace />
   if (!isKnownRoute) return <Navigate to={developerMode ? '/developer' : '/library'} replace />
@@ -213,8 +214,8 @@ export function AppRoutes() {
           />
         </AppRoute>
 
-        <AppRoute path="/lab">
-          <LabPage pageActive={isActive('/lab')} />
+        <AppRoute path="/ai-director">
+          <AiDirectorPage pageActive={isActive('/ai-director')} />
         </AppRoute>
 
         <AppRoute path="/live-console" preserve={false}>
