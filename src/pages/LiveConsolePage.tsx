@@ -30,6 +30,15 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [visibleError, setVisibleError] = useState<string | null>(null)
+  const pendingError = error || previewError || (status?.localPreviewError ? '画面播放异常' : null)
+
+  useEffect(() => {
+    setVisibleError(null)
+    if (!pendingError) return undefined
+    const timer = window.setTimeout(() => setVisibleError(pendingError), 3_000)
+    return () => window.clearTimeout(timer)
+  }, [pendingError])
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -73,8 +82,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   }, [busy, refreshStatus])
 
   const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
-  const visibleError = error || previewError || (status?.localPreviewError ? '画面播放异常' : null)
-  const outputTone = visibleError || status?.state === 'error' ? 'danger' : status?.usbState === 'streaming' ? 'active' : 'neutral'
+  const outputTone = visibleError ? 'danger' : status?.usbState === 'streaming' ? 'active' : 'neutral'
 
   const toggleLivePreviewWindow = () => {
     void runAction(async () => {
@@ -90,7 +98,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
         <div className="live-console-title">
           <span className={`live-console-status-dot ${outputTone}`} />
           <h1>直播控制台</h1>
-          <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{stateLabel(status)}</span>
+          <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{status?.state === 'error' && !visibleError ? '连接中' : stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
           <LiveOperationGuideDialog />
