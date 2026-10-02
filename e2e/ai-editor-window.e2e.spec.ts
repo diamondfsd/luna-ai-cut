@@ -21,6 +21,12 @@ test('AI 剪辑独立窗口打开项目并导入素材', async ({ lunaApp }) => 
   })
 
   await expect(editor).toHaveURL(/#\/projects$/)
+  const hasParentWindow = await lunaApp.app.evaluate(({ BrowserWindow }) => {
+    const editorWindow = BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().includes('#/projects'))
+    if (!editorWindow) throw new Error('AI 剪辑窗口不存在')
+    return editorWindow.getParentWindow() !== null
+  })
+  expect(hasParentWindow).toBe(false)
   await expect(editor.getByText('我的项目', { exact: true })).toBeVisible({ timeout: 30_000 })
   await editor.getByRole('button', { name: '新建项目', exact: true }).click()
   await editor.getByRole('textbox', { name: '项目名称' }).fill('独立窗口导入测试')

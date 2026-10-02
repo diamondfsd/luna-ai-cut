@@ -27,6 +27,13 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const TOOL_PROGRESS_LABELS: Record<string, string> = {
+  get_director_plan_format: "读取计划格式",
+  list_director_plans: "查找导演计划",
+  get_director_plan: "读取导演计划",
+  validate_director_plan_markdown: "检查计划",
+  create_director_plan: "创建导演计划",
+  validate_director_plan_changes: "检查计划修改",
+  update_director_plan: "更新导演计划",
   get_editing_skill: "读取剪辑能力",
   list_editing_skills: "扫描剪辑技能",
   get_editing_skill_resource: "读取技能参考",

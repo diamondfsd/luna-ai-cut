@@ -13,6 +13,8 @@ import {
 import { activateAgentWindow } from './ipcAiEditorAgentService'
 import { getAiEditorWindow } from './ipcAiEditorService'
 import { agentSessionManager } from '../mcp/agentSessionManager'
+import { createDirectorPlanAgentService } from '../features/director-lab/directorPlanAgentService'
+import { getDirectorPlanDir, getSettings } from '../storage/fileService'
 
 interface PendingRendererRequest {
   resolve: (response: AiEditorMcpResponse) => void
@@ -25,7 +27,12 @@ let mcpServer: LunaMcpServer | null = null
 const pending = new Map<string, PendingRendererRequest>()
 
 function requestRenderer(context: IpcContext, request: AiEditorMcpRequest): Promise<AiEditorMcpResponse> {
-  const window = getAiEditorWindow() ?? context.win
+  const editorWindow = getAiEditorWindow()
+  // The main library window has no editor bridge. Native plan tools must remain discoverable.
+  if (request.kind === 'listTools' && !editorWindow) {
+    return Promise.resolve({ ok: false, error: 'AI 剪辑窗口未打开' })
+  }
+  const window = editorWindow ?? context.win
   if (!window || window.isDestroyed()) {
     return Promise.resolve({ ok: false, error: 'AI 剪辑窗口未打开' })
   }
@@ -79,6 +86,7 @@ export function register(context: IpcContext): void {
     homeDir: process.env.LUNA_E2E_USER_DATA_DIR ?? app.getPath('home'),
     requestRenderer: (request) => requestRenderer(context, request),
     agentSession: agentSessionManager,
+    directorPlanTools: createDirectorPlanAgentService(async () => getDirectorPlanDir(await getSettings())),
     activateWindow: () => activateAgentWindow(context),
     musicTools: {
       listMusicTemplates,

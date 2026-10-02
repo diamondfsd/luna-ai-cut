@@ -158,7 +158,7 @@ async function closeWriteHandle(handleId: string, removeFile: boolean): Promise<
 }
 
 export function register(): void {
-  ipcMain.handle('ai-editor:open-window', async (event, assets: WorkspaceMediaAsset[] = []) => {
+  ipcMain.handle('ai-editor:open-window', async (_event, assets: WorkspaceMediaAsset[] = []) => {
     const importedAssets = Array.isArray(assets) ? assets : []
     const settings = importedAssets.length > 0 ? await getSettings() : null
     const project = settings
@@ -173,14 +173,12 @@ export function register(): void {
       return
     }
 
-    const owner = BrowserWindow.fromWebContents(event.sender)
     aiEditorWindow = new BrowserWindow({
       title: 'AI 剪辑',
       width: 1440,
       height: 900,
       minWidth: 1100,
       minHeight: 700,
-      parent: owner ?? undefined,
       show: false,
       webPreferences: {
         preload: path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.mjs'),

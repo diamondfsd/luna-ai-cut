@@ -125,6 +125,9 @@ export interface DirectorLanPlanSummary {
   remote_origin?: string
   pending_shot_ids?: string[]
   pending_create?: boolean
+  /** Local Agent write receipts; never part of phone synchronization. */
+  agent_creation_receipt?: { keyHash: string; inputHash: string }
+  agent_write_receipt?: { keyHash: string; inputHash: string }
   pending_take_ids?: string[]
   deleted_local_take_ids?: string[]
   /** 属性名由计划统一定义，所有镜头共用。 */

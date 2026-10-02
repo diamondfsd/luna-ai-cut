@@ -15,11 +15,13 @@ import { deleteDirectorLocalMaterial } from './directorLabMaterialDelete'
 import { getDirectorPlanDir, getSettings } from '../../storage/fileService'
 import { lunaKaHttpClient } from '../../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../../media/fileDownloadService'
-import { mediaFileName, mediaFolder, planDirectory, serializePlanWrite, writeDirectorPlanFilesUnlocked } from './directorLabPlanStorage'
+import { mediaFileName, mediaFolder, serializePlanWrite, writeDirectorPlanFilesUnlocked } from './directorLabPlanStorage'
 import { reconcileDirectorPlanDeletions } from './directorLabPlanDeletion'
 import { createMaterialProgress } from './directorMaterialProgress'
+import { createDirectorPlanWriter } from './directorLabPlanWriter'
 
 export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLanPlanSummary[]>) {
+  const save = createDirectorPlanWriter(listPlans, async () => getDirectorPlanDir(await getSettings()))
   ipcMain.handle('director-lab:reconcile-plan-deletions', async (_event, endpoint: string, planIds: string[]) => {
     const root = getDirectorPlanDir(await getSettings())
     return reconcileDirectorPlanDeletions(root, endpoint, planIds)
@@ -38,23 +40,6 @@ export function registerDirectorLocalImport(listPlans: () => Promise<DirectorLan
     if (Buffer.byteLength(text, 'utf8') > 512 * 1024) throw new Error('计划文本不能超过 512 KB')
     const plan = parseDirectorPlanImport(text, title, randomUUID)
     return save(plan, () => plan)
-  }
-  async function save(plan: DirectorLanPlanSummary, modify: (current: DirectorLanPlanSummary) => DirectorLanPlanSummary): Promise<DirectorLanPlanSummary> {
-    if (!plan || typeof plan.id !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(plan.id)
-      || typeof plan.title !== 'string' || !Array.isArray(plan.shots)) throw new Error('计划参数无效')
-    return serializePlanWrite(async () => {
-      const existing = (await listPlans()).find((item) => item.id === plan.id)
-      const current = existing ?? { ...plan, source: 'local' as const,
-        synced_revision: plan.synced_revision ?? plan.revision ?? 0,
-        synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan),
-        shots: plan.shots.map((shot) => ({ ...shot, takes: shot.takes.map((take) => ({ ...take, available: false })) })) }
-      const next = modify(current)
-      const root = getDirectorPlanDir(await getSettings())
-      const directory = existing?.local_directory ?? path.join(root, `${planDirectory(plan.title)}_${plan.id}`)
-      await writeDirectorPlanFilesUnlocked(directory, next)
-      return { ...next, source: 'local', local_directory: directory,
-        local_content_signature: directorPlanContentSignature(next) }
-    })
   }
   async function selectImportText() {
     const selection = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '导演计划', extensions: ['md', 'txt'] }] })

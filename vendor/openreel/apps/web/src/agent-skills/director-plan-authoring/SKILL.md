@@ -19,6 +19,7 @@ Design the story and practical shot objectives before selecting final footage. C
 
 - Read [markdown-format.md](references/markdown-format.md) before emitting importable text. Use the supported format; no invented IDs, media paths, attachments or lock fields in Markdown.
 - If plan format/validation tools exist, read their current version and validate before creation. Otherwise emit clean Markdown for the existing text/file import and state that no plan was persisted.
+- Luna now exposes native `get_director_plan_format`, `validate_director_plan_markdown` and `create_director_plan` independently of editor readiness. For a save, use an active session's `sessionId/revision`, `formatVersion=1` and a unique `idempotencyKey`. Read the returned normalized draft and warnings first. Reusing a creation key with different input is rejected.
 - A request to propose a plan is not a request to import or edit the timeline. Create a stored plan through tools only when the current task requests it. Discover tools before calling them; this skill does not establish that plan tools exist.
 
 ## Revise
@@ -26,6 +27,8 @@ Design the story and practical shot objectives before selecting final footage. C
 - Read the existing plan and its snapshot/version, shot IDs and material associations before proposing changes. Provide a focused change set and flag effects on assigned takes or an existing timeline.
 - Plain Markdown import creates new shot IDs; importing into an existing plan appends shots. Do not use either as an in-place update mechanism.
 - When ID-aware revision tools are available, address existing shots by server-returned shotId and supply the expected snapshot. Renaming or reordering retains identity and materials; new shots receive server IDs. Never match identity from a shot title or ordinal alone.
+- Use `list_director_plans` / `get_director_plan`, then `validate_director_plan_changes` and `update_director_plan` with the returned `expectedSnapshot`. The `changes` object supports title/mainContent, shot field patches, appendMarkdown and a complete shotOrder. Read again after appending to obtain new IDs before reordering. First-version tools cannot remove shots, move takes or edit source marks. If `PLAN_MEDIA_COLLISION` is returned, first give colliding shot directories distinct names; do not retry the unsafe swap.
+- Creation receipts and the latest update receipt persist locally. Retry identical input with the same key; older update retries still need a current snapshot and must not overwrite newer edits. Finish through `report_edit_result` with the returned planId in the summary; a plan is not a video project.
 - If revision tools are unavailable, return proposed changes keyed to existing IDs for manual application. Do not claim that a Markdown re-import preserves associations.
 - Removing or splitting a shot needs an explicit policy for its assigned materials. Keep originals; do not delete files or silently redistribute takes. A plan edit does not authorize changes to an existing timeline.
 - Revalidate total duration, practical coverage, user constraints and version after revisions. If a phone or user has changed the plan, re-read and merge intent; do not overwrite the newer snapshot.
