@@ -141,5 +141,7 @@
 }
 
 .live-control-section .workspace-slider-zero {
-  background: #a8a8ad;
+  display: none;
 }
+.live-zoom-presets { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.live-zoom-presets .ui-btn { min-width: 0; padding-inline: 0; }
