@@ -108,3 +108,9 @@ listeners.get('message')({
 assert.equal(await promptPromise, '完整剪辑提示词')
 
 console.log('OpenReel bridge logging passed')
+
+const openedChats = []
+hostWindow.luna.externalAgent = { openChat: async context => { openedChats.push(context) } }
+await iframeWindow.openreel.lunaAgent.openChat({ purpose: 'editing', request: '测试要求', projectId: 'existing-project' })
+assert.deepEqual(openedChats, [{ purpose: 'editing', request: '测试要求', projectId: 'existing-project' }])
+console.log('Global AI assistant bridge handoff passed')

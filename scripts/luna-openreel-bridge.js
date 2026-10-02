@@ -273,6 +273,7 @@
       },
     },
     lunaAgent: {
+      openChat: (context) => parentLunaApi().externalAgent.openChat(context),
       generatePrompt: (request) => generateAgentPrompt(request),
       createRequest: (request, projectId) => parentApi().agent.createRequest(request, projectId),
       updateRequest: (sessionId, request) => parentApi().agent.updateRequest(sessionId, request),

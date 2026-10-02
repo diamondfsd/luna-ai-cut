@@ -1,8 +1,6 @@
+import { EditorDockTabs, type RightDockTab } from './EditorDockTabs';
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
   ToolcraftText as Text,
 } from "@openreel/ui";
 
@@ -69,7 +67,6 @@ const MIN_STAGE_W = 380;
 const RESIZE_HANDLE = 10;
 
 type ResizeTarget = "timeline" | "media" | "rightDock";
-type RightDockTab = "inspector" | "chat";
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.min(Math.max(value, min), max);
@@ -326,7 +323,8 @@ export const EditorInterface: React.FC = () => {
   const [rightDockWidth, setRightDockWidth] = useState(DEFAULT_RIGHT_DOCK_W);
   const [timelineVh, setTimelineVh] = useState(DEFAULT_TIMELINE_VH);
 
-  const chatVisible = panels.agentChat?.visible ?? false;
+  const localChatEnabled = !window.openreel?.lunaAgent;
+  const chatVisible = localChatEnabled && (panels.agentChat?.visible ?? false);
   const [rightDockTab, setRightDockTab] = useState<RightDockTab>(
     chatVisible ? "chat" : "inspector",
   );
@@ -492,38 +490,10 @@ export const EditorInterface: React.FC = () => {
           className="bg-bg-1 min-w-0 min-h-0 overflow-hidden rounded-xl border border-border shadow-sm flex flex-col"
           style={{ gridArea: "inspector" }}
         >
-          <Tabs
-            value={rightDockTab}
-            onValueChange={(value) => {
-              const next: RightDockTab = value === "chat" ? "chat" : "inspector";
-              if (next === "chat") setPanelVisible("agentChat", true);
-              setRightDockTab(next);
-            }}
-            className="shrink-0"
-          >
-            <TabsList
-              aria-label="编辑面板标签"
-              className="grid h-9 w-full grid-cols-2 gap-1 rounded-none border-b border-border bg-bg-1 p-1"
-            >
-              <TabsTrigger
-                value="inspector"
-                onClick={() => setRightDockTab("inspector")}
-                className="h-7 rounded-[6px] text-[12px] text-fg-3 data-[state=active]:bg-bg-2 data-[state=active]:text-fg"
-              >
-                素材详情
-              </TabsTrigger>
-              <TabsTrigger
-                value="chat"
-                onClick={() => {
-                  setPanelVisible("agentChat", true);
-                  setRightDockTab("chat");
-                }}
-                className="h-7 rounded-[6px] text-[12px] text-fg-3 data-[state=active]:bg-bg-2 data-[state=active]:text-fg"
-              >
-                AI 编辑器
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <EditorDockTabs value={rightDockTab} chatEnabled={localChatEnabled} onSelect={next => {
+            if (next === "chat") setPanelVisible("agentChat", true);
+            setRightDockTab(next);
+          }} />
           <div className="min-h-0 flex-1 overflow-hidden">
             {rightDockTab === "chat" && chatVisible ? (
               <PanelErrorBoundary name="AI Editor">

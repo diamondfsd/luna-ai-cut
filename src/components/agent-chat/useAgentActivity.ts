@@ -1,3 +1,4 @@
+import { mergeAgentActivity } from './mergeAgentActivity'
 import { useEffect, useState } from 'react'
 import type { AiEditorAgentEvent, AiEditorAgentSnapshot } from '../../shared/types'
 
@@ -9,11 +10,7 @@ export function useAgentActivity() {
     let active = true
     const pending: AiEditorAgentEvent[] = []
     let ready = false
-    const apply = (event: AiEditorAgentEvent) => setSnapshot(current => ({
-      session: event.session,
-      events: [...current.events.filter(value => value.sequence !== event.sequence), event]
-        .sort((a, b) => a.sequence - b.sequence).slice(-200),
-    }))
+    const apply = (event: AiEditorAgentEvent) => setSnapshot(current => mergeAgentActivity(current, [event]))
     const unsubscribe = window.luna.aiEditor.agent.onEvent(event => {
       if (!active) return
       if (!ready) pending.push(event)
@@ -21,10 +18,7 @@ export function useAgentActivity() {
     })
     window.luna.aiEditor.agent.getSnapshot().then(value => {
       if (!active) return
-      const events = [...value.events, ...pending]
-      const unique = [...new Map(events.map(event => [event.sequence, event])).values()]
-        .sort((a, b) => a.sequence - b.sequence).slice(-200)
-      setSnapshot({ session: unique.at(-1)?.session ?? value.session, events: unique })
+      setSnapshot(mergeAgentActivity(value, pending))
       ready = true
     }).catch(() => {
       if (!active) return

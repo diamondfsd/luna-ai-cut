@@ -1,3 +1,4 @@
+import { AgentChatProvider } from './components/agent-chat/AgentChatProvider'
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AppProvider } from './context/AppContext'
@@ -36,8 +37,10 @@ function App() {
       <DeviceConnectionProvider>
         <StartupReadySignal />
         <ToastProvider>
-          <HotUpdateStartupDialog />
-          <AppRoutes />
+          <AgentChatProvider>
+            <HotUpdateStartupDialog />
+            <AppRoutes />
+          </AgentChatProvider>
         </ToastProvider>
       </DeviceConnectionProvider>
     </AppProvider>
