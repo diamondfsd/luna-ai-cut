@@ -1,4 +1,4 @@
-import { ExternalAgentControl } from './ExternalAgentControl'
+import { useEffect } from 'react'
 import { ArrowLeft, Box, FolderSync, FolderDown, FolderOpen, ListFilter, Pencil, RefreshCw, Save, Search, WandSparkles, X, FileUp } from 'lucide-react'
 import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
 import { Button, IconButton, Input, LoadingIndicator, Select, Tooltip } from '../ui'
@@ -83,6 +83,13 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
     syncStatusLabel,
   } = useDirectorLab(active)
 
+  useEffect(() => {
+    if (!active) return
+    const refresh = () => { void refreshLocalPlans() }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [active, refreshLocalPlans])
+
   return (
     <div className="lab-page lab-director-page">
       <header className="lab-director-page-header">
@@ -109,7 +116,6 @@ export function DirectorLabView({ active, onBack }: DirectorLabViewProps) {
           <h1>导演计划</h1>
         </div>
         <div className="lab-director-sync-actions">
-          {!activePlan && <ExternalAgentControl onReturn={() => { void refreshLocalPlans() }} />}
           {!activePlan && <Button size="compact" variant="secondary" icon={<FileUp size={15} />}
             onClick={() => setImportOpen(true)}>新建计划</Button>}
           {connectedEndpoint && (
