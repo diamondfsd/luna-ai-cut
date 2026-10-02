@@ -70,7 +70,7 @@ const skillById = new Map(skills.map((skill) => [skill.id, skill]))
 
 export const LUNA_EDITING_SKILL_INDEX = `# Luna AI Cut Editing Skill Index
 
-Call list_editing_skills first. Load luna-core plus the 1-3 scene skills whose descriptions match the user's task. Do not rely on a single generic skill when a scene skill applies.
+Call list_editing_skills first. Load luna-core plus the relevant method and scene/style skills. To create or revise a director plan, include director-plan-authoring; to edit its footage, include director-plan-editing; for memory-backed personalization, include editing-memory when applicable. Select only skills needed for this task, and load additional skills as its stages require. Do not rely on a single generic skill when a scene skill applies.
 
 Available skills:
 ${skills.map((skill) => `- ${skill.id}: ${skill.description}`).join('\n')}

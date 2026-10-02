@@ -5,7 +5,7 @@ description: Core safety and workflow rules for every Luna AI Cut editing task. 
 
 # Luna Core
 
-Apply this skill to every editing task. Then load the scene skills whose descriptions match the request.
+Apply this skill to every editing task. Then load the method and scene/style skills whose descriptions match the request. Include director-plan-authoring for creating or revising plans, director-plan-editing for shot-grouped rough footage and editing-memory for memory-backed personalization. Their instructions do not imply unavailable tools exist.
 
 ## Core principles
 

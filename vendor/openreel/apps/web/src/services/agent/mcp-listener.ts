@@ -98,7 +98,7 @@ const GET_EDITING_SKILL_TOOL = {
 const LIST_EDITING_SKILLS_TOOL = {
   name: "list_editing_skills",
   description:
-    "Scan Luna AI Cut's built-in core and scene skills with their descriptions and available references. Select luna-core plus 1-3 relevant scene skills, then call get_editing_skill with their ids.",
+    "Scan Luna AI Cut's built-in core and scene skills with their descriptions and available references. Select luna-core plus relevant method and scene/style skills, including director-plan-authoring for plan creation/revision, director-plan-editing for plan footage and editing-memory for remembered context, then call get_editing_skill with their ids.",
   inputSchema: {
     type: "object",
     properties: {},
