@@ -11,6 +11,7 @@ import type {
 } from '../../../src/shared/types'
 import { DIRECTOR_PLAN_ATTRIBUTES, directorPlanContentSignature } from '../../../src/lib/directorPlanSync.ts'
 import { cleanupDirectorMedia } from './directorLabMediaCleanup.ts'
+import { ensureDirectorMediaCopy } from './directorLabMediaCopy.ts'
 
 let planWriteTask: Promise<unknown> = Promise.resolve()
 
@@ -108,6 +109,8 @@ export function manifestForPlan(
     synced_signature: plan.synced_signature ?? directorPlanContentSignature(plan),
     remote_origin: plan.remote_origin,
     pending_create: plan.pending_create ?? false,
+    agent_creation_receipt: plan.agent_creation_receipt,
+    agent_write_receipt: plan.agent_write_receipt,
     pending_shot_ids: plan.pending_shot_ids ?? [],
     pending_take_ids: plan.pending_take_ids ?? [],
     deleted_local_take_ids: plan.deleted_local_take_ids ?? [],
@@ -374,6 +377,7 @@ export async function writeDirectorPlanFilesUnlocked(
   directory: string,
   plan: DirectorLanPlanSummary,
   metadata: Record<string, DirectorLabMediaMetadata> = {},
+  beforeCommit?: () => void,
 ): Promise<void> {
     await fs.mkdir(directory, { recursive: true })
     const manifestPath = path.join(directory, 'manifest.json')
@@ -387,16 +391,27 @@ export async function writeDirectorPlanFilesUnlocked(
       const target = path.join(directory, mediaFolder(shot.order, shot.name), mediaFileName(index + 1, take.file_name))
       if (path.resolve(source) === path.resolve(target)) continue
       await fs.mkdir(path.dirname(target), { recursive: true })
-      if (!await localFileExists(target)) await fs.copyFile(source, target, constants.COPYFILE_EXCL)
+      const existingTargetBelongsToTake = (previous?.shots ?? []).some(savedShot => savedShot.media?.some(item =>
+        item.id === take.id && typeof item.path === 'string' && path.resolve(directory, item.path) === path.resolve(target)))
+      await ensureDirectorMediaCopy(source, target, existingTargetBelongsToTake)
     }
     const manifest = manifestForPlan(plan, metadata)
     const temporaryPath = `${manifestPath}.${process.pid}.${randomUUID()}.tmp`
+    const readmePath = path.join(directory, 'README.md')
+    const temporaryReadmePath = `${readmePath}.${process.pid}.${randomUUID()}.tmp`
     try {
-      await fs.writeFile(path.join(directory, 'README.md'), readmeForPlan(plan), 'utf8')
+      beforeCommit?.()
+      await fs.writeFile(temporaryReadmePath, readmeForPlan(plan), 'utf8')
       await fs.writeFile(temporaryPath, manifest, 'utf8')
+      beforeCommit?.()
       await fs.rename(temporaryPath, manifestPath)
+      // The manifest is authoritative; publish its derived description only after committing it.
+      await fs.rename(temporaryReadmePath, readmePath).catch(error => {
+        console.warn('[director-lab] Plan description update failed', error)
+      })
     } finally {
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
+      await fs.rm(temporaryReadmePath, { force: true }).catch(() => undefined)
     }
     await cleanupDirectorMedia(directory, previous, JSON.parse(manifest)).catch(error => {
       console.warn('[director-lab] Obsolete media cleanup failed', error)
