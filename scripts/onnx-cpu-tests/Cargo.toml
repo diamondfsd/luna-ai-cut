@@ -1,5 +1,5 @@
 [package]
-name = "luna-onnx-provider-probe"
+name = "luna-onnx-cpu-tests"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -14,17 +14,6 @@ ort = { version = "=2.0.0-rc.12", default-features = false, features = ["std", "
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 rustfft = "6.4"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-ort = { version = "=2.0.0-rc.12", features = ["coreml"], default-features = false }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.12", features = ["directml"], default-features = false }
-
-[[bin]]
-name = "luna-onnx-provider-probe"
-path = "src/main.rs"
-required-features = ["dynamic-runtime"]
 
 [[bin]]
 name = "check-sam-segmentation-worker"

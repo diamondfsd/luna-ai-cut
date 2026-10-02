@@ -1,7 +1,8 @@
 #[path = "../onnx_session.rs"]
 mod onnx_session;
 
-use crate::onnx_session::Session;
+use crate::onnx_session::load;
+use ort::session::Session;
 use ort::value::Tensor;
 #[path = "../asr_features.rs"]
 mod asr_features;
@@ -141,7 +142,7 @@ fn read_vocab(path: &str, expected_size: usize) -> Result<Vec<String>, String> {
 
 impl ParaformerSession {
     fn load(model_path: &str, tokens_path: &str, threads: usize) -> Result<Self, String> {
-        let session = Session::load(model_path, threads.clamp(1, 16))
+        let session = load(model_path, threads.clamp(1, 16))
             .map_err(|error| format!("加载字幕模型失败: {error}"))?;
 
         let (vocab_size, lfr_window_size, lfr_window_shift, neg_mean, inv_stddev) = {
@@ -238,7 +239,7 @@ impl ParaformerSession {
 
 impl SileroVadSession {
     fn load(model_path: &str, threads: usize) -> Result<Self, String> {
-        let session = Session::load(model_path, threads.clamp(1, 8))
+        let session = load(model_path, threads.clamp(1, 8))
             .map_err(|error| format!("加载语音分段模型失败: {error}"))?;
         Ok(Self {
             session,

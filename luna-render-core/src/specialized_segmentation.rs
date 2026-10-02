@@ -26,7 +26,8 @@ mod subject;
 use subject::*;
 pub use subject::{segment_birefnet, segment_rmbg};
 
-use crate::onnx_session::{ModelKind, Session};
+use crate::onnx_session::load;
+use ort::session::Session;
 use ort::value::Tensor;
 
 const YOLO_SIZE: usize = 640;
@@ -45,14 +46,10 @@ const SFACE_DIMENSION: usize = 128;
 const RELIC_CPC_SIZE: usize = 224;
 
 fn session(model_path: &str) -> Result<Session, String> {
-    session_for_model(model_path, ModelKind::General)
-}
-
-fn session_for_model(model_path: &str, model_kind: ModelKind) -> Result<Session, String> {
     let threads = std::thread::available_parallelism()
         .map(|count| count.get().saturating_sub(1).clamp(1, 4))
         .unwrap_or(2);
-    Session::load_for_model(model_path, threads, model_kind)
+    load(model_path, threads)
         .map_err(|error| format!("加载专用分割模型失败: {error}"))
 }
 
@@ -76,18 +73,9 @@ pub enum SpecializedSession {
 impl SpecializedSession {
     pub fn load(backend: &str, model_path: &str) -> Result<Self, String> {
         match backend {
-            "yolo26-seg" => Ok(Self::Yolo(session_for_model(
-                model_path,
-                ModelKind::Yolo26Seg,
-            )?)),
-            "yolo26-labels" => Ok(Self::YoloLabels(session_for_model(
-                model_path,
-                ModelKind::Yolo26Seg,
-            )?)),
-            "yolo26-instances" => Ok(Self::YoloInstances(session_for_model(
-                model_path,
-                ModelKind::Yolo26Seg,
-            )?)),
+            "yolo26-seg" => Ok(Self::Yolo(session(model_path)?)),
+            "yolo26-labels" => Ok(Self::YoloLabels(session(model_path)?)),
+            "yolo26-instances" => Ok(Self::YoloInstances(session(model_path)?)),
             "segformer-labels" => Ok(Self::SegformerLabels(session(model_path)?)),
             "rmbg-1.4" => Ok(Self::Rmbg14(session(model_path)?)),
             "ultraface" => Ok(Self::UltraFace(session(model_path)?)),

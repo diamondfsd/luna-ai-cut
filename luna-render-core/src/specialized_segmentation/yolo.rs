@@ -10,7 +10,7 @@ pub fn segment_yolo(
     pad_y: usize,
     output_size: usize,
 ) -> Result<Vec<u8>, String> {
-    let mut session = session_for_model(model_path, ModelKind::Yolo26Seg)?;
+    let mut session = session(model_path)?;
     segment_yolo_with_session(
         &mut session,
         rgb,

@@ -1,7 +1,8 @@
 #[path = "../onnx_session.rs"]
 mod onnx_session;
 
-use crate::onnx_session::Session;
+use crate::onnx_session::load;
+use ort::session::Session;
 use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -52,7 +53,7 @@ impl PunctuationSession {
         let threads = std::thread::available_parallelism()
             .map(|count| count.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(2);
-        let session = Session::load(model_path, threads)
+        let session = load(model_path, threads)
             .map_err(|error| format!("加载标点模型失败: {error}"))?;
         let tokens = metadata_value(&session, "tokens")?;
         let punctuation_raw = metadata_value(&session, "punctuations")?;
