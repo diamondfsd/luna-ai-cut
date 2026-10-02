@@ -268,7 +268,7 @@ function MarkerRow({ marker, displayLabel, duration, frameRate, selected, autoFo
               className="workspace-trim-live-duration-input"
               variant="compact"
               type="number"
-              min={MIN_LIVE_PHOTO_DURATION}
+              min={0.1}
               max={MAX_LIVE_PHOTO_DURATION}
               step={frameDuration(frameRate)}
               value={liveDurationText}
@@ -480,7 +480,7 @@ export function TrimPanel({
   const beginLiveSelection = () => {
     const range = livePhotoRangeAround(currentTime, duration, DEFAULT_LIVE_PHOTO_DURATION, frameRate)
     if (!range) {
-      toast.error(`视频不足 ${formatLiveDuration(DEFAULT_LIVE_PHOTO_DURATION)} 秒，无法添加 Live 图片段`)
+      toast.error('当前视频无法添加 Live 图片段')
       return
     }
     const marker = { id: crypto.randomUUID(), kind: 'live' as const, ...range, note: '' }

@@ -20,6 +20,7 @@ const emptyConfig: NasSettings = {
 type SetupStep = 'connection' | 'directory' | 'complete'
 
 interface NasSyncSettingsProps {
+  id?: string
   settings: AppSettings | null
   setSettings: (updater: AppSettings | ((current: AppSettings | null) => AppSettings | null)) => void
   openSetup?: boolean
@@ -44,7 +45,7 @@ function targetLabel(config: NasSettings): string {
   return `${config.share}${config.remotePath === '/' ? '' : ` / ${config.remotePath}`}`
 }
 
-export function NasSyncSettings({ settings, setSettings, openSetup = false }: NasSyncSettingsProps) {
+export function NasSyncSettings({ id, settings, setSettings, openSetup = false }: NasSyncSettingsProps) {
   const { showProgress } = useNasSyncProgress()
   const [form, setForm] = useState<NasSettings>(() => configFromSettings(settings))
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -254,7 +255,7 @@ export function NasSyncSettings({ settings, setSettings, openSetup = false }: Na
       : <><Button variant="secondary" size="compact" onClick={() => setStep('directory')}>上一步</Button><Button variant="primary" size="compact" disabled={busy} icon={<Check size={14} />} onClick={() => void saveConfiguration()}>{busy ? '保存中' : '完成配置'}</Button></>
 
   return (
-    <section className="settings-group">
+    <section id={id} className="settings-group">
       <h2 className="settings-group-title">NAS 同步</h2>
       <div className="settings-card nas-settings-card">
         {!configured ? (

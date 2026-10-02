@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { usePreviewSourceResolver } from './usePreviewSourceResolver'
 import { AppleLivePhotoExportOption } from './AppleLivePhotoExportOption'
 import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
@@ -28,6 +29,7 @@ interface PreviewModalProps {
   filePath: string
   filePathList?: string[]
   previewOnly?: boolean
+  showThumbnailStrip?: boolean
   lightweightPreview?: boolean
   proxyPreviewPaths?: string[]
   batchExportMode?: boolean
@@ -39,6 +41,9 @@ interface PreviewModalProps {
   originalVideoUrls?: Record<string, string>
   onDownload?: (filePath: string) => void
   onClose: () => void
+  resolveSource?: (path: string) => Promise<string>
+  renderInspector?: (path: string) => ReactNode
+  renderThumbnail?: (path: string) => ReactNode
 }
 
 function toLocalPath(filePath: string | null): string | null {
@@ -75,6 +80,7 @@ export function PreviewModal({
   filePath,
   filePathList,
   previewOnly,
+  showThumbnailStrip = true,
   lightweightPreview,
   proxyPreviewPaths,
   batchExportMode,
@@ -86,6 +92,9 @@ export function PreviewModal({
   originalVideoUrls,
   onDownload,
   onClose,
+  resolveSource,
+  renderInspector,
+  renderThumbnail,
 }: PreviewModalProps) {
   // ── 当前预览文件路径 ──
   const [currentFilePath, setCurrentFilePath] = useState(filePath)
@@ -206,10 +215,11 @@ export function PreviewModal({
   }, [])
 
   // 解析远程文件：HTTP URL → 缓存到本地，与 MediaCard 逻辑一致
-  const { cacheFilePath: resolvedPath } = useFileCache(useOriginalPreview ? null : currentFilePath)
+  const { cacheFilePath: resolvedPath } = useFileCache(useOriginalPreview || resolveSource ? null : currentFilePath)
+  const customSource = usePreviewSourceResolver(currentFilePath, resolveSource)
 
   const isRemoteSource = isHttpPath(selectedSourcePath)
-  const activeSourcePath = useOriginalPreview
+  const activeSourcePath = resolveSource ? customSource : useOriginalPreview
     ? originalVideoUrl
     : isRemoteSource
       ? resolvedPath
@@ -521,16 +531,17 @@ export function PreviewModal({
               )}
             </div>
 
-            <PreviewThumbnailStrip
+            {showThumbnailStrip && <PreviewThumbnailStrip
               filePathList={filePathList ?? [currentFilePath]}
               initialFilePath={currentFilePath}
               onChange={(fp) => setCurrentFilePath(fp)}
-            />
+              renderThumbnail={renderThumbnail}
+            />}
           </div>
 
           {inspectorOpen && (
             <div className={`preview-sidebar${batchExportMode ? ' batch-export-sidebar' : ''}`}>
-              <MediaInspector
+              {renderInspector ? renderInspector(currentFilePath) : <MediaInspector
                 filePath={currentFilePath}
                 file={mediaFile}
                 cachedPath={metadataCachedPath}
@@ -545,7 +556,7 @@ export function PreviewModal({
                     deviceMetadata={mediaFile}
                   />
                 ) : undefined}
-              />
+              />}
               {!previewOnly && (
                 <>
                   {hasVideoInBatch && (

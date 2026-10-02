@@ -1,0 +1,47 @@
+html.live-preview-window-shell,
+html.live-preview-window-shell body,
+html.live-preview-window-shell #root {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.live-preview-window {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+  -webkit-app-region: drag;
+}
+
+.live-preview-window canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  visibility: hidden;
+}
+
+.live-preview-window canvas.is-active {
+  visibility: visible;
+}
+
+.live-preview-window-watermark {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  height: auto;
+  max-width: 96%;
+  pointer-events: none;
+  object-fit: contain;
+}

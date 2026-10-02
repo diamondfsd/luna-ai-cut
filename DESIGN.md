@@ -52,10 +52,10 @@ Luna AI Cut uses a photography-first desktop style: the media is the product, an
 ## Layout
 
 - The app uses two persistent bars:
-  - Global nav: 44px black bar with section tabs and compact status. The native app title bar already carries the product name, so do not repeat it here.
+  - Global nav: 44px black bar with section navigation and compact status. The native app title bar already carries the product name, so do not repeat it here.
   - Sub nav: 52px parchment blur bar with the active date pinned on the left and search/filter/read controls grouped on the right.
 - The Library page opens directly into an album workflow. Do not place a large hero preview or repeated page title before the gallery.
-- Gallery sections group by day. Media type switches are tabs: All, Photos, Videos.
+- Gallery sections group by day. Media type switches use segmented controls: All, Photos, Videos.
 - Files are sorted by captured time descending. Keep the visual layout as a normal card grid, not masonry, so order remains easy to follow left-to-right and top-to-bottom.
 - Sorting can be toggled between captured-time descending and ascending from the date row. Descending is the default.
 - Card preview size can switch between large, medium, and small from the date row. Large is the default; medium reduces card width by about one third; small reduces it by about one third again.

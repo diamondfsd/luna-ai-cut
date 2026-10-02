@@ -30,11 +30,9 @@
 
 .camera-live-preview-body {
   display: flex;
-  overflow-y: auto;
   min-height: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 14px 20px 18px;
 }
 
 .camera-live-preview-stage {
@@ -83,10 +81,17 @@
 }
 
 .camera-live-preview-canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  visibility: hidden;
+}
+
+.camera-live-preview-canvas.is-active {
+  visibility: visible;
 }
 
 .camera-live-preview-placeholder {
@@ -147,52 +152,11 @@
 
 .camera-live-preview-footer {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: max-content;
   align-items: center;
   justify-content: end;
   gap: 8px;
   min-width: 0;
-}
-
-.camera-live-preview-footer.is-streaming {
-  grid-template-columns: minmax(0, 1fr) max-content max-content;
-  justify-content: stretch;
-}
-
-.camera-live-preview-obs-url {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.camera-live-preview-obs-url > span {
-  color: rgba(255, 255, 255, 0.44);
-  font-size: 10px;
-}
-
-.camera-live-preview-obs-url-value {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-}
-
-.camera-live-preview-obs-url code {
-  overflow-wrap: anywhere;
-  min-width: 0;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.camera-live-preview-obs-url-value code {
-  flex: 1;
-}
-
-.camera-live-preview-obs-error {
-  grid-column: 1 / -1;
-  color: #ffb4ae;
-  font-size: 11px;
 }
 
 @media (max-width: 640px) {
@@ -201,19 +165,12 @@
     max-height: calc(100vh - 24px);
   }
 
-  .camera-live-preview-body {
-    padding: 10px 12px 14px;
-  }
-
   .camera-live-preview-stage {
     min-height: 200px;
   }
 
   .camera-live-preview-footer {
-    grid-template-columns: repeat(2, minmax(0, max-content));
+    grid-template-columns: max-content;
   }
 
-  .camera-live-preview-footer.is-streaming {
-    grid-template-columns: minmax(0, 1fr) max-content max-content;
-  }
 }

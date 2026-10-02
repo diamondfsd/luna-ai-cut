@@ -61,8 +61,6 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 0 28px 20px;
-  overflow-y: auto;
   flex: 1;
 }
 
@@ -450,10 +448,6 @@
 
   .lut-import-dialog-content .ui-dialog-header [data-radix-dialog-title] {
     font-size: 20px;
-  }
-
-  .lut-import-body {
-    padding: 0 18px 16px;
   }
 
   .lut-import-drop-zone {

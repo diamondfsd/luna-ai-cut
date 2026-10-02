@@ -1,0 +1,205 @@
+name: Build Windows iproxy (MSYS2)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - limd-build-msys2.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-iproxy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-iproxy:
+    name: Build full libimobiledevice stack (UCRT64 x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-ntldd mingw-w64-ucrt-x86_64-zlib
+
+      - name: Run upstream build script in isolated directory
+        id: build_stack
+        run: |
+          set -euo pipefail
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          artifact_root="$workspace/build-artifacts"
+          sdkdir="$build_root/sdk"
+
+          mkdir -p "$build_root" "$artifact_root/diagnostics"
+          cp "$workspace/limd-build-msys2.sh" "$build_root/limd-build-msys2.sh"
+
+          mkdir -p "$sdkdir/usr/include"
+          cp "$MINGW_PREFIX/include/zlib.h" "$MINGW_PREFIX/include/zconf.h" "$sdkdir/usr/include/"
+
+          {
+            printf 'script_revision=1.0.4\n'
+            printf 'msystem=%s\n' "$MSYSTEM"
+            printf 'msystem_carch=%s\n' "$MSYSTEM_CARCH"
+            printf 'mingw_prefix=%s\n' "$MINGW_PREFIX"
+            printf 'prefix=%s\n' "$MINGW_PREFIX"
+            printf 'sdkdir=%s\n' "$sdkdir"
+            printf 'extra_libs=-lcrypt32\n'
+            printf 'source_commit=%s\n' "$GITHUB_SHA"
+          } > "$artifact_root/build-info.txt"
+
+          cd "$build_root"
+          export PREFIX="$MINGW_PREFIX"
+          export SDKDIR="$sdkdir"
+          export LIBS="-lcrypt32"
+          bash ./limd-build-msys2.sh 2>&1 | tee "$build_root/build.log"
+
+      - name: Stage iproxy, idevice_id, and runtime DLLs
+        if: always() && steps.build_stack.outcome != 'skipped'
+        run: |
+          set -euo pipefail
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          artifact_root="$workspace/build-artifacts"
+          runtime_dir="$artifact_root/iproxy-win-x64"
+          iproxy="$MINGW_PREFIX/bin/iproxy.exe"
+          idevice_id="$MINGW_PREFIX/bin/idevice_id.exe"
+
+          for tool in "$iproxy" "$idevice_id"; do
+            if [[ ! -f "$tool" ]]; then
+              printf '%s was not produced by the build script\n' "$(basename "$tool")" > "$artifact_root/iproxy-stage-status.txt"
+              exit 1
+            fi
+          done
+
+          mkdir -p "$runtime_dir" "$runtime_dir/licenses"
+          cp "$iproxy" "$idevice_id" "$runtime_dir/"
+
+          : > "$artifact_root/pe-architecture.txt"
+          : > "$artifact_root/ntldd-dependencies.txt"
+          for tool in "$iproxy" "$idevice_id"; do
+            objdump -f "$tool" | tee -a "$artifact_root/pe-architecture.txt"
+            objdump -f "$tool" | grep -Fq 'file format pei-x86-64'
+            printf '\n%s\n' "$(basename "$tool")" >> "$artifact_root/ntldd-dependencies.txt"
+            ntldd -R "$tool" >> "$artifact_root/ntldd-dependencies.txt" 2>&1
+          done
+
+          system32="$(cygpath -u "$WINDIR")/System32"
+          dependency_report="$artifact_root/runtime-dependencies.txt"
+          : > "$dependency_report"
+
+          queue=("$iproxy" "$idevice_id")
+          declare -A inspected=()
+          missing_dependency=0
+          while ((${#queue[@]})); do
+            binary="${queue[0]}"
+            queue=("${queue[@]:1}")
+            binary_key="${binary,,}"
+            [[ -n "${inspected[$binary_key]+present}" ]] && continue
+            inspected[$binary_key]=1
+
+            while IFS= read -r dll_name; do
+              [[ -n "$dll_name" ]] || continue
+              dll_key="${dll_name,,}"
+              candidate="$MINGW_PREFIX/bin/$dll_name"
+
+              if [[ -f "$candidate" ]]; then
+                cp -n "$candidate" "$runtime_dir/"
+                printf '%s -> bundled\n' "$dll_name" >> "$dependency_report"
+                queue+=("$candidate")
+              elif [[ "$dll_key" == api-ms-win-* || "$dll_key" == ext-ms-win-* ]]; then
+                printf '%s -> Windows API set\n' "$dll_name" >> "$dependency_report"
+              elif [[ -f "$system32/$dll_name" ]]; then
+                printf '%s -> Windows system\n' "$dll_name" >> "$dependency_report"
+              else
+                printf '%s -> MISSING\n' "$dll_name" >> "$dependency_report"
+                missing_dependency=1
+              fi
+            done < <(objdump -p "$binary" | sed -nE 's/^[[:space:]]*DLL Name: ([^[:space:]]+).*/\1/p')
+          done
+
+          cat "$dependency_report"
+          if ((missing_dependency)); then
+            echo 'iOS USB tools have unresolved non-system DLL dependencies' >&2
+            exit 1
+          fi
+
+          for component in libplist libimobiledevice-glue libusbmuxd libimobiledevice libirecovery libtatsu idevicerestore libideviceactivation ideviceinstaller; do
+            component_dir="$build_root/$component"
+            [[ -d "$component_dir" ]] || continue
+            revision="$(git -C "$component_dir" rev-parse HEAD)"
+            printf '%s %s\n' "$component" "$revision" >> "$artifact_root/source-revisions.txt"
+
+            mkdir -p "$runtime_dir/licenses/$component"
+            for license_file in COPYING COPYING.* LICENSE LICENSE.*; do
+              for source_file in "$component_dir"/$license_file; do
+                [[ -f "$source_file" ]] || continue
+                cp "$source_file" "$runtime_dir/licenses/$component/"
+              done
+            done
+          done
+
+          {
+            cd "$runtime_dir"
+            shopt -s nullglob
+            binaries=(*.exe *.dll)
+            ((${#binaries[@]} > 0))
+            sha256sum -b "${binaries[@]}" | sed -E 's|^([a-f0-9]{64}) \*|\1  win-x64/|'
+          } > "$artifact_root/SHA256SUMS.txt"
+
+          pacman -Q > "$artifact_root/diagnostics/msys2-packages.txt"
+
+      - name: Collect build diagnostics
+        if: always()
+        run: |
+          set -u
+
+          workspace="$(cygpath -u "$GITHUB_WORKSPACE")"
+          runner_temp="$(cygpath -u "$RUNNER_TEMP")"
+          build_root="$runner_temp/luna-iproxy-msys2-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          diagnostics="$workspace/build-artifacts/diagnostics"
+          mkdir -p "$diagnostics"
+
+          if [[ -d "$build_root" ]]; then
+            [[ ! -f "$build_root/build.log" ]] || cp "$build_root/build.log" "$diagnostics/"
+            find "$build_root" -maxdepth 1 -type f -name '*.log' -exec cp -f {} "$diagnostics/" \;
+
+            for component in libplist libimobiledevice-glue libusbmuxd libimobiledevice libirecovery libtatsu idevicerestore libideviceactivation ideviceinstaller; do
+              component_dir="$build_root/$component"
+              [[ -d "$component_dir/.git" ]] || continue
+              revision="$(git -C "$component_dir" rev-parse HEAD 2>/dev/null || true)"
+              [[ -z "$revision" ]] || printf '%s %s\n' "$component" "$revision" >> "$diagnostics/source-revisions.txt"
+            done
+
+            for archive in "$build_root"/libcurl-*.tar.bz2 "$build_root"/libzip-*.tar.bz2; do
+              [[ -f "$archive" ]] || continue
+              sha256sum "$archive" >> "$diagnostics/prebuilt-archive-sha256.txt"
+            done
+          fi
+
+          pacman -Q > "$diagnostics/msys2-packages.txt" 2>&1 || true
+
+      - name: Upload experimental build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: luna-iproxy-win-x64-experimental-${{ github.run_id }}
+          path: build-artifacts/
+          if-no-files-found: warn
+          retention-days: 14

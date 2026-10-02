@@ -1,0 +1,59 @@
+.ui-dialog-content.mobile-app-download-dialog {
+  width: min(500px, calc(100vw - 32px));
+}
+
+.mobile-app-download-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.mobile-app-download-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.mobile-app-download-image {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mobile-app-download-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mobile-app-download-logo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20%;
+  height: 20%;
+  padding: 4px;
+  border-radius: 9px;
+  background: #fff;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.mobile-app-download-code figcaption {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+@media (max-width: 460px) {
+  .mobile-app-download-body { grid-template-columns: minmax(0, 1fr); }
+}

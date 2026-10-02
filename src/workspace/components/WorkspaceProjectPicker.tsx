@@ -145,6 +145,7 @@ export function WorkspaceProjectPicker() {
 
       {/* 重命名弹窗 */}
       <Dialog
+        bodyClassName="workspace-dialog-body"
         tone="dark"
         open={renameOpen}
         onOpenChange={setRenameOpen}
@@ -158,9 +159,7 @@ export function WorkspaceProjectPicker() {
           </>
         }
       >
-        <div className="workspace-dialog-body">
-          <Input fullWidth value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="项目名称" autoFocus />
-        </div>
+        <Input fullWidth value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="项目名称" autoFocus />
       </Dialog>
 
       <WorkspaceImportDialog

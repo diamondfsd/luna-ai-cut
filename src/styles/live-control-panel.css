@@ -1,0 +1,333 @@
+.live-control-panel {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: 0;
+}
+
+.live-preview-pane {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  background: #111113;
+}
+
+.live-preview-stage {
+  position: relative;
+  overflow: hidden;
+  flex: none;
+  border-radius: 8px;
+  background: #080809;
+}
+
+.live-preview-stage[data-control-active] {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.live-preview-focus-marker {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--blue);
+  border-radius: 4px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.live-preview-stage canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  visibility: hidden;
+}
+
+.live-preview-stage canvas.is-active {
+  visibility: visible;
+}
+
+.live-preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  padding: 28px;
+  background: rgba(12, 12, 14, 0.76);
+  color: #fff;
+  text-align: center;
+  pointer-events: none;
+}
+
+.live-preview-overlay button {
+  pointer-events: auto;
+}
+
+.live-preview-overlay strong {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.live-preview-overlay > span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+}
+
+.live-preview-onboarding {
+  align-content: center;
+}
+
+.live-preview-onboarding ol {
+  display: grid;
+  gap: 12px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.live-preview-onboarding li {
+  display: flex;
+  min-width: min(420px, 70vw);
+  align-items: center;
+  gap: 10px;
+}
+
+.live-preview-onboarding li > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+}
+
+.live-preview-onboarding li p {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+}
+
+.live-preview-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.live-control-pane {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 10px 14px;
+  border-left: 1px solid #303034;
+  background: #19191c;
+  color: #fff;
+}
+
+.live-settings-tabs {
+  flex: 0 0 auto;
+  padding: 0;
+  border-bottom: 1px solid #343438;
+}
+
+.live-settings-tabs-control {
+  display: flex;
+  width: 100%;
+  gap: 0;
+}
+
+.live-settings-tabs-control .ui-btn-group-btn {
+  min-width: 0;
+  flex: 1 1 0;
+  height: 38px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #a8a8ad;
+  font-size: 12px;
+}
+
+.live-settings-tabs-control .ui-btn-group-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #e4e4e7;
+}
+
+.live-settings-tabs-control .ui-btn-group-btn.active {
+  border-bottom-color: var(--blue);
+  background: transparent;
+  color: var(--blue);
+}
+
+.live-settings-scroll {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+  gap: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.live-control-pane .filter-sidebar,
+.live-control-pane .filter-sidebar .sidebar-inner {
+  height: auto;
+  min-height: 0;
+}
+
+.live-control-pane .filter-sidebar {
+  overflow: visible;
+}
+
+.live-control-pane .filter-sidebar .sidebar-inner {
+  gap: 12px;
+}
+
+.live-control-pane .filter-sidebar .filter-current-card {
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+}
+
+.live-control-pane .filter-sidebar .filter-grid-wrap {
+  flex: none;
+  overflow: visible;
+  padding-bottom: 8px;
+}
+
+.live-control-pane .filter-sidebar .filter-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.live-settings-title {
+  margin: 0;
+  padding: 2px 0 10px;
+  border-bottom: 1px solid #343438;
+  color: #f2f2f4;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.live-control-pane .eyebrow,
+.live-control-pane .ui-accordion-title,
+.live-control-pane .workspace-param-label {
+  color: #d0d0d3;
+  letter-spacing: 0;
+}
+
+.live-control-pane .ui-accordion {
+  border-top-color: #343438;
+}
+
+.live-control-pane .ui-accordion:first-child {
+  border-top: 0;
+}
+
+.live-control-pane .ui-accordion-header {
+  padding: 10px 0;
+}
+
+.live-control-pane .ui-accordion-body {
+  gap: 8px;
+  padding-bottom: 10px;
+}
+
+.live-control-pane .workspace-param-slider {
+  gap: 3px;
+}
+
+.live-control-pane .workspace-param-value {
+  color: #e4e4e7;
+}
+
+.live-control-pane .workspace-param-value-input {
+  border-color: #414146;
+  background: #27272b;
+  color: #f3f3f5;
+}
+
+.live-control-pane .workspace-slider-track {
+  background: #49494d;
+}
+
+.live-control-pane .workspace-slider-zero {
+  background: #19191c;
+}
+
+.live-control-pane .wm-settings-content {
+  margin-top: 0;
+}
+
+.live-control-pane .wm-settings-section {
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.live-control-pane .workspace-acc-reset {
+  color: #b8b8bc;
+}
+
+.live-control-pane .workspace-acc-reset:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.live-control-pane .ui-select-trigger {
+  width: 100%;
+  border-color: #414146;
+  background: #27272b;
+  color: #f3f3f5;
+}
+
+.live-control-pane .ui-select-trigger .ui-select-chevron,
+.live-control-pane .ui-select-trigger .ui-select-icon {
+  color: #a8a8ad;
+}
+
+.ui-select-content.live-settings-select-content {
+  min-width: var(--radix-select-trigger-width);
+  border-color: #414146;
+  background: #27272b;
+  color: #f3f3f5;
+}
+
+.live-settings-select-content .ui-select-item {
+  color: #f3f3f5;
+}
+
+.live-settings-select-content .ui-select-item[data-highlighted],
+.live-settings-select-content .ui-select-item[data-state="checked"] {
+  background: #414145;
+  color: #fff;
+}
+
+@media (max-width: 760px) {
+  .live-control-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 1fr) minmax(220px, 38vh);
+    gap: 0;
+  }
+
+  .live-control-pane {
+    border-top: 1px solid #303034;
+    border-left: 0;
+  }
+
+}

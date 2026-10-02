@@ -36,7 +36,7 @@ export function ParamSlider({
   formatValue = formatSigned,
 }: ParamSliderProps) {
   const accessibleLabel = typeof label === 'string' ? label : '参数'
-  const zeroRatio = max - min > 0 ? (0 - min) / (max - min) : 0.5
+  const zeroRatio = max - min > 0 ? Math.max(0, Math.min(1, (0 - min) / (max - min))) : 0.5
 
   const [editValue, setEditValue] = useState(() => formatValue(value))
   const [editing, setEditing] = useState(false)

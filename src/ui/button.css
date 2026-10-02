@@ -8,12 +8,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 6px;
+  min-width: 0;
   white-space: nowrap;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  letter-spacing: -0.224px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
   border: 0;
   box-sizing: border-box;
   transition:
@@ -23,8 +26,8 @@
     opacity 140ms ease;
 }
 
-.ui-btn:active {
-  transform: scale(0.95);
+.ui-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .ui-btn:disabled {
@@ -32,8 +35,14 @@
   opacity: 0.45;
 }
 
+.ui-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 42%, transparent);
+  outline-offset: 2px;
+}
+
 .ui-btn-icon {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   line-height: 0;
@@ -48,9 +57,9 @@
 
 /* primary — 蓝色实心圆角 */
 .ui-btn-primary {
-  min-height: 36px;
+  min-height: 34px;
   border-radius: 999px;
-  padding: 8px 17px;
+  padding: 0 15px;
   background: var(--blue);
   color: #fff;
 }
@@ -70,12 +79,17 @@
 
 /* secondary — 蓝色边框透明 */
 .ui-btn-secondary {
-  min-height: 36px;
+  min-height: 34px;
   border-radius: 999px;
-  padding: 8px 17px;
-  border: 1px solid var(--blue);
+  padding: 0 15px;
+  border: 1px solid color-mix(in srgb, var(--blue) 58%, transparent);
   background: transparent;
   color: var(--blue);
+}
+
+.ui-btn-secondary:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 6%, transparent);
 }
 
 /* utility — 深色矩形按钮 */
@@ -105,23 +119,31 @@
 
 /* danger — 红色提示按钮（删除等） */
 .ui-btn-danger {
-  min-height: 36px;
+  min-height: 34px;
   border-radius: 999px;
-  padding: 8px 17px;
-  border: 1px solid #e74c3c;
+  padding: 0 15px;
+  border: 1px solid color-mix(in srgb, #e74c3c 70%, transparent);
   background: transparent;
   color: #e74c3c;
 }
 
+.ui-btn-danger:hover {
+  border-color: #e74c3c;
+  background: color-mix(in srgb, #e74c3c 7%, transparent);
+}
+
 /* 尺寸 */
 .ui-btn-compact {
-  min-height: 32px;
-  padding: 7px 14px;
+  min-height: 30px;
+  gap: 5px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .ui-btn-mini {
-  min-height: 28px;
-  padding: 2px 8px;
+  min-height: 26px;
+  gap: 4px;
+  padding: 0 9px;
   font-size: 11px;
 }
 

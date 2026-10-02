@@ -13,6 +13,7 @@ interface AiHiddenPeopleDialogProps {
 
 export function AiHiddenPeopleDialog({ open, onOpenChange, people, busy, onRestore }: AiHiddenPeopleDialogProps) {
   return <Dialog
+    bodyClassName="ai-hidden-people-list"
     open={open}
     onOpenChange={onOpenChange}
     title="已隐藏人物"
@@ -20,13 +21,11 @@ export function AiHiddenPeopleDialog({ open, onOpenChange, people, busy, onResto
     className="ai-hidden-people-dialog"
     footer={<Button variant="secondary" onClick={() => onOpenChange(false)}>关闭</Button>}
   >
-    <div className="ai-hidden-people-list">
-      {people.map((person) => <div key={person.id} className="ai-hidden-people-row">
-        <AiPersonIdentityAvatar {...person} className="ai-hidden-people-avatar" />
-        <strong title={person.name}>{person.name}</strong>
-        <Button variant="secondary" size="mini" disabled={busy} onClick={() => void onRestore(person.id)}>恢复</Button>
-      </div>)}
-      {people.length === 0 && <span className="ai-hidden-people-empty">没有已隐藏的人物</span>}
-    </div>
+    {people.map((person) => <div key={person.id} className="ai-hidden-people-row">
+      <AiPersonIdentityAvatar {...person} className="ai-hidden-people-avatar" />
+      <strong title={person.name}>{person.name}</strong>
+      <Button variant="secondary" size="mini" disabled={busy} onClick={() => void onRestore(person.id)}>恢复</Button>
+    </div>)}
+    {people.length === 0 && <span className="ai-hidden-people-empty">没有已隐藏的人物</span>}
   </Dialog>
 }

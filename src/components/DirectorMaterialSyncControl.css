@@ -1,0 +1,37 @@
+.director-material-sync-control,
+.director-material-sync-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.director-material-sync-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.director-material-sync-summary,
+.director-material-sync-file > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.director-material-sync-name {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.director-material-sync-file > div:first-child > span:last-child {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.director-material-sync-file {
+  display: grid;
+  gap: 8px;
+}

@@ -1,0 +1,116 @@
+.live-console-page {
+  --blue: #2997ff;
+  --blue-dark: #1478d4;
+  --canvas: #171719;
+  --parchment: #171719;
+  --ink: #f2f2f4;
+  --muted: #a1a1a6;
+  --muted-dark: #d0d0d3;
+  --hairline: rgba(255, 255, 255, 0.12);
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px 22px 20px;
+  background: #111113;
+  color: var(--ink);
+}
+
+.live-console-header,
+.live-console-error {
+  width: 100%;
+}
+
+.live-console-header,
+.live-console-title,
+.live-console-actions {
+  display: flex;
+  align-items: center;
+}
+
+.live-console-header {
+  justify-content: space-between;
+  gap: 16px;
+  flex: 0 0 auto;
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.live-console-title {
+  min-width: 0;
+  gap: 11px;
+}
+
+.live-console-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.live-console-status-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #a8a8ad;
+}
+
+.live-console-status-dot.active {
+  background: #32d74b;
+  box-shadow: 0 0 0 4px rgba(50, 215, 75, 0.12);
+}
+
+.live-console-status-dot.danger {
+  background: #ff453a;
+}
+
+.live-console-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #b5b5ba;
+  font-size: 11px;
+}
+
+.live-console-badge.active {
+  border-color: rgba(50, 215, 75, 0.4);
+  background: rgba(50, 215, 75, 0.08);
+  color: #55df68;
+}
+
+.live-console-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.live-console-error {
+  flex: 0 0 auto;
+  margin-top: 0;
+  margin-bottom: 14px;
+  color: #c0392b;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .live-console-page {
+    padding: 18px;
+  }
+
+  .live-console-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .live-console-actions {
+    width: 100%;
+  }
+}

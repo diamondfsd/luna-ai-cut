@@ -17,6 +17,7 @@ import type {
 } from '../shared/types'
 
 interface DeviceConnectionContextValue {
+  initialized: boolean
   activeDevice: DeviceDefinition | undefined
   cameraLibraryMounted: boolean
   connectDevice: (rootPath?: string, deviceId?: string, wireless?: CameraMediaSourceOptions['wireless']) => Promise<void>
@@ -128,6 +129,7 @@ function userFacingConnectionError(error: unknown): string {
 }
 
 export function DeviceConnectionProvider({ children }: { children: ReactNode }) {
+  const [initialized, setInitialized] = useState(false)
   const { settings, setSettings, connection, setConnection } = useApp()
   const [devices, setDevices] = useState<DeviceDefinition[]>([])
   const [devicePhase, setDevicePhase] = useState<DeviceConnectionPhase>('idle')
@@ -168,6 +170,8 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         void window.luna.getMockServerStatuses().then(setMockServerStatuses).catch(() => undefined)
       } catch (error) {
         logger.error('[设备连接] 初始化失败', { error: error instanceof Error ? error.message : String(error) })
+      } finally {
+        setInitialized(true)
       }
     }
     void initialize()
@@ -525,6 +529,7 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   return (
     <DeviceConnectionCtx.Provider
       value={{
+        initialized,
         activeDevice,
         cameraLibraryMounted,
         chooseWiredCamera,

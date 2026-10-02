@@ -642,6 +642,7 @@ export function DeviceConnectPage({
         onRestart={() => void restart()}
       />
       <Dialog
+        bodyClassName="device-connect-wifi-password-body"
         open={wifiPasswordDialogOpen}
         onOpenChange={(open) => {
           if (open) setWifiPasswordDialogOpen(true)
@@ -692,68 +693,66 @@ export function DeviceConnectPage({
           </>
         )}
       >
-        <div className="device-connect-wifi-password-body">
-          {showWifiManualFallback ? (
-            <div className="device-connect-wifi-password-fallback">
-              {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
-              <div className="device-connect-wifi-password-details">
-                <div className="device-connect-wifi-password-ssid">
-                  <span>Wi-Fi 名称</span>
-                  <strong title={displayWifiSsid}>{displayWifiSsid || '相机热点'}</strong>
-                </div>
-                <div className="device-connect-wifi-password-value">
-                  <span>Wi-Fi 密码</span>
-                  <strong>{copyableWifiPassword || '未获取'}</strong>
-                </div>
+        {showWifiManualFallback ? (
+          <div className="device-connect-wifi-password-fallback">
+            {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
+            <div className="device-connect-wifi-password-details">
+              <div className="device-connect-wifi-password-ssid">
+                <span>Wi-Fi 名称</span>
+                <strong title={displayWifiSsid}>{displayWifiSsid || '相机热点'}</strong>
               </div>
-              <p>请在系统 Wi-Fi 中连接以上热点。</p>
-              <div className="device-connect-wifi-password-actions">
-                <Button
-                  variant="secondary"
-                  onClick={() => void copyWifiPassword()}
-                  disabled={!copyableWifiPassword}
-                  icon={wifiPasswordCopied ? <Check size={16} /> : <Copy size={16} />}
-                >
-                  {wifiPasswordCopied ? '已复制' : '复制密码'}
-                </Button>
-                <Button variant="ghost" size="compact" onClick={editWifiPasswordInDialog} icon={<KeyRound size={15} />}>
-                  重新输入
-                </Button>
+              <div className="device-connect-wifi-password-value">
+                <span>Wi-Fi 密码</span>
+                <strong>{copyableWifiPassword || '未获取'}</strong>
               </div>
             </div>
-          ) : (
-            <>
-              <label className="device-connect-wifi-password-field">
-                <span>Wi-Fi 名称</span>
-                <Input
-                  variant="pill"
-                  value={wifiSsid}
-                  onChange={(event) => setWifiSsid(event.target.value)}
-                  placeholder="输入 Wi-Fi 名称"
-                  autoFocus={!wifiSsid}
-                  fullWidth
-                />
-              </label>
-              <label className="device-connect-wifi-password-field">
-                <span>Wi-Fi 密码</span>
-                <Input
-                  variant="pill"
-                  type="password"
-                  value={wifiPassword}
-                  onChange={(event) => setWifiPassword(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && wifiPassword) void handleWifiPasswordConnect()
-                  }}
-                  placeholder="输入密码"
-                  autoFocus={Boolean(wifiSsid)}
-                  fullWidth
-                />
-              </label>
-              {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
-              <p>不会读取系统保存的 Wi-Fi 密码。</p>
-            </>
-          )}
-        </div>
+            <p>请在系统 Wi-Fi 中连接以上热点。</p>
+            <div className="device-connect-wifi-password-actions">
+              <Button
+                variant="secondary"
+                onClick={() => void copyWifiPassword()}
+                disabled={!copyableWifiPassword}
+                icon={wifiPasswordCopied ? <Check size={16} /> : <Copy size={16} />}
+              >
+                {wifiPasswordCopied ? '已复制' : '复制密码'}
+              </Button>
+              <Button variant="ghost" size="compact" onClick={editWifiPasswordInDialog} icon={<KeyRound size={15} />}>
+                重新输入
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <label className="device-connect-wifi-password-field">
+              <span>Wi-Fi 名称</span>
+              <Input
+                variant="pill"
+                value={wifiSsid}
+                onChange={(event) => setWifiSsid(event.target.value)}
+                placeholder="输入 Wi-Fi 名称"
+                autoFocus={!wifiSsid}
+                fullWidth
+              />
+            </label>
+            <label className="device-connect-wifi-password-field">
+              <span>Wi-Fi 密码</span>
+              <Input
+                variant="pill"
+                type="password"
+                value={wifiPassword}
+                onChange={(event) => setWifiPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && wifiPassword) void handleWifiPasswordConnect()
+                }}
+                placeholder="输入密码"
+                autoFocus={Boolean(wifiSsid)}
+                fullWidth
+              />
+            </label>
+            {wifiPasswordError && <Alert variant="error" message={wifiPasswordError} />}
+            <p>不会读取系统保存的 Wi-Fi 密码。</p>
+          </>
+        )}
       </Dialog>
     </section>
   )

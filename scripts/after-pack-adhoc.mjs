@@ -1,11 +1,25 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import process from 'node:process'
+import { verifyIosUsbResources } from './ios-usb-resources.mjs'
+import { verifyPackagedUsb } from './verify-packaged-usb.mjs'
 
 /** electron-builder 生成 DMG 前，对 macOS App 做 Ad Hoc 签名。 */
 export default async function afterPack(context) {
+  const appName = `${context.packager.appInfo.productFilename}.app`
+  if (context.electronPlatformName === 'darwin' || context.electronPlatformName === 'win32') {
+    const resourcesDir = context.electronPlatformName === 'darwin'
+      ? join(context.appOutDir, appName, 'Contents', 'Resources')
+      : join(context.appOutDir, 'resources')
+    verifyPackagedUsb(resourcesDir, context.electronPlatformName, context.arch === 3 ? 'arm64' : context.arch === 0 ? 'ia32' : 'x64')
+  }
   if (context.electronPlatformName === 'win32') {
     verifyWindowsRuntimeLayout(context.appOutDir)
+    verifyIosUsbResources(
+      join(context.appOutDir, 'resources', 'ios-usb'),
+      join(context.packager.projectDir, 'resources', 'ios-usb', 'SHA256SUMS.txt'),
+    )
     return
   }
   if (context.electronPlatformName !== 'darwin') return
@@ -14,7 +28,6 @@ export default async function afterPack(context) {
     return
   }
 
-  const appName = `${context.packager.appInfo.productFilename}.app`
   const appPath = join(context.appOutDir, appName)
   const entitlementsPath = join(context.packager.projectDir, 'build', 'entitlements.mac.plist')
   if (!existsSync(appPath)) throw new Error(`Ad Hoc 签名目标不存在：${appPath}`)

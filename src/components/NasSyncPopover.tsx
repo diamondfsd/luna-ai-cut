@@ -113,9 +113,8 @@ export function NasSyncPopover() {
         <PopoverTrigger asChild>
           <span className="nas-sync-nav-trigger">
             <IconButton
-              variant="ghost"
-              size="mini"
-              icon={<CloudUpload size={15} />}
+              variant="nav"
+              icon={<CloudUpload size={14} />}
               aria-label="查看 NAS 同步"
               title="查看 NAS 同步"
             />

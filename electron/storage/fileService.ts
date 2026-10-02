@@ -24,6 +24,8 @@ export {
   chooseBaseDir,
   chooseExportDir,
   chooseLocalResourcesDir,
+  chooseDirectorPlanDir,
+  getDirectorPlanDir,
   getLocalResourcesDir,
   chooseLutDir,
   chooseMockMediaDir,
