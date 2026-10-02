@@ -38,6 +38,7 @@ interface LiveControlPanelProps {
   busy: boolean
   onStart: () => void
   onStatusChanged: () => void
+  onPreviewErrorChange: (error: string | null) => void
 }
 
 export function LiveControlPanel({
@@ -45,12 +46,19 @@ export function LiveControlPanel({
   busy,
   onStart,
   onStatusChanged,
+  onPreviewErrorChange,
 }: LiveControlPanelProps) {
   const previewPaneRef = useRef<HTMLDivElement>(null)
   const [previewAspectRatio, setPreviewAspectRatio] = useState(16 / 9)
   const [previewStageSize, setPreviewStageSize] = useState({ width: 0, height: 0 })
   const [previewReady, setPreviewReady] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  useEffect(() => {
+    setPreviewReady(false)
+    setPreviewError(null)
+    onPreviewErrorChange(null)
+    return () => onPreviewErrorChange(null)
+  }, [status.startedAt, status.localPreviewUrl, onPreviewErrorChange])
   const [previewDimensions, setPreviewDimensions] = useState({ width: 16, height: 9 })
   const [activeSettingsPanel, setActiveSettingsPanel] = useState<LiveSettingsPanel>('control')
   const [focusPoint, setFocusPoint] = useState<NormalizedVideoPoint | null>(null)
@@ -168,12 +176,14 @@ export function LiveControlPanel({
     ))
     setPreviewReady(true)
     setPreviewError(null)
-  }, [recordUsageFrame])
+    onPreviewErrorChange(null)
+  }, [recordUsageFrame, onPreviewErrorChange])
 
   const handlePreviewError = useCallback((message: string) => {
-    setPreviewReady(false)
     setPreviewError(message)
-  }, [])
+    window.luna.log('warn', '直播画面播放异常', { error: message })
+    onPreviewErrorChange('画面播放异常')
+  }, [onPreviewErrorChange])
 
   const handleColorChange = useCallback((patch: Partial<EditPipeline['color']>) => {
     setLiveColor((current) => ({ ...current, ...patch }))
@@ -271,7 +281,7 @@ export function LiveControlPanel({
           {focusPoint && (
             <div className="live-preview-focus-marker" style={{ left: `${focusPoint.x * 100}%`, top: `${focusPoint.y * 100}%` }} />
           )}
-          {!active && (
+          {!active && !previewError && !status.error && !status.localPreviewError && (
             <div className="live-preview-overlay live-preview-onboarding">
               <ol>
                 <li>
@@ -297,7 +307,7 @@ export function LiveControlPanel({
             </div>
           )}
 
-          {active && !streaming && (
+          {active && !streaming && !previewReady && !status.error && !status.localPreviewError && !previewError && (
             <div className="live-preview-overlay">
               <strong>{status.state === 'starting' ? '正在启动' : status.usbMessage || '等待手机连接'}</strong>
               {status.state !== 'starting' && !status.usbDeviceLabel && <span>用 USB 连接手机和电脑</span>}
@@ -305,9 +315,9 @@ export function LiveControlPanel({
             </div>
           )}
 
-          {streaming && (previewError || !previewReady) && (
+          {streaming && !previewReady && !previewError && !status.localPreviewError && !status.error && (
             <div className="live-preview-overlay">
-              <strong>{previewError ?? status.localPreviewError ?? (status.localPreviewUrl ? '正在打开直播画面' : '正在准备软件预览')}</strong>
+              <strong>{status.localPreviewUrl ? '正在打开直播画面' : '正在准备软件预览'}</strong>
             </div>
           )}
         </div>
