@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { parseDirectorPlanImport } from '../src/lib/directorPlanImport.ts'
 import { appendDirectorLocalShots } from '../src/lib/directorLocalShots.ts'
-import { directorLocalEditHasConflict } from '../src/lib/directorPlanLocalEdit.ts'
+import { applyDirectorLocalPlanEdit, directorLocalEditHasConflict } from '../src/lib/directorPlanLocalEdit.ts'
+import { writeDirectorPlanFiles } from '../electron/features/director-lab/directorLabPlanStorage.ts'
 import { buildDirectorPlanUpdate, directorPlanContentSignature } from '../src/lib/directorPlanSync.ts'
 import { normalizeDirectorShotFields } from '../src/lib/directorShotFields.ts'
 import { DirectorPlanWriteFailures, isPermanentDirectorPlanWriteError } from '../src/lib/directorPlanWriteFailures.ts'
@@ -15,12 +19,34 @@ plan.pending_take_ids = ['take-original']
 plan.pending_shot_ids = [plan.shots[0].id]
 const signature = directorPlanContentSignature(plan)
 const backgroundUpdate = { ...plan, revision: 4, updated_at: '2026-10-01T10:00:00Z',
-  shots: plan.shots.map((shot) => ({ ...shot, takes: [...shot.takes, { id: 'take-phone' }] })) }
+  shots: plan.shots.map((shot) => ({ ...shot, takes: [...shot.takes, { id: 'take-phone', file_name: 'phone.mp4' }] })) }
 const requested = { ...plan, title: '编辑后的名称' }
 assert.equal(directorLocalEditHasConflict(backgroundUpdate, requested, signature), false)
 assert.equal(directorLocalEditHasConflict({ ...backgroundUpdate, title: '手机的新名称' }, requested, signature), true)
 assert.equal(directorLocalEditHasConflict(requested, requested, signature), false)
 assert.equal(directorLocalEditHasConflict(backgroundUpdate, { ...requested, local_content_signature: signature }), false)
+
+const mainContent = '新的主要内容\n保留换行和末尾空格  '
+const edited = applyDirectorLocalPlanEdit(backgroundUpdate, { ...plan, main_content: mainContent }, signature)
+assert.equal(edited.main_content, mainContent)
+assert.equal(edited.title, plan.title)
+assert.deepEqual(edited.shots[0].takes, backgroundUpdate.shots[0].takes)
+assert.deepEqual(edited.pending_take_ids, backgroundUpdate.pending_take_ids)
+assert.notEqual(directorPlanContentSignature(edited), signature)
+assert.equal(buildDirectorPlanUpdate(edited, 4).main_content, mainContent)
+assert.throws(() => applyDirectorLocalPlanEdit({ ...backgroundUpdate, main_content: '手机已修改' },
+  { ...plan, main_content: mainContent }, signature), /计划已更新/)
+assert.equal(applyDirectorLocalPlanEdit(plan, { ...plan, main_content: '' }, signature).main_content, '')
+assert.equal(applyDirectorLocalPlanEdit(plan, { ...plan, main_content: undefined }, signature).main_content, plan.main_content)
+assert.throws(() => applyDirectorLocalPlanEdit(plan, { ...plan, main_content: 123 }, signature), /计划内容无效/)
+const savedDirectory = await mkdtemp(join(tmpdir(), 'director-main-content-'))
+try {
+  await writeDirectorPlanFiles(savedDirectory, edited)
+  const savedManifest = JSON.parse(await readFile(join(savedDirectory, 'manifest.json'), 'utf8'))
+  assert.equal(savedManifest.main_content, mainContent)
+} finally {
+  await rm(savedDirectory, { recursive: true, force: true })
+}
 
 const imported = parseDirectorPlanImport('# 不替换原计划\n主要内容：不替换原目标\n## 01 新镜头\n运镜说明：推进', '计划', randomUUID)
 const appended = appendDirectorLocalShots(backgroundUpdate, imported.shots)
