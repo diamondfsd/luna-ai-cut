@@ -187,6 +187,23 @@ export function LiveCameraControlPanel({ status, previewAspectRatio }: LiveCamer
       </section>
 
       <section className="live-control-section">
+        <div className="live-zoom-presets" role="group" aria-label="快捷变焦">
+          {[1, 2, 3, 6, 12, 15].map((value) => (
+            <Button
+              key={value}
+              variant={Math.abs(zoom - value) < 0.05 ? 'primary' : 'secondary'}
+              size="mini"
+              aria-pressed={Math.abs(zoom - value) < 0.05}
+              disabled={!controlReady || !capabilities.zoom.supported || value < capabilities.zoom.min || value > maximumZoom}
+              onClick={() => {
+                setZoom(value)
+                dispatch({ type: 'zoom.set', value })
+              }}
+            >
+              {value}×
+            </Button>
+          ))}
+        </div>
         <ParamSlider
           label="变焦"
           value={clamp(zoom, capabilities.zoom.min, maximumZoom)}
