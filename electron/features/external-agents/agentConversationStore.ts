@@ -14,7 +14,7 @@ export function createAgentConversationStore(directory: () => Promise<string>) {
       let items: AgentConversation[] = []
       try {
         const saved: unknown = JSON.parse(await readFile(file, 'utf8'))
-        if (!Array.isArray(saved) || saved.some(value => !value || typeof value.id !== 'string' || typeof value.request !== 'string' || typeof value.updatedAt !== 'string' || !['editing', 'director-plan'].includes(value.purpose) || !value.session || !Array.isArray(value.events))) {
+        if (!Array.isArray(saved) || saved.some(value => !value || typeof value.id !== 'string' || typeof value.request !== 'string' || typeof value.updatedAt !== 'string' || !['auto', 'editing', 'director-plan'].includes(value.purpose) || !value.session || !Array.isArray(value.events))) {
           throw new Error('任务历史内容无效')
         }
         items = saved
@@ -53,7 +53,7 @@ export function createAgentConversationStore(directory: () => Promise<string>) {
       const events = [...base.events.filter(item => item.sequence !== event.sequence), safeEvent]
         .sort((a, b) => a.sequence - b.sequence).slice(-200)
       const latest = events[events.length - 1]
-      const updated = { ...base, session: latest.session, events, updatedAt: base.updatedAt > latest.timestamp ? base.updatedAt : latest.timestamp }
+      const updated = { ...base, session: latest.session, purpose: latest.session.purpose ?? base.purpose, events, updatedAt: base.updatedAt > latest.timestamp ? base.updatedAt : latest.timestamp }
       return { items: [...items.filter(item => item.id !== base.id), updated], result: updated }
     }),
     patch: (id: string, change: Partial<Pick<AgentConversation, 'request' | 'agentId' | 'agentName' | 'prompt' | 'handoff' | 'error'>>) => transact(async items => {

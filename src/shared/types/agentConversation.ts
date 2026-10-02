@@ -1,15 +1,15 @@
-import type { AiEditorAgentEvent, AiEditorAgentSession } from './aiEditor'
+import type { AgentTaskPurpose, AiEditorAgentEvent, AiEditorAgentSession } from './aiEditor'
 
 export interface AgentTaskInput {
   request: string
-  purpose: 'editing' | 'director-plan'
+  purpose?: AgentTaskPurpose
   projectId?: string | null
 }
 export interface AgentConversation {
   id: string
   agentId: string
   agentName: string
-  purpose: 'editing' | 'director-plan'
+  purpose: AgentTaskPurpose
   request: string
   prompt: string
   createdAt: string

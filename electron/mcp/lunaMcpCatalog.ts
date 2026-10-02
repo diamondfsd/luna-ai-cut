@@ -84,6 +84,7 @@ export function openApiDocument(baseUrl: string, catalog: ToolCatalog): Record<s
     paths,
     'x-luna': {
       skill: '/skill.md',
+      skillIndex: '/skills/index.md',
       tools: '/tools',
       editorToolsReady: catalog.editorToolsReady,
       ...(catalog.message ? { message: catalog.message } : {}),

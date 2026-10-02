@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { AI_EDITOR_USER_STOPPED_ERROR } from '../../src/shared/types/aiEditor.ts'
 import type {
+  AgentTaskPurpose,
   AiEditorAgentEvent,
   AiEditorAgentPhase,
   AiEditorAgentSession,
@@ -36,7 +37,7 @@ export class AgentSessionManager {
       })),
     }
   }
-  createRequest(request: string, projectId: string | null = null, purpose: 'editing' | 'director-plan' = 'editing'): AiEditorAgentSession {
+  createRequest(request: string, projectId: string | null = null, purpose: AgentTaskPurpose = 'editing'): AiEditorAgentSession {
     const trimmed = request.trim()
     if (!trimmed) throw new Error('剪辑要求不能为空')
     if (this.session && ACTIVE_STATUSES.has(this.session.status)) {
@@ -74,7 +75,7 @@ export class AgentSessionManager {
     projectId: string | null = null,
     agentType: string | null = null,
     agentModel: string | null = null,
-    purpose?: 'editing' | 'director-plan',
+    purpose?: AgentTaskPurpose,
   ): AgentWaitResult {
     const trimmed = request.trim()
     if (!trimmed) throw new AgentSessionError('INVALID_REQUEST', '剪辑要求不能为空')
@@ -105,6 +106,17 @@ export class AgentSessionManager {
     const claimed = this.claim(created, normalizedAgentId, normalizedAgentType, normalizedAgentModel)
     this.resolveWaitersAsIdle()
     return claimed
+  }
+  selectWorkflow(sessionId: string, revision: number, purpose: Exclude<AgentTaskPurpose, 'auto'>): AiEditorAgentSession {
+    if (!['editing', 'director-plan'].includes(purpose)) throw new AgentSessionError('INVALID_PARAMS', '处理流程无效')
+    const gate = this.gate(sessionId, revision)
+    if (!gate.allowed) throw new AgentSessionError(gate.error?.code ?? 'SESSION_NOT_ACTIVE', gate.error?.message ?? '任务不可用')
+    const currentPurpose = gate.session.purpose ?? 'editing'
+    if (currentPurpose !== 'auto' && currentPurpose !== purpose) throw new AgentSessionError('TASK_TYPE_CONFLICT', '当前任务已选择其他处理流程')
+    if (currentPurpose === purpose) return copySession(gate.session)
+    this.session = { ...gate.session, purpose, projectId: purpose === 'director-plan' ? null : gate.session.projectId, updatedAt: nowIso() }
+    this.emit({ type: 'progress', session: this.session, message: '已选择处理流程' })
+    return copySession(this.session)
   }
   updateRequest(sessionId: string, request: string): AiEditorAgentSession {
     const current = this.requireSession(sessionId)

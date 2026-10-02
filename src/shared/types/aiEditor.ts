@@ -258,8 +258,10 @@ export type AiEditorAgentPhase =
   | 'failed'
   | 'cancelled'
 
+export type AgentTaskPurpose = 'auto' | 'editing' | 'director-plan'
+
 export interface AiEditorAgentSession {
-  purpose?: 'editing' | 'director-plan'
+  purpose?: AgentTaskPurpose
   sessionId: string
   request: string
   revision: number

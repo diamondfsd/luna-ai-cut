@@ -1,5 +1,7 @@
+import type { AgentTaskPurpose } from './aiEditor'
+
 export interface AgentChatContext {
-  purpose: 'editing' | 'director-plan'
+  purpose?: AgentTaskPurpose
   request?: string
   projectId?: string | null
 }

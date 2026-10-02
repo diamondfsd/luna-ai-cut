@@ -1,4 +1,5 @@
-import { DIRECTOR_PLAN_HTTP_SKILL } from './directorPlanHttpSkill.ts'
+import { appToolRegistry } from './lunaAppToolModules.ts'
+import { agentSkillIndex } from '../features/agent-skills/agentSkillIndex.ts'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -120,6 +121,7 @@ async function handleHttpRequest(
       version: '1.0.0',
       baseUrl,
       skill: `${baseUrl}/skill.md`,
+      skillIndex: `${baseUrl}/skills/index.md`,
       tools: `${baseUrl}/tools`,
       openapi: `${baseUrl}/openapi.json`,
       api: `${baseUrl}/api/tools/{toolName}`,
@@ -127,10 +129,14 @@ async function handleHttpRequest(
     return
   }
 
-  if (request.method === 'GET' && pathname === '/skills/director-plan.md') {
-    response.setHeader('Cache-Control', 'no-store')
-    writeText(response, 200, DIRECTOR_PLAN_HTTP_SKILL, 'text/markdown; charset=utf-8')
-    return
+  if (request.method === 'GET' && pathname.startsWith('/skills/')) {
+    const registry = appToolRegistry(options)
+    const skill = registry.skills.find(item => pathname === `/skills/${item.id}.md`)
+    if (pathname === '/skills/index.md' || skill) {
+      response.setHeader('Cache-Control', 'no-store')
+      writeText(response, 200, skill?.instructions ?? agentSkillIndex(registry.skills), 'text/markdown; charset=utf-8')
+      return
+    }
   }
 
   if (request.method === 'GET' && pathname === '/skill.md') {

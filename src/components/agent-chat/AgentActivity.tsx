@@ -14,7 +14,7 @@ export function AgentActivity({ snapshot, onError, readOnly = false, originalReq
       {messages.map(event => <article className="agent-chat-message" key={event.sequence}>
         <span>{event.type === 'session-created' || event.type === 'request-updated' ? '你' : event.session.agentType || 'Agent'}</span>
         <p>{event.type === 'session-created' || event.type === 'request-updated'
-          ? event.session.request : event.type === 'result' ? event.session.result?.summary || event.session.message : ('message' in event ? event.message : '') || event.session.message}</p>
+          ? event.type === 'session-created' ? originalRequest ?? event.session.request : event.session.request : event.type === 'result' ? event.session.result?.summary || event.session.message : ('message' in event ? event.message : '') || event.session.message}</p>
       </article>)}
     </div>
     {session && !readOnly && <div className="agent-chat-session-actions">

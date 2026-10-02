@@ -2,9 +2,9 @@
 
 ## 操作入口
 
-唯一入口：导航栏 → AI 助手，右侧展开全局聊天面板 → 选择 Agent 和任务类型 → 输入要求 → 发起任务。
+唯一入口：导航栏 → AI 助手，右侧展开全局聊天面板 → 输入要求 → 在输入区选择 Agent → 发送。
 导演计划和 AI 剪辑不再提供独立的助手入口。主窗口切换页面不关闭右侧浮窗，浮窗覆盖页面，不挤压或改变原有布局。导航栏最右侧的带图标「AI 助手」为唯一入口；聊天面板不提供打开或下载应用按钮。
-WorkBuddy 或 Codex 打开新任务草稿，用户确认发送后，Agent 读取 Luna 本机 HTTP 服务的最新指引并创建导演计划。
+WorkBuddy 或 Codex 打开新任务草稿，用户确认发送后，Agent 通过技能工具读取清单和全文，根据需求自主选择技能和处理流程。Luna 不做关键词分类，也不默认发起剪辑。
 也可复制提示词手动使用。返回 Luna 或关闭弹窗时刷新计划列表。
 
 提示词携带本次要求、任务编号和固定发现文件的位置，不安装外部 Skill，不复制固定版本的完整操作手册。
@@ -14,7 +14,7 @@ WorkBuddy 或 Codex 打开新任务草稿，用户确认发送后，Agent 读取
 
 共享契约：`src/shared/types/externalAgent.ts`。
 调用入口：`window.luna.externalAgent`，支持 `list/isInstalled/open/download/startTask/copyTask/listConversations/deleteConversation/onHistoryChanged`。
-`startTask/copyTask` 接收用户原始要求和任务类型，由主进程创建会话、生成指引、存档，再交给适配器。适配器只负责应用能力，不负责业务流程。
+`startTask/copyTask` 接收用户原始要求，未指定 purpose 时创建 auto 会话、生成通用服务/工具发现提示词、存档，再交给适配器。旧显式 purpose 调用保留兼容。适配器只负责应用能力，不负责业务流程。
 未来的可选 `installSkill` 能力保留，但当前流程不使用。
 
 适配器在 `electron/features/external-agents/` 中实现，在 `ipcExternalAgentService.ts` 的固定注册表注册。
@@ -41,18 +41,29 @@ Codex/ChatGPT 本机应用包：主进程 deep link parser 的 `threads/new` 分
 
 `src/components/agent-chat/AgentChatPanel.tsx` 实现右侧非模态面板，复用共享 Radix Dialog 的焦点和关闭行为，不显示遮罩、不拦截页面操作。App 级 Provider 保持状态；`externalAgent.openChat` 保留跨窗口上下文接口，但不新增任何可见入口。
 AI 剪辑不再单独生成外部 Agent 提示词弹窗。原生 Bridge 的 `lunaAgent.openChat` 保持 iframe 与宿主的能力边界。
-统一读取 Luna 任务服务快照与实时事件，展示用户要求、Agent 进度、结果、错误和取消；支持更新当前任务、停止与导出确认。
+统一读取 Luna 任务服务快照与实时事件，展示用户要求、Agent 进度、结果、错误和取消；历史只读，不提供修改任务或删除记录入口；活动任务保留停止与导出确认。后续要求在外部 Agent 沟通，由 update_task_request 记录用户原话，再读取新 revision。
 先订阅再读取快照，按 sequence 合并并去重，避免初始化期间丢失更新和旧事件覆盖最新状态。面板最多保留 200 个任务事件。
-记录范围为 Luna 收到的任务事件，不读取 WorkBuddy/Codex 的全部聊天或推理。首次原始消息、实际交接提示词、进度、结果和错误保存在 `baseDir/agent-conversations/conversations.json`；首次消息在打开外部应用或复制提示词之前保存。支持选择历史、新对话和删除非活动记录。每条任务保留最近 200 个事件，原始消息独立保存，不随事件裁剪丢失；工具参数不进入历史。串行原子写入，损坏历史不会被空内容覆盖。重启后历史可读，旧任务不会自动恢复或被视为仍连接。
+记录范围为 Luna 收到的任务事件，不读取 WorkBuddy/Codex 的全部聊天或推理。首次原始消息、实际交接提示词、进度、结果和错误保存在 `baseDir/agent-conversations/conversations.json`；首次消息在打开外部应用或复制提示词之前保存。顶部下拉选择历史与新对话；选中历史隐藏输入区，显示该记录实际使用的 Agent。删除 API 保留兼容，面板不提供删除入口。每条任务保留最近 200 个事件，原始消息独立保存，不随事件裁剪丢失；工具参数不进入历史。串行原子写入，损坏历史不会被空内容覆盖。重启后历史可读，旧任务不会自动恢复或被视为仍连接。
 
 多行输入统一使用 `src/ui/Textarea.tsx`，不复用单行 compact 输入的自动宽度；各弹窗铺满可用宽度。
 
 ## 稳定服务发现
 
 固定发现文件：`~/.luna-ai-cut/mcp-endpoint.json`，保存最新 `baseUrl` 和进程信息。实际绝对路径由主进程传入提示词，兼容不同系统。文件使用临时文件加原子替换更新；关闭时清除属于当前进程的记录。
-Agent 每次新任务、重启或连接失败后重新读文件，校验 `/.well-known/agent`，再读取业务指引。导演计划使用 `/skills/director-plan.md`，剪辑使用 `/skill.md`，不固定端口或扫描端口。
+Agent 每次新任务、重启或连接失败后重新读文件，校验 `/.well-known/agent`，再读取业务指引。通过服务返回的 tools/OpenAPI 发现技能查询工具，调用 list_agent_skills 获取 description/workflow 和公共指引，再 get_agent_skill 读取全文；Agent 根据实际返回选择，领取任务并 select_task_workflow 后执行。不固定技能路径或端口，不扫描端口。旧 Markdown 地址保留兼容。
 当前未新增 `lunaaicut://` 协议。未来可用于唤醒 Luna；URL 协议本身不能直接向外部 Agent 返回服务地址，仍应使用发现文件。
 
 ## 任务隔离
 
-导演计划任务使用 `purpose=director-plan`，不激活剪辑窗口，禁止调用剪辑和音乐工具。剪辑任务使用 `purpose=editing`，保持现有会话、取消和导出确认规则。领取任务必须核对交接提示词中的任务编号；其他活动任务不会被新任务替换。草稿交接成功不代表 Agent 执行成功，后续沟通在所选 Agent 内进行，Luna 面板承接进度和结果。
+全局任务从 `purpose=auto` 开始，领取不激活剪辑，未选择流程不能执行剪辑/音乐或计划写入。Agent 自主选择后，导演计划任务使用 `purpose=director-plan`，不激活剪辑窗口，禁止调用剪辑和音乐工具。剪辑任务使用 `purpose=editing`，保持现有会话、取消和导出确认规则。领取任务必须核对交接提示词中的任务编号；其他活动任务不会被新任务替换。草稿交接成功不代表 Agent 执行成功，后续沟通在所选 Agent 内进行，Luna 面板承接进度和结果。
+
+## 对话交互调研（2026-10-02）
+
+通过 ego-browser 实际查看公开未登录界面及选择菜单，未发送消息：
+
+| 参考产品 | 实际观察 | Luna 采用的交互 |
+| --- | --- | --- |
+| [Gemini](https://gemini.google.com/) | 输入区附近有模式下拉，点击出现模型菜单；侧边导航独立提供新对话，提示登录后保存活动 | Agent 平台选择放到输入区，历史入口与输入分开 |
+| [豆包](https://www.doubao.com/chat/) | 输入附近有模型选择菜单，也有可选功能快捷入口；侧栏独立有新对话和最近记录 | 模型/平台选择贴近输入，不强制用户先选功能 |
+
+Luna 是右侧浮窗，因此把历史压缩为顶部下拉；选中记录只读，底部提示在原 Agent 继续聊天。上述是结合 Luna 能力的设计选择，并非宣称这些产品的聊天历史只读或都自动使用 Skill。Claude 与 Perplexity 出现安全验证，Copilot 连接失败，未列为已验证参考。
