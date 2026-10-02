@@ -45,20 +45,27 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   }, [refreshStatus])
 
   useEffect(() => {
-    if (!status?.startedAt || status.state === 'stopping') return undefined
+    if (!busy && (!status?.startedAt || status.state === 'stopping')) return undefined
     const timer = window.setInterval(() => void refreshStatus(), 1_000)
     return () => window.clearInterval(timer)
-  }, [refreshStatus, status?.startedAt, status?.state])
+  }, [busy, refreshStatus, status?.startedAt, status?.state])
 
   const runAction = useCallback(async (action: () => Promise<void>) => {
     if (busy) return
     setBusy(true)
     setError(null)
+    let timeout: number | undefined
     try {
-      await action()
+      await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => reject(new Error('操作超时')), 10_000)
+        }),
+      ])
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
+      window.clearTimeout(timeout)
       setBusy(false)
       void refreshStatus()
     }
