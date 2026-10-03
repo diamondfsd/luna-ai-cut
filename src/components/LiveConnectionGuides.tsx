@@ -1,12 +1,12 @@
 import { Button, Dialog } from '../ui'
 import type { LiveStreamStatus } from '../shared/types'
 import { AppleDriverDownloadButton } from './AppleDriverDownloadButton'
-import { MobileAppDownloadQr } from './MobileAppDownload'
+import { MobileAppDownloadQr, type MobileAppPlatform } from './MobileAppDownload'
 import { LiveConnectionGuideSteps } from './LiveConnectionGuideSteps'
 import lunaKaLogo from '../assets/mobile-app/luna-ka-icon.jpg'
 import './LiveConnectionGuides.css'
 
-function GuideDownload({ platform }: { platform: 'ios' | 'android' }) {
+function GuideDownload({ platform }: { platform: MobileAppPlatform }) {
   return <aside className="live-guide-download">
     <div className="live-guide-app"><img src={lunaKaLogo} alt="Luna 咔 Logo" width={36} height={36} /><strong>Luna 咔</strong></div>
     <MobileAppDownloadQr platform={platform} />
@@ -43,12 +43,13 @@ export function LiveConnectionGuides({ status }: { status: LiveStreamStatus }) {
         </div>
         <GuideDownload platform="android" />
       </Dialog>
-      <Dialog title="鸿蒙原生连接指引" className="live-connection-guide-dialog" bodyClassName="live-connection-guide-body live-connection-guide-body-harmony"
+      <Dialog title="鸿蒙原生连接指引" className="live-connection-guide-dialog" bodyClassName="live-connection-guide-body"
         trigger={<Button variant="ghost" size="mini">鸿蒙原生连接指引</Button>}>
         <div className="live-guide-instructions">
           <LiveConnectionGuideSteps platform="harmony" />
           <p>使用支持直播的鸿蒙原生 Luna 咔版本，保持相机页面在前台。</p>
         </div>
+        <GuideDownload platform="harmony" />
       </Dialog>
     </div>
   )
