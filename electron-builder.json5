@@ -131,7 +131,10 @@
     "binaries": [
       "Contents/Resources/macos-native/bluetoothCoreScanner",
       "Contents/Resources/macos-native/wifiCoreWlan",
-      "Contents/Resources/macos-native/livetool"
+      "Contents/Resources/macos-native/livetool",
+      "Contents/Resources/ios-usb/iproxy",
+      "Contents/Resources/ios-usb/idevice_id",
+      "Contents/Resources/ios-usb/idevicepair"
     ],
     // Electron Framework 的 .pak/数据资源由外层 bundle 的资源封印保护，无需逐个签名。
     "signIgnore": [
@@ -141,6 +144,11 @@
     ],
     "hardenedRuntime": true,
     "extraResources": [
+      {
+        "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/ios-usb",
+        "to": "ios-usb",
+        "filter": ["iproxy", "idevice_id", "idevicepair", "*.dylib", "manifest.json", "README.md", "licenses/**/*"]
+      },
       {
         "from": "node_modules/7zip-bin/mac/${arch}/7za",
         "to": "tools/7za"

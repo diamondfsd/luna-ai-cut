@@ -1,0 +1,103 @@
+{
+  "platform": "darwin",
+  "arch": "x64",
+  "minimumMacOS": "12.0",
+  "tools": [
+    "iproxy",
+    "idevice_id",
+    "idevicepair"
+  ],
+  "sources": [
+    {
+      "name": "openssl",
+      "version": "3.5.9",
+      "commit": "45e844fa2a14ec92d146bd8f5778ac130b6625fb",
+      "url": "https://github.com/openssl/openssl.git"
+    },
+    {
+      "name": "libplist",
+      "version": "2.7.0",
+      "commit": "cf5897a71ea412ea2aeb1e2f6b5ea74d4fabfd8c",
+      "url": "https://github.com/libimobiledevice/libplist.git"
+    },
+    {
+      "name": "libimobiledevice-glue",
+      "version": "1.3.2",
+      "commit": "aef2bf0f5bfe961ad83d224166462d87b1df2b00",
+      "url": "https://github.com/libimobiledevice/libimobiledevice-glue.git"
+    },
+    {
+      "name": "libusbmuxd",
+      "version": "2.1.1",
+      "commit": "adf9c22b9010490e4b55eaeb14731991db1c172c",
+      "url": "https://github.com/libimobiledevice/libusbmuxd.git"
+    },
+    {
+      "name": "libtatsu",
+      "version": "1.0.5",
+      "commit": "42329cb756682535c7c0f087987b78d1dd5b16c8",
+      "url": "https://github.com/libimobiledevice/libtatsu.git"
+    },
+    {
+      "name": "libimobiledevice",
+      "version": "1.4.0",
+      "commit": "149f7623c672c1fa73122c7119a12bfc0012f2ac",
+      "url": "https://github.com/libimobiledevice/libimobiledevice.git"
+    }
+  ],
+  "buildScript": "scripts/build-macos-ios-usb.mjs",
+  "files": {
+    "idevice_id": {
+      "size": 36480,
+      "sha256": "c61f12710c15fff398914b077294976945079d96a864ead0c86215c4fb15ce60"
+    },
+    "idevicepair": {
+      "size": 49968,
+      "sha256": "ef8f5a84672c14ce0769c1a1e80d2dae66324cb09b8742f24c81e571899ad4bb"
+    },
+    "iproxy": {
+      "size": 41488,
+      "sha256": "c1d0499491fe9e0cc11cb6dbdac8710281b3ec881e7c09659e2d3cd050d5a63b"
+    },
+    "libcrypto.3.dylib": {
+      "size": 5485872,
+      "sha256": "59b5cd34f1496992489744e83c4c7a0819a0c8a1204bfe652d7fc351953cd5f3"
+    },
+    "libimobiledevice-1.0.6.dylib": {
+      "size": 277936,
+      "sha256": "fe2fd0e697328458693d9da9eb88da28407e426c574a9645163bfb8c098a6399"
+    },
+    "libimobiledevice-glue-1.0.0.dylib": {
+      "size": 85744,
+      "sha256": "aa50fc1408425ba875b0b39166ec50684e9c31be4019d8c75f8d7d9a36a6683e"
+    },
+    "libplist-2.0.4.dylib": {
+      "size": 112768,
+      "sha256": "7a8d7dd8e088eb67b0ded5fdfa0568325d9581d125bbb86016c05e7a9c6eec61"
+    },
+    "libssl.3.dylib": {
+      "size": 1004528,
+      "sha256": "f746107f965497500ed7b9c2e4807f36b8d1abeeaeb0bdd6190a0c3ba96d86cd"
+    },
+    "libusbmuxd-2.0.7.dylib": {
+      "size": 53312,
+      "sha256": "0dfb705d03c32397f4d7da41198cc608ad2e0d532b7b0ba63c470dd903038a8b"
+    }
+  },
+  "licenseFiles": {
+    "build-macos-ios-usb.mjs": "5fb93e4c7b42dcd86646cc0f3c4546018164f5b6deea21030bffba0857b26dbe",
+    "libimobiledevice/COPYING": "7619c753cac95d4740220223bde48a032606fcaccde5e546f9bc444c81ab356d",
+    "libimobiledevice/COPYING.LESSER": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "libimobiledevice/source.tar.gz": "ec73e7cf60607aad9263cd901b03c3fc9a11a0aa09d6544a2fe9745fe194acd9",
+    "libimobiledevice-glue/COPYING": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "libimobiledevice-glue/source.tar.gz": "760d4a33ba583155ee86ce197e392d68bcc7c030134bb93c0ee2a828598e4d45",
+    "libplist/COPYING": "7619c753cac95d4740220223bde48a032606fcaccde5e546f9bc444c81ab356d",
+    "libplist/COPYING.LESSER": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "libplist/source.tar.gz": "35c3b53dec0db5dc29a89f8b4816398cb480eb52bd5adeec57ae10cfc223f385",
+    "libtatsu/COPYING": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "libtatsu/source.tar.gz": "234ee0d88f71dd019d52a5066cb6d5f7b5718452207838324e19763501b4a96c",
+    "libusbmuxd/COPYING": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "libusbmuxd/source.tar.gz": "3621476098db0338925bc588da433725d5ef855afbf52485cb3274e15281b464",
+    "openssl/LICENSE.txt": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  }
+}
