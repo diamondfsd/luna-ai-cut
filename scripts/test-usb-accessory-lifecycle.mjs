@@ -47,7 +47,8 @@ assert.deepEqual(usbErrorDetails(new UsbDiagnosticError('打开配件设备', dr
   stage: '打开配件设备', error: 'LIBUSB_ERROR_NOT_SUPPORTED', errno: -12,
 })
 const status = { deviceLabel: null, deviceDetectionUnavailable: false }
-assert.ok(stateScore({ ...status, state: 'error' }) > stateScore({ ...status, state: 'waiting', deviceDetectionUnavailable: true, deviceLabel: 'iPhone' }))
+assert.ok(stateScore({ ...status, state: 'waiting', deviceDetectionUnavailable: false, deviceLabel: 'iPhone' }) > stateScore({ ...status, state: 'error' }), '已发现的手机等待连接时，不应被其他通道的旧错误覆盖')
+assert.ok(stateScore({ ...status, state: 'error' }) > stateScore({ ...status, state: 'waiting', deviceDetectionUnavailable: true, deviceLabel: null }))
 assert.ok(stateScore({ ...status, state: 'connected' }) > stateScore({ ...status, state: 'error' }))
 
 const switchEvents = []

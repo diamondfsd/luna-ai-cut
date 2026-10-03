@@ -8,6 +8,11 @@ if (resourcesDirIndex < 0 || !args[resourcesDirIndex + 1]) {
 
 const resourcesDir = args[resourcesDirIndex + 1]
 const builderArgs = args.filter((_, index) => index !== resourcesDirIndex && index !== resourcesDirIndex + 1)
+// USB uses shipped Node-API prebuilds, verified by afterPack. Older builders
+// cannot execute pnpm 11's .mjs entry point as a Windows rebuild command.
+if (process.platform === 'win32' || builderArgs.includes('--win')) {
+  builderArgs.push('--config.npmRebuild=false')
+}
 const command = process.platform === 'win32' ? 'electron-builder.cmd' : 'electron-builder'
 
 const result = spawnSync(command, builderArgs, {

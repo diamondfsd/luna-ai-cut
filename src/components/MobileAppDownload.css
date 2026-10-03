@@ -1,10 +1,10 @@
 .ui-dialog-content.mobile-app-download-dialog {
-  width: min(500px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
 }
 
 .mobile-app-download-body {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -54,6 +54,6 @@
   color: var(--ink);
 }
 
-@media (max-width: 460px) {
+@media (max-width: 660px) {
   .mobile-app-download-body { grid-template-columns: minmax(0, 1fr); }
 }
