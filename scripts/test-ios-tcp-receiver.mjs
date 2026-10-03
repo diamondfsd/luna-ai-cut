@@ -112,9 +112,9 @@ try {
       clearTimeout: `globalThis.${harnessKey}.clearTimeout`,
     },
     plugins: [{ name: 'ios-test-boundaries', setup(builder) {
-      builder.onResolve({ filter: /^(?:node:child_process|node:net|usb)$|loggerService$/ }, (args) => ({ path: args.path, namespace: 'ios-test' }))
+      builder.onResolve({ filter: /^(?:node:child_process|node:net|usb)$|loggerService$|iosUsbTool$/ }, (args) => ({ path: args.path, namespace: 'ios-test' }))
       builder.onLoad({ filter: /.*/, namespace: 'ios-test' }, ({ path }) => {
-        const contents = path === 'node:child_process'
+        const contents = path.endsWith('iosUsbTool') ? 'export const iosUsbToolBinary = (tool) => `/fixture/ios-usb/${tool}`;' : path === 'node:child_process'
           ? `export const spawn = (...args) => globalThis.${harnessKey}.spawn(...args);`
           : path === 'node:net'
             ? `export const createConnection = (...args) => globalThis.${harnessKey}.createConnection(...args);`
@@ -308,9 +308,9 @@ try {
       },
       bundle: true, write: false, platform: 'node', format: 'cjs',
       plugins: [{ name: 'ios-process-boundaries', setup(builder) {
-        builder.onResolve({ filter: /^node:child_process$|^usb$|loggerService$/ }, (args) => ({ path: args.path, namespace: 'ios-test' }))
+        builder.onResolve({ filter: /^node:child_process$|^usb$|loggerService$|iosUsbTool$/ }, (args) => ({ path: args.path, namespace: 'ios-test' }))
         builder.onLoad({ filter: /.*/, namespace: 'ios-test' }, ({ path }) => ({
-          contents: path === 'node:child_process'
+          contents: path.endsWith('iosUsbTool') ? 'export const iosUsbToolBinary = (tool) => `/fixture/ios-usb/${tool}`;' : path === 'node:child_process'
             ? `export const spawn = (...args) => globalThis.${harnessKey}.spawn(...args);`
             : path === 'usb' ? 'export default {};'
               : 'export const logMainInfo = () => {}; export const logMainWarn = () => {};',

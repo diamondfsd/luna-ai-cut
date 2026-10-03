@@ -90,3 +90,7 @@ worktrees/
 
 # Local artifacts from the retired ONNX provider probe
 scripts/onnx-provider-probe/target/
+
+# Reproducible macOS iPhone USB source/build cache
+.cache/ios-usb-sources/
+.cache/ios-usb-build.log

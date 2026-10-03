@@ -6,6 +6,7 @@ set -euo pipefail
 #
 # 用法:
 #   ./scripts/deploy-release.sh                 # 读取本地 release/<版本>/，上传
+#   ./scripts/deploy-release.sh --mac-only v1.9.1 # 仅更新 Mac，保留 Windows 下载
 #   ./scripts/deploy-release.sh v1.3.0         # 手动指定版本，读取本地并上传
 #   ./scripts/deploy-release.sh --from-github v1.3.0  # 显式使用 GitHub 产物
 #
@@ -39,9 +40,11 @@ fi
 # ── 参数解析 ──
 PKG_VER="$(node -p "require('./package.json').version")"
 SOURCE_MODE="local"
+MAC_ONLY=false
 TAG=""
 for arg in "$@"; do
   case "$arg" in
+    --mac-only) MAC_ONLY=true ;;
     --from-github) SOURCE_MODE="github" ;;
     v*) TAG="$arg" ;;
     *) echo "未知参数: ${arg}" >&2; exit 1 ;;
@@ -145,10 +148,18 @@ if [ "$SOURCE_MODE" = "local" ]; then
   mac_arm_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*-arm64.dmg' | wc -l | tr -d ' ')"
   mac_x64_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*-x64.dmg' | wc -l | tr -d ' ')"
   win_count="$(find "$LOCAL_RELEASE_DIR" -maxdepth 1 -type f -name '*.exe' | wc -l | tr -d ' ')"
-  if [ "$mac_arm_count" -lt 1 ] || [ "$mac_x64_count" -lt 1 ] || [ "$win_count" -lt 1 ]; then
-    err "本地产物不完整，需要 macOS ARM64、macOS x64、Windows x64 各至少一个安装包"
+  if [ "$mac_arm_count" -lt 1 ] || [ "$mac_x64_count" -lt 1 ] || { [ "$MAC_ONLY" = false ] && [ "$win_count" -lt 1 ]; }; then
+    err "本地产物不完整，需要 macOS ARM64、macOS x64 安装包；完整发布还需要 Windows x64"
     exit 1
   fi
+fi
+
+if [ "$MAC_ONLY" = true ]; then
+  MAC_FILES=()
+  for f in "${FILES[@]}"; do
+    case "$f" in *.dmg) MAC_FILES+=("$f") ;; esac
+  done
+  FILES=("${MAC_FILES[@]}")
 fi
 
 for f in "${FILES[@]}"; do
@@ -214,7 +225,7 @@ for filepath in "${FILES[@]}"; do
   upload_url=$(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('url',''))" 2>/dev/null || echo "")
   if [ -z "$upload_url" ]; then
     err "获取上传地址失败: $(echo "$upload_json" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error_message','unknown'))" 2>/dev/null)"
-    continue
+    exit 1
   fi
 
   # 提取 headers
@@ -230,9 +241,12 @@ for filepath in "${FILES[@]}"; do
   [ -n "$cb" ]  && header_args+=(-H "x-obs-callback: ${cb}")
 
   # 上传文件
-  curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${filepath}" \
-    "${upload_url}" -o /dev/null -w "\n→ HTTP %{http_code}\n" && \
-    ok "${filename} 上传完成" || err "${filename} 上传失败"
+  upload_code=$(curl --progress-bar -X PUT "${header_args[@]}" --data-binary "@${filepath}" \
+    "${upload_url}" -o /dev/null -w "%{http_code}")
+  case "$upload_code" in
+    200|201|204) ok "${filename} 上传完成" ;;
+    *) err "${filename} 上传失败 (HTTP ${upload_code})"; exit 1 ;;
+  esac
 done
 
 if [ "$IS_BETA" = true ]; then
@@ -284,6 +298,21 @@ for a in d.get('assets',[]):
 mac_arm_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_arm_name}"
 mac_x64_url="${GITCODE_DL}/${GITCODE_TAG}/${mac_x64_name}"
 win_url="${GITCODE_DL}/${GITCODE_TAG}/${win_name}"
+if [ "$MAC_ONLY" = true ]; then
+  win_url=$(python3 - "$SCRIPT_DIR/../landing/script.js" <<'PYCODE'
+import re,sys
+text=open(sys.argv[1], encoding='utf-8').read()
+match=re.search(r"gitcode_win: '([^']+)'", text)
+if not match: raise SystemExit('Missing existing Windows download URL')
+print(match.group(1))
+PYCODE
+)
+  win_name="${win_url##*/}"
+fi
+if [ -z "$mac_arm_name" ] || [ -z "$mac_x64_name" ] || [ -z "$win_name" ]; then
+  err "Release 附件不完整，停止更新下载地址"
+  exit 1
+fi
 
 echo "  macOS ARM64: ${mac_arm_name:-<未上传>}"
 echo "  macOS x64:   ${mac_x64_name:-<未上传>}"
@@ -375,6 +404,7 @@ done
 mac_arm_dl="${GITCODE_BASE}/${TAG}/${mac_arm_file}"
 mac_x64_dl="${GITCODE_BASE}/${TAG}/${mac_x64_file}"
 win_dl="${GITCODE_BASE}/${TAG}/${win_file}"
+if [ "$MAC_ONLY" = true ]; then win_dl="$win_url"; fi
 
 info "macOS ARM64 下载地址: ${mac_arm_dl}"
 info "macOS x64 下载地址:   ${mac_x64_dl}"

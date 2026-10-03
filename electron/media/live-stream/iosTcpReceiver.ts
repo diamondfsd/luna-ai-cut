@@ -1,8 +1,7 @@
+import { iosUsbToolBinary } from './iosUsbTool'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
-import { join } from 'node:path'
 
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import { IosDeviceDiscovery, type IosDeviceDiscoveryResult } from './iosDeviceDiscovery'
@@ -23,25 +22,6 @@ const PROXY_ENABLED = process.env.USB_VIDEO_IOS_PROXY !== '0'
 const CONNECT_RETRY_MS = 1_500
 const CONNECTION_TIMEOUT_MS = 10_000
 const DETECTION_UNAVAILABLE_MESSAGE = 'iPhone USB 检测不可用'
-
-function proxyBinary(): string | null {
-  const configured = process.env.USB_VIDEO_IPROXY_BIN
-  const resourcesPath = process.resourcesPath
-  const bundled = process.platform === 'win32' && resourcesPath
-    ? join(resourcesPath, 'ios-usb', 'iproxy.exe')
-    : null
-  const candidates = [
-    configured,
-    bundled,
-    ...(process.platform === 'win32' ? [join(process.cwd(), 'resources', 'ios-usb', 'win-x64', 'iproxy.exe')] : []),
-    '/opt/homebrew/bin/iproxy',
-    '/usr/local/bin/iproxy',
-    '/usr/bin/iproxy',
-    ...(process.platform === 'win32' ? ['iproxy.exe'] : []),
-    'iproxy',
-  ].filter((value): value is string => Boolean(value))
-  return candidates.find((candidate) => candidate === 'iproxy' || candidate === 'iproxy.exe' || existsSync(candidate)) ?? null
-}
 
 export class IosTcpReceiver implements LiveMediaReceiver {
   private readonly onFrame: (frame: UsbMediaFrame) => void
@@ -128,7 +108,7 @@ export class IosTcpReceiver implements LiveMediaReceiver {
 
   private startProxy(): void {
     if (!this.running || this.proxy) return
-    const binary = proxyBinary()
+    const binary = iosUsbToolBinary('iproxy')
     if (!binary) {
       this.setStatus('waiting', '无法连接 iPhone', '连接工具不可用')
       this.scheduleConnect(CONNECT_RETRY_MS)
