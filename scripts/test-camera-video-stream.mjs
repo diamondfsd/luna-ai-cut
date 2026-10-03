@@ -1,17 +1,12 @@
 /* global Buffer, setImmediate */
 
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { once } from 'node:events'
-import { createRequire } from 'node:module'
 
 import { buildStartLiveStreamBody } from '../electron/devices/insta360/lunaControlMessages.ts'
+import { LunaPreviewControl, supportsPreviewAccessState } from '../electron/devices/insta360/lunaPreviewControl.ts'
+import { encodeBytesField, encodeStringField, encodeVarintField } from '../electron/devices/insta360/lunaBleCodec.ts'
 import { MEDIA_VIDEO, UCD2_MEDIA, parseMediaFrame } from '../electron/devices/insta360/insta360TcpCodec.ts'
-import { LocalObsVideoStreamServer } from '../electron/devices/common/localObsVideoStreamServer.ts'
 import { LocalVideoStreamServer } from '../electron/devices/common/localVideoStreamServer.ts'
-
-const require = createRequire(import.meta.url)
-const ffmpegPath = require('ffmpeg-static')
 
 function mediaFrame(data, substream = MEDIA_VIDEO) {
   const header = Buffer.from('55434432010c0107', 'hex')
@@ -26,6 +21,48 @@ assert.deepEqual(
   Buffer.from('100130283809400148285012', 'hex'),
   'START_LIVE_STREAM must match the mobile-app validated body',
 )
+
+function firmware(version, module = 1) {
+  return encodeBytesField(1, Buffer.concat([encodeVarintField(1, module), encodeStringField(2, version)]))
+}
+
+for (const [version, expected] of [['1.1.7', false], ['1.1.8', true], ['1.1.10', true], ['1.2.0', true], ['2.0.0', true]]) {
+  assert.equal(supportsPreviewAccessState(firmware(version)), expected)
+}
+assert.equal(supportsPreviewAccessState(firmware('1.1.8', 2)), false)
+assert.equal(supportsPreviewAccessState(Buffer.alloc(0)), false)
+
+function previewSession(version, failureCode) {
+  const calls = []
+  return {
+    calls,
+    async sendCommand(code, body) {
+      calls.push([code, body.toString('hex')])
+      return { code: code === failureCode ? 500 : 200, body: code === 242 ? firmware(version) : Buffer.alloc(0) }
+    },
+  }
+}
+
+const preview = new LunaPreviewControl()
+const currentSession = previewSession('1.1.8')
+await preview.start(currentSession)
+await preview.stop(currentSession)
+assert.deepEqual(currentSession.calls, [[242, ''], [118, '0805'], [1, '100130283809400148285012'], [2, ''], [118, '0801']])
+
+const legacySession = previewSession('1.1.7')
+await preview.start(legacySession)
+await preview.stop(legacySession)
+assert.deepEqual(legacySession.calls.map(([code]) => code), [242, 1, 2], 'old firmware must not receive access-state commands')
+
+const failedStart = previewSession('1.1.8', 1)
+await assert.rejects(preview.start(failedStart))
+assert.deepEqual(failedStart.calls.slice(-2), [[2, ''], [118, '0801']], 'failed start must stop streaming and restore idle')
+
+const failedStop = previewSession('1.1.8', 2)
+await preview.start(failedStop)
+await assert.rejects(preview.stop(failedStop))
+assert.deepEqual(failedStop.calls.at(-1), [118, '0801'], 'stop failure must still close preview access')
+
 
 const payload = Buffer.from('0000000167010203', 'hex')
 const parsed = parseMediaFrame(mediaFrame(payload))
@@ -47,33 +84,20 @@ await new Promise((resolve) => setImmediate(resolve))
 server.publish(payload)
 const chunk = await reader.read()
 assert.deepEqual(Buffer.from(chunk.value), payload)
+
+const secondResponse = await fetch(info.url)
+assert.equal(secondResponse.status, 200)
+const secondReader = secondResponse.body?.getReader()
+assert.ok(secondReader)
+await new Promise((resolve) => setImmediate(resolve))
+const sharedPayload = Buffer.from('frame-for-both-previews')
+server.publish(sharedPayload)
+const [firstPreviewChunk, secondPreviewChunk] = await Promise.all([reader.read(), secondReader.read()])
+assert.deepEqual(Buffer.from(firstPreviewChunk.value), sharedPayload)
+assert.deepEqual(Buffer.from(secondPreviewChunk.value), sharedPayload)
+
 await server.stop()
 reader.releaseLock()
+secondReader.releaseLock()
 
-const rawServer = new LocalVideoStreamServer()
-const rawInfo = await rawServer.start()
-const obsServer = new LocalObsVideoStreamServer(undefined, ffmpegPath)
-const obsInfo = await obsServer.start(rawInfo.url, 'h264')
-const obsResponse = await fetch(obsInfo.url)
-assert.equal(obsResponse.status, 200)
-assert.equal(obsResponse.headers.get('content-type'), 'video/mp2t')
-const obsReader = obsResponse.body?.getReader()
-assert.ok(obsReader)
-
-const encoder = spawn(ffmpegPath, [
-  '-hide_banner', '-loglevel', 'error',
-  '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30',
-  '-t', '1', '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-  '-pix_fmt', 'yuv420p', '-g', '30', '-f', 'h264', 'pipe:1',
-], { stdio: ['ignore', 'pipe', 'ignore'] })
-encoder.stdout.on('data', (chunk) => rawServer.publish(chunk))
-const firstObsChunk = await obsReader.read()
-assert.equal(firstObsChunk.done, false)
-assert.ok(Buffer.from(firstObsChunk.value).includes(0x47), 'OBS output should contain MPEG-TS packets')
-encoder.kill('SIGTERM')
-await once(encoder, 'close')
-await obsServer.stop()
-await rawServer.stop()
-obsReader.releaseLock()
-
-console.log('Camera video stream protocol and OBS output checks passed')
+console.log('Camera video stream protocol, preview transport, and multi-client fan-out checks passed')

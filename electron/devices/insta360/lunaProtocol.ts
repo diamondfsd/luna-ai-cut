@@ -1,7 +1,7 @@
 import { DEFAULT_DEVICE } from '../definitions/deviceDefaults'
 import { logMainDebug, logMainInfo, logMainWarn, logMainError } from '../../infrastructure/loggerService'
 import { Insta360TcpSession, probeInsta360ControlResponse, type Insta360VideoFrameListener } from './insta360TcpProtocol'
-import { buildStartLiveStreamBody, CODE_START_LIVE_STREAM, CODE_STOP_LIVE_STREAM } from './lunaControlMessages'
+import { LunaPreviewControl } from './lunaPreviewControl'
 import { parseLunaFilePaths } from './lunaMediaIndex'
 import type { CameraDeleteResult, ConnectionStatus, DeviceStorageOption, LunaFile } from '../../../src/shared/types'
 
@@ -22,6 +22,7 @@ function tcpHost(host: string): string {
 }
 
 export class LunaClient {
+  private readonly previewControl = new LunaPreviewControl()
   private controlSession: Insta360TcpSession | null = null
   private keeperTimer: ReturnType<typeof setInterval> | null = null
   private keepAliveInFlight = false
@@ -253,8 +254,7 @@ export class LunaClient {
       await this.connectUnlocked()
       const session = this.controlSession
       if (!session) throw new Error('相机控制连接未建立')
-      const response = await session.sendCommand(CODE_START_LIVE_STREAM, buildStartLiveStreamBody(), 5000)
-      if (response.code !== 200) throw new Error(`相机拒绝实时视频流请求（${response.code}）`)
+      await this.previewControl.start(session)
       logMainInfo('[相机视频流] 相机已接受开始取流命令', { host: this.host })
     })
   }
@@ -263,8 +263,7 @@ export class LunaClient {
     await this.runAuthExclusive(async () => {
       const session = this.controlSession
       if (!session?.isOpen) return
-      const response = await session.sendCommand(CODE_STOP_LIVE_STREAM, Buffer.alloc(0), 5000)
-      if (response.code !== 200) throw new Error(`相机停止实时视频流失败（${response.code}）`)
+      await this.previewControl.stop(session)
       logMainInfo('[相机视频流] 相机已接受停止取流命令', { host: this.host })
     })
   }

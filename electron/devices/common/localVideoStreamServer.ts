@@ -5,6 +5,15 @@ export interface LocalVideoStreamInfo {
   port: number
 }
 
+export interface LocalVideoStreamStats {
+  activeClients: number
+  totalConnections: number
+  totalDisconnections: number
+  publishedBytes: number
+  droppedBytesNoClient: number
+  droppedBytesBackpressure: number
+}
+
 const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
 
 /**
@@ -13,13 +22,30 @@ const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
  */
 export class LocalVideoStreamServer {
   private readonly contentType: string
+  private readonly preferredPort: number
+  private readonly preClientBufferBytes: number
   private server: Server | null = null
   private readonly clients = new Set<ServerResponse>()
   private readonly preClientFrames: Buffer[] = []
   private preClientBytes = 0
+  private statsValue: LocalVideoStreamStats = this.emptyStats()
 
-  constructor(contentType = 'application/octet-stream') {
+  constructor(
+    contentType = 'application/octet-stream',
+    preferredPort = 0,
+    preClientBufferBytes = PRE_CLIENT_BUFFER_BYTES,
+  ) {
     this.contentType = contentType
+    this.preferredPort = Number.isInteger(preferredPort) && preferredPort >= 0 && preferredPort <= 65_535
+      ? preferredPort
+      : 0
+    this.preClientBufferBytes = Number.isFinite(preClientBufferBytes) && preClientBufferBytes > 0
+      ? Math.floor(preClientBufferBytes)
+      : 0
+  }
+
+  stats(): LocalVideoStreamStats {
+    return { ...this.statsValue, activeClients: this.clients.size }
   }
 
   async start(): Promise<LocalVideoStreamInfo> {
@@ -30,7 +56,8 @@ export class LocalVideoStreamServer {
       }
     }
 
-    const server = createServer((request, response) => {
+    this.statsValue = this.emptyStats()
+    const createStreamServer = () => createServer((request, response) => {
       const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
       if (request.method === 'OPTIONS') {
         response.writeHead(204, this.headers())
@@ -46,25 +73,44 @@ export class LocalVideoStreamServer {
       response.writeHead(200, this.headers())
       response.flushHeaders()
       this.clients.add(response)
+      this.statsValue.totalConnections += 1
       this.flushPreClientFrames(response)
-      const remove = () => this.clients.delete(response)
+      const remove = () => {
+        if (this.clients.delete(response)) this.statsValue.totalDisconnections += 1
+      }
       response.once('close', remove)
       request.once('aborted', remove)
     })
 
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        server.off('listening', onListening)
-        reject(error)
+    const maxAttempts = this.preferredPort > 0 ? 100 : 1
+    let server: Server | null = null
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = createStreamServer()
+      const port = this.preferredPort > 0 ? this.preferredPort + attempt : 0
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onError = (error: Error) => {
+            candidate.off('listening', onListening)
+            reject(error)
+          }
+          const onListening = () => {
+            candidate.off('error', onError)
+            resolve()
+          }
+          candidate.once('error', onError)
+          candidate.once('listening', onListening)
+          candidate.listen({ host: '127.0.0.1', port })
+        })
+        server = candidate
+        break
+      } catch (error) {
+        await new Promise<void>((resolve) => candidate.close(() => resolve()))
+        const code = (error as NodeJS.ErrnoException).code
+        if (code !== 'EADDRINUSE' || this.preferredPort === 0 || attempt === maxAttempts - 1) throw error
       }
-      const onListening = () => {
-        server.off('error', onError)
-        resolve()
-      }
-      server.once('error', onError)
-      server.once('listening', onListening)
-      server.listen({ host: '127.0.0.1', port: 0 })
-    })
+    }
+
+    if (!server) throw new Error('无法获取本地视频流端口')
 
     this.server = server
     const address = server.address()
@@ -76,7 +122,9 @@ export class LocalVideoStreamServer {
   }
 
   publish(frame: Buffer): void {
+    this.statsValue.publishedBytes += frame.length
     if (this.clients.size === 0) {
+      if (this.preClientBufferBytes === 0) this.statsValue.droppedBytesNoClient += frame.length
       this.queuePreClientFrame(frame)
       return
     }
@@ -87,7 +135,10 @@ export class LocalVideoStreamServer {
       }
       // Dropping a frame while a renderer is behind is preferable to building
       // an unbounded response buffer. The camera will send another keyframe.
-      if (client.writableNeedDrain) continue
+      if (client.writableNeedDrain) {
+        this.statsValue.droppedBytesBackpressure += frame.length
+        continue
+      }
       client.write(frame)
     }
   }
@@ -115,12 +166,14 @@ export class LocalVideoStreamServer {
   }
 
   private queuePreClientFrame(frame: Buffer): void {
+    if (this.preClientBufferBytes === 0) return
     const copy = Buffer.from(frame)
     this.preClientFrames.push(copy)
     this.preClientBytes += copy.length
-    while (this.preClientBytes > PRE_CLIENT_BUFFER_BYTES && this.preClientFrames.length > 1) {
+    while (this.preClientBytes > this.preClientBufferBytes && this.preClientFrames.length > 1) {
       const first = this.preClientFrames.shift()!
       this.preClientBytes -= first.length
+      this.statsValue.droppedBytesNoClient += first.length
     }
   }
 
@@ -128,5 +181,16 @@ export class LocalVideoStreamServer {
     for (const frame of this.preClientFrames) response.write(frame)
     this.preClientFrames.length = 0
     this.preClientBytes = 0
+  }
+
+  private emptyStats(): LocalVideoStreamStats {
+    return {
+      activeClients: 0,
+      totalConnections: 0,
+      totalDisconnections: 0,
+      publishedBytes: 0,
+      droppedBytesNoClient: 0,
+      droppedBytesBackpressure: 0,
+    }
   }
 }

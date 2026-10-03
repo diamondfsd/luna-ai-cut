@@ -31,13 +31,16 @@ import type {
 import type { AutomaticSegmentationTargetId, SegmentationModelId } from '../segmentationModels'
 import type { CameraMediaSourceApi } from './cameraMediaSource'
 import type { CameraVideoStreamApi } from './cameraVideoStream'
-import type { ObsStreamDemoApi } from './obsStreamDemo'
+import type { LivePreviewWindowSettings, LiveStreamApi, LiveWindowResolution } from './liveStream'
+import type { LiveUsageMessage } from './liveUsage'
 import type { LocalMediaShareEntry, LocalMediaShareStatus } from './localMediaShare'
 import type { WorkspaceBeautyAnalysisRequest, WorkspaceBeautyAnalysisResult } from './beauty'
 import type { WorkspaceSubtitleFontAsset, WorkspaceSubtitleProgress, WorkspaceSubtitleTrack, WorkspaceSubtitleTranscriptionRequest, WorkspaceSubtitleTranscriptionResult } from './subtitles'
 import type { CompositionEvidence, CompositionScore } from '../compositionAnalysis'
 import type { WorkspaceReferenceMatchAiLutRequest, WorkspaceReferenceMatchAiLutResult, WorkspaceReferenceMatchLutRequest, WorkspaceReferenceMatchLutResult } from './referenceMatch'
 import type { NasRemoteFile, NasSyncEnqueueResult, NasSyncProbeResult, NasSyncStatus } from './nasSync'
+import type { DirectorLabApi } from './directorLab'
+import type { LunaKaHttpClientApi } from './lunaKaHttpClient'
 
 export interface WorkspaceSegmentationRequest {
   requestId: string
@@ -145,9 +148,17 @@ export interface WorkspaceSegmentationModelStatus {
 
 export interface LunaApi {
   isPackaged: boolean
+  lunaKaHttpClient: LunaKaHttpClientApi
   startupReady(): void
   trackPageOpened(path: string): void
+  trackLiveUsage(message: LiveUsageMessage): void
   setFullScreen(enabled: boolean): Promise<void>
+  setLiveWindowMode(enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number): Promise<void>
+  onLiveWindowModeEnd(callback: () => void): () => void
+  updateLivePreviewWindowSettings(settings: LivePreviewWindowSettings): void
+  getLivePreviewWindowSettings(): Promise<LivePreviewWindowSettings | null>
+  onLivePreviewWindowSettings(callback: (settings: LivePreviewWindowSettings) => void): () => void
+  resizeLivePreviewWindow(sourceAspectRatio: number): Promise<void>
   onFullScreenChange(callback: (isFullScreen: boolean) => void): () => void
   log: (level: string, message: string, meta?: unknown) => void
   logExport: (message: string, meta?: unknown) => Promise<boolean>
@@ -155,12 +166,14 @@ export interface LunaApi {
   exportDiagnosticsBundle: () => Promise<string>
   clearLogs: () => Promise<void>
   getPathForFile: (file: File) => string
+  copyText(text: string): Promise<void>
   getSettings(): Promise<AppSettings>
   saveSettings(settings: Partial<AppSettings>): Promise<AppSettings>
   listDevices(): Promise<DeviceDefinition[]>
   chooseBaseDir(): Promise<string | null>
   chooseLocalResourcesDir(): Promise<string | null>
   chooseExportDir(): Promise<string | null>
+  chooseDirectorPlanDir(): Promise<string | null>
   chooseTransferDirectory(kind: 'download' | 'export', defaultPath?: string): Promise<string | null>
   chooseLutDir(): Promise<string | null>
   chooseMockMediaDir(): Promise<string | null>
@@ -189,7 +202,7 @@ export interface LunaApi {
   }
   cameraSource: CameraMediaSourceApi
   cameraVideoStream: CameraVideoStreamApi
-  obsStreamDemo: ObsStreamDemoApi
+  liveStream: LiveStreamApi
   connectDevice(options?: DeviceConnectOptions): Promise<ConnectionStatus>
   checkConnection(host?: string): Promise<ConnectionStatus>
   listFiles(host?: string, storageId?: string): Promise<LunaFile[]>
@@ -227,6 +240,7 @@ export interface LunaApi {
     addFiles(filePaths: string[]): Promise<LocalMediaShareStatus>
     removeFile(filePath: string): Promise<LocalMediaShareStatus>
   }
+  directorLab: DirectorLabApi
   getDownloadedRecords(files: LunaFile[], targetDir?: string): Promise<DownloadRecord[]>
   revealFile(filePath: string): Promise<void>
   openPath(targetPath: string): Promise<void>

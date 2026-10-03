@@ -112,6 +112,8 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
   }
 
   return <Dialog
+
+    bodyClassName="ai-person-avatar-body"
     open={open}
     onOpenChange={onOpenChange}
     title={group ? `${group.name}的头像` : '人物头像'}
@@ -123,59 +125,57 @@ export function AiPersonAvatarDialog({ open, onOpenChange, group, items, busy, o
       }}>保存头像</Button>
     </>}
   >
-    <div className="ai-person-avatar-body">
-      <aside className="ai-person-avatar-candidates">
-        <strong>选择照片</strong>
-        <div>{candidates.map(({ item, face }) => <button
-          key={item.id}
-          type="button"
-          className={selectedId === item.id ? 'selected' : ''}
-          aria-label={`选择 ${item.name}`}
-          onClick={() => selectCandidate(item, face)}
-        ><ThumbImage src={item.thumbnailUrl ?? item.path} alt="" /></button>)}</div>
-      </aside>
-      <section className="ai-person-avatar-editor">
-        <div className="ai-person-avatar-tools">
-          <IconButton variant="ghost" size="mini" icon={<ZoomOut size={16} />} aria-label="缩小头像选区" title="缩小头像选区" onClick={() => resizeCrop(0.82)} />
-          <IconButton variant="ghost" size="mini" icon={<ZoomIn size={16} />} aria-label="扩大头像选区" title="扩大头像选区" onClick={() => resizeCrop(1.2)} />
-        </div>
-        {selected && <div
-          ref={editorRef}
-          className="ai-person-avatar-image"
-          style={{
-            aspectRatio: `${previewSize.width} / ${previewSize.height}`,
-            width: `min(100%, ${Math.min(560, 360 * previewSize.width / previewSize.height)}px)`,
+    <aside className="ai-person-avatar-candidates">
+      <strong>选择照片</strong>
+      <div>{candidates.map(({ item, face }) => <button
+        key={item.id}
+        type="button"
+        className={selectedId === item.id ? 'selected' : ''}
+        aria-label={`选择 ${item.name}`}
+        onClick={() => selectCandidate(item, face)}
+      ><ThumbImage src={item.thumbnailUrl ?? item.path} alt="" /></button>)}</div>
+    </aside>
+    <section className="ai-person-avatar-editor">
+      <div className="ai-person-avatar-tools">
+        <IconButton variant="ghost" size="mini" icon={<ZoomOut size={16} />} aria-label="缩小头像选区" title="缩小头像选区" onClick={() => resizeCrop(0.82)} />
+        <IconButton variant="ghost" size="mini" icon={<ZoomIn size={16} />} aria-label="扩大头像选区" title="扩大头像选区" onClick={() => resizeCrop(1.2)} />
+      </div>
+      {selected && <div
+        ref={editorRef}
+        className="ai-person-avatar-image"
+        style={{
+          aspectRatio: `${previewSize.width} / ${previewSize.height}`,
+          width: `min(100%, ${Math.min(560, 360 * previewSize.width / previewSize.height)}px)`,
+        }}
+      >
+        <ThumbImage
+          src={selected.item.thumbnailUrl ?? selected.item.path}
+          alt={selected.item.name}
+          draggable={false}
+          onLoad={(event) => {
+            if (event.currentTarget.src.startsWith('data:image/svg+xml')) return
+            const width = Math.max(1, event.currentTarget.naturalWidth)
+            const height = Math.max(1, event.currentTarget.naturalHeight)
+            if (width === previewSize.width && height === previewSize.height) return
+            setPreviewSize({ width, height })
+            setCrop(squareCropAroundCenter(selected.face, width, height, FACE_AVATAR_CONTEXT_SCALE))
           }}
+        />
+        <div
+          className="ai-person-avatar-crop"
+          style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` }}
+          onPointerDown={(event) => {
+            const mode = (event.target as HTMLElement).dataset.cropHandle as CropDragMode | undefined
+            dragRef.current = { mode: mode ?? 'move', x: event.clientX, y: event.clientY, crop }
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={moveCrop}
+          onPointerUp={() => { dragRef.current = null }}
+          onPointerCancel={() => { dragRef.current = null }}
         >
-          <ThumbImage
-            src={selected.item.thumbnailUrl ?? selected.item.path}
-            alt={selected.item.name}
-            draggable={false}
-            onLoad={(event) => {
-              if (event.currentTarget.src.startsWith('data:image/svg+xml')) return
-              const width = Math.max(1, event.currentTarget.naturalWidth)
-              const height = Math.max(1, event.currentTarget.naturalHeight)
-              if (width === previewSize.width && height === previewSize.height) return
-              setPreviewSize({ width, height })
-              setCrop(squareCropAroundCenter(selected.face, width, height, FACE_AVATAR_CONTEXT_SCALE))
-            }}
-          />
-          <div
-            className="ai-person-avatar-crop"
-            style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` }}
-            onPointerDown={(event) => {
-              const mode = (event.target as HTMLElement).dataset.cropHandle as CropDragMode | undefined
-              dragRef.current = { mode: mode ?? 'move', x: event.clientX, y: event.clientY, crop }
-              event.currentTarget.setPointerCapture(event.pointerId)
-            }}
-            onPointerMove={moveCrop}
-            onPointerUp={() => { dragRef.current = null }}
-            onPointerCancel={() => { dragRef.current = null }}
-          >
-            {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => <button key={mode} type="button" className={`ai-person-avatar-crop-handle ${mode}`} data-crop-handle={mode} aria-label="调整头像选区" />)}
-          </div>
-        </div>}
-      </section>
-    </div>
+          {(['tl', 'tr', 'bl', 'br'] as const).map((mode) => <button key={mode} type="button" className={`ai-person-avatar-crop-handle ${mode}`} data-crop-handle={mode} aria-label="调整头像选区" />)}
+        </div>
+      </div>}
+    </section>
   </Dialog>
 }

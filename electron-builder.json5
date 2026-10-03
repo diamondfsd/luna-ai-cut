@@ -3,7 +3,9 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.diamondfsd.lunaaicut",
   "asar": true,
-  "asarUnpack": [],
+  "asarUnpack": [
+    "node_modules/usb/**/*"
+  ],
   "beforePack": "scripts/verify-native-artifact.mjs",
   "afterPack": "scripts/after-pack-adhoc.mjs",
   "productName": "Luna AI Cut",
@@ -16,6 +18,11 @@
     "dist-electron"
   ],
   "extraResources": [
+    {
+      "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/harmony-hdc",
+      "to": "harmony-hdc",
+      "filter": ["hdc", "hdc.exe", "*.dylib", "*.dll", "manifest.json", "README.md", "NOTICE*", "LICENSE*"]
+    },
     {
       "from": "build/icon.png",
       "to": "icon.png"
@@ -145,6 +152,7 @@
       }
     ],
     "extendInfo": {
+      "NSMicrophoneUsageDescription": "Luna AI Cut 需要使用电脑麦克风作为直播声音来源",
       "NSLocalNetworkUsageDescription": "Luna AI Cut 需要访问本地网络来连接相机并读取素材",
       "NSLocationUsageDescription": "Luna AI Cut 需要扫描附近 Wi-Fi，以自动连接相机网络",
       "NSBluetoothAlwaysUsageDescription": "Luna AI Cut 需要通过 Bluetooth 读取 DJI 相机的 Wi-Fi 连接信息",
@@ -157,6 +165,16 @@
       {
         "from": "node_modules/7zip-bin/win/x64/7za.exe",
         "to": "tools/7za.exe"
+      },
+      {
+        "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/ios-usb",
+        "to": "ios-usb",
+        "filter": ["*.exe", "*.dll", "licenses/**/*"]
+      },
+      {
+        "from": "${env.LUNA_PACKAGE_RESOURCES_DIR}/android-adb",
+        "to": "android-adb",
+        "filter": ["adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll", "NOTICE.txt", "manifest.json"]
       }
     ],
     "target": [

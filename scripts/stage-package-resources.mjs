@@ -2,6 +2,11 @@
 
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import process from 'node:process'
+import { stageIosUsbResources, verifyIosUsbResources } from './ios-usb-resources.mjs'
+import { stageAndroidAdbResources, verifyAndroidAdbResources } from './android-adb-resources.mjs'
+
+import { stageHarmonyHdcResources } from './harmony-hdc-resources.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const targetIndex = process.argv.indexOf('--target')
@@ -13,6 +18,7 @@ const targetName = `${target}-${arch}`
 const sourceDirectories = {
   ffmpeg: join(root, 'resources', 'ffmpeg'),
   dolby: join(root, 'resources', 'dolby-vision'),
+  iosUsb: join(root, 'resources', 'ios-usb', 'win-x64'),
   native: join(root, 'luna-render-core'),
 }
 const stageRoot = join(root, '.package-resources', targetName)
@@ -73,9 +79,17 @@ function copySelectedDirectory(sourceDir, destinationDir, predicate) {
   }
 }
 
+if (target === 'win32') verifyIosUsbResources(sourceDirectories.iosUsb)
+if (target === 'win32') verifyAndroidAdbResources()
 rmSync(stageRoot, { recursive: true, force: true })
 copySelectedDirectory(sourceDirectories.ffmpeg, join(stageRoot, 'ffmpeg'), isFfmpegFile)
 copySelectedDirectory(sourceDirectories.dolby, join(stageRoot, 'dolby-vision'), isDolbyFile)
 copySelectedDirectory(sourceDirectories.native, join(stageRoot, 'luna-render-core'), isNativeFile)
+if (target === 'win32') {
+  stageIosUsbResources(join(stageRoot, 'ios-usb'), sourceDirectories.iosUsb)
+  stageAndroidAdbResources(join(stageRoot, 'android-adb'))
+}
+
+stageHarmonyHdcResources(join(stageRoot, 'harmony-hdc'), target, arch)
 
 console.log(`[stage-package-resources] ${targetName} -> ${stageRoot}`)

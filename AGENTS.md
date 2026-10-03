@@ -6,7 +6,7 @@
 
 ### 共享组件清单
 
-使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Tabs、Switch、Tooltip、Collapsible、Select 等。
+使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Switch、Tooltip、Collapsible、Select 等。
 
 | 组件 | 说明 |
 |------|------|
@@ -21,7 +21,7 @@
 | `Tooltip` | 悬停提示（基于 Radix） |
 | `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
-| `Tabs` / `PillTabs` | 标签切换，`PillTabs` 是药丸形预设（基于 Radix） |
+| `DropdownMenu` | 紧凑操作菜单，含 Trigger / Content / Item（基于 Radix），用于更多操作；禁止用宽 Popover 搭配大按钮代替菜单 |
 | `LoadingIndicator` | 加载状态指示器 |
 
 > `TextField` 已弃用，请使用 `Input variant="pill"` 替代。
@@ -82,10 +82,11 @@
 | `title` | 弹窗标题 |
 | `description` | 弹窗描述 |
 | `children` | 主体内容 |
+| `bodyClassName` | 自动生成的正文容器自定义类名 |
 | `footer` | 底部操作栏 |
 | `className` | 弹窗内容面板自定义类名 |
 
-标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
+标题和描述自动组合为头部（带 `.ui-dialog-header`），正文统一包裹 `.ui-dialog-body`，默认提供 20px 内边距与滚动，footer 自动包裹 `.ui-dialog-footer`。普通弹窗直接传 children，禁止重复包裹 `.ui-dialog-body`、关闭默认正文布局或为正文补外层边距。功能特有的分栏、排列等样式使用 `bodyClassName`，不要重复定义正文 padding 与 overflow。只有 `variant="fullscreen"` 的全屏媒体预览不添加正文容器。
 
 ### Popover 弹出面板
 
@@ -107,27 +108,6 @@
 - `sideOffset` — 与触发元素的间距，默认 6
 - 内容面板带阴影和箭头
 - 面板头部通过 `data-popover-header` 属性启用样式
-
-### Tabs 标签
-
-- **PillTabs** — 药丸形，类似 SegmentedControl，用于紧凑筛选切换
-- **Tabs / TabsList / TabsTrigger / TabsContent** — 原始 Radix 包装，用于内容区域标签
-
-```tsx
-// 药丸形
-<PillTabs value={tab} onValueChange={setTab}
-  items={[{value:'a', label:'素材'}, {value:'b', label:'标注'}]} />
-
-// 内容区标签
-<Tabs value={tab} onValueChange={setTab}>
-  <TabsList>
-    <TabsTrigger value="a">素材</TabsTrigger>
-    <TabsTrigger value="b">标注</TabsTrigger>
-  </TabsList>
-  <TabsContent value="a">素材内容</TabsContent>
-  <TabsContent value="b">标注内容</TabsContent>
-</Tabs>
-```
 
 ### 禁止行为
 
@@ -165,11 +145,17 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 
 如果单文件过大（超过600左右）的情况下， 应该考虑合理的拆分模块，防止代码堆积。
 
+### 构建与打包授权
+
+- **禁止默认执行应用构建或打包**：只有用户在当前任务中明确要求时，才可运行 `pnpm build:app`、`pnpm build`、`pnpm pack:*` 或等价命令。代码修改、UI 改动、提交代码或常规验证本身不构成构建授权。
+- 不得通过测试脚本、其他命令或直接调用 Vite、electron-builder 等方式间接触发未经用户明确要求的应用构建或打包。执行命令前必须确认其实际行为。
+- 默认仅按改动风险运行相关非界面测试、独立且不生成构建产物的类型检查和变更范围 Lint；需要构建或打包时，先取得用户明确指示。
+
 ### 测试约定
 
 - 日常开发默认不启动应用执行界面化 UI 测试；必须验证 Electron 生命周期或关键用户行为时由 Codex 执行行为自动化，截图、视觉效果和手感集中在里程碑或 RC 验收。
 - 用户可以参与里程碑/RC 验收并提交 Bug 或需求，但用户验收不替代 Codex 的风险测试和发布前回归。
-- 仍需按改动风险执行构建、类型检查、Lint 和适用的非界面自动化测试。
+- 仍需按改动风险执行独立类型检查、Lint 和适用的非界面自动化测试；构建与打包遵守上述授权规则。
 - 测试顺序默认是非视觉自动化优先：先运行逻辑、服务、文件、持久化和错误日志断言，再运行 Electron 行为自动化；截图、效果观察和鼠标手感集中到功能里程碑或 RC，不穿插阻塞日常实现。
 - 测试按风险选择最小集合，不按功能点逐项堆用例。按钮文案、图标/枚举映射、静态布局、简单显隐、无分支 getter/setter 和薄封装默认不写专用测试，由 TypeScript、变更范围 Lint、代码审查或上层流程覆盖。
 - 必测范围集中在数据安全、持久化与迁移、IPC/文件/工作进程契约、异步取消和过期结果、下载中断恢复、模型空/坏结果、渲染与导出一致性，以及已发生的严重回归。
@@ -194,7 +180,7 @@ Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-brow
 1. 检查 `src/ui` 是否已有匹配的组件。
 2. 如果行为是共享的，以保守的 prop 扩展现有组件。
 3. 只有当样式属于特定页面或工作流时，才添加功能特定的 CSS 类。
-4. 提交 UI 改动前运行 `pnpm run build:app`。
+4. 提交 UI 改动前运行独立类型检查和变更范围 Lint；仅在用户明确要求构建时运行 `pnpm run build:app`。
 
 ## 项目概述
 
@@ -252,7 +238,6 @@ src/
 │   ├── Input.tsx       # 输入框
 │   ├── Dialog.tsx      # 弹窗（Radix）
 │   ├── Popover.tsx     # 弹出面板（Radix）
-│   ├── Tabs.tsx        # 标签切换（Radix）
 │   ├── SegmentedControl.tsx  # 分段选择器
 │   ├── Switch.tsx      # 开关（Radix）
 │   ├── Tooltip.tsx     # 提示（Radix）
@@ -311,5 +296,13 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - Windows: windows-latest runner，生成 NSIS 安装包
 
 ### 发布构建说明
-- 推送正式版 tag 后，GitHub Actions 会异步执行三平台打包；本地可同时运行 `pnpm pack:mac:arm64` 或 `pnpm pack:mac:x64`，不需要等待 GitHub Actions 完成。
+- 推送正式版 tag 后，GitHub Actions 会异步执行三平台打包；仅在用户明确要求本地打包时，才可同时运行 `pnpm pack:mac:arm64` 或 `pnpm pack:mac:x64`，不需要等待 GitHub Actions 完成。
 - 本地产物位于 `release/<版本>/`。三平台产物齐全后可运行 `./scripts/deploy-release.sh v<版本>` 发布 GitCode；本地缺少某个平台时，再使用 `--from-github` 获取远程产物。
+
+## 强制代码组织规则
+
+- 单个源文件超过 500 行时，必须评估是否可以进行合理的模块化拆分，并在
+  代码评审中说明判断依据。
+- 单个源文件超过 600 行时，必须拆分为职责清晰的多个模块；除非存在明确且
+  经过评审确认的技术原因，不得以新增代码为由继续扩大文件规模。
+- 拆分时优先按领域职责、生命周期或依赖边界划分，避免仅按行数机械切割。

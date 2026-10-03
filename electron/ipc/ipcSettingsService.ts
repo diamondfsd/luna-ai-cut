@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import type { AppSettings } from '../../src/shared/types'
 import { deviceDefinitions } from '../devices/definitions/deviceDefaults'
 import {
-  chooseBaseDir, chooseLocalResourcesDir, chooseExportDir, chooseLutDir, chooseMockMediaDir, chooseWorkspaceMediaFiles,
+  chooseBaseDir, chooseLocalResourcesDir, chooseExportDir, chooseDirectorPlanDir, chooseLutDir, chooseMockMediaDir, chooseWorkspaceMediaFiles,
   getLocalResourcesDir, getSettings, saveSettings, getCacheStats, clearCache,
 } from '../storage/fileService'
 import { startMockServer, stopMockServer, getMockServerStatus, getMockServerStatuses } from '../devtools/mock/mockServerService'
@@ -132,6 +132,7 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('settings:chooseBaseDir', () => chooseBaseDir())
   ipcMain.handle('settings:chooseLocalResourcesDir', () => chooseLocalResourcesDir())
   ipcMain.handle('settings:chooseExportDir', () => chooseExportDir())
+  ipcMain.handle('settings:chooseDirectorPlanDir', () => chooseDirectorPlanDir())
   ipcMain.handle('settings:chooseTransferDirectory', async (_event, kind: unknown, defaultPath?: unknown) => {
     const transferKind = kind === 'export' ? 'export' : kind === 'download' ? 'download' : null
     if (!transferKind) throw new Error('目标目录类型无效')

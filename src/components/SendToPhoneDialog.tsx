@@ -185,11 +185,10 @@ export function SendToPhoneDialog() {
     <>
       <Tooltip content="发送到手机">
         <IconButton
-          variant="ghost"
-          size="mini"
+          variant="nav"
           className="send-to-phone-trigger"
           data-running={status.running ? 'true' : undefined}
-          icon={<Smartphone size={16} />}
+          icon={<Smartphone size={14} />}
           aria-label="发送到手机"
           aria-pressed={status.running}
           onClick={() => handleOpenChange(true)}

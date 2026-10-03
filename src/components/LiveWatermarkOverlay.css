@@ -1,0 +1,26 @@
+.live-watermark-overlay {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  max-width: 96%;
+  pointer-events: none;
+}
+
+.live-watermark-overlay img { display: block; width: 100%; height: auto; pointer-events: none; }
+
+.live-watermark-overlay.is-editable {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+  transition: none;
+}
+
+.live-watermark-overlay.is-editable:hover { background: transparent; }
+.live-watermark-overlay.is-editable:active { cursor: grabbing; background: transparent; transform: none; }
+.live-watermark-overlay.is-editable:focus-visible { outline: 1px solid var(--blue); outline-offset: 3px; }

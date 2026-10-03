@@ -1,3 +1,6 @@
+#[path = "../onnx_session.rs"]
+mod onnx_session;
+
 use serde::{Deserialize, Serialize};
 use std::{
     env, fs,

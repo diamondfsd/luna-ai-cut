@@ -3,6 +3,7 @@ import path from 'node:path'
 import { cpSync, readFileSync } from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
+import { inlineStartupVideo } from './scripts/vite-inline-startup-video'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 
@@ -33,6 +34,7 @@ export default defineConfig({
       main: {
         entry: 'electron/main.ts',
         vite: {
+          plugins: [inlineStartupVideo()],
           base: './',
           worker: {
             format: 'es',
@@ -45,7 +47,7 @@ export default defineConfig({
           },
           build: {
             rollupOptions: {
-              external: [],
+              external: ['usb', 'ws'],
               output: {
                 chunkFileNames: 'luna-[name].js',
               },

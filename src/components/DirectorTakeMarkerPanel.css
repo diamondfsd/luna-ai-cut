@@ -1,0 +1,10 @@
+.director-marker-panel { display: flex; flex-direction: column; gap: 8px; }
+.director-marker-heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.director-marker-list { display: flex; flex-direction: column; gap: 12px; max-height: 300px; overflow-y: auto; }
+.director-marker-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; align-items: start; }
+.director-marker-panel .director-marker-jump { width: 76px; height: 76px; padding: 0; border: 0; border-radius: 10px; overflow: hidden; background: transparent; }
+.director-marker-content { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.director-marker-content > .ui-input { height: 44px; min-height: 44px; width: 100%; }
+.director-marker-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.director-marker-controls .director-marker-bound { flex: 1 1 64px; width: 76px; min-width: 64px; max-width: 110px; }
+.director-marker-time { flex: 1; font-size: 12px; color: var(--blue); font-variant-numeric: tabular-nums; }

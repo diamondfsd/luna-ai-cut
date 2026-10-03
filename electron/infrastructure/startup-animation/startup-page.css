@@ -1,0 +1,67 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  background: transparent;
+  color: #182230;
+  --blue: #0066cc;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  position: relative;
+  border-radius: 20px;
+  -webkit-app-region: drag;
+}
+
+video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.startup-loading {
+  position: absolute;
+  left: calc(50% - 12px);
+  bottom: 24px;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+}
+
+.startup-loading svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke-width: 2.5;
+  animation: startup-loading-spin 0.9s linear infinite;
+}
+
+.startup-loading circle { stroke: rgba(0, 102, 204, 0.18); }
+.startup-loading path { stroke: var(--blue); stroke-linecap: round; }
+
+@keyframes startup-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+main {
+  display: grid;
+  align-content: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+  background: #f5f7fa;
+}
+
+h1 { margin: 0 0 12px; font-size: 24px; font-weight: 650; }
+p { margin: 0; color: #667085; font-size: 14px; line-height: 1.6; }

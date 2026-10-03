@@ -1,0 +1,83 @@
+import { IosTcpReceiver } from './iosTcpReceiver'
+import { bundledHdcBinary, createHdcRunner } from './harmonyHdcClient'
+import { HarmonyHdcReceiver } from './harmonyHdcReceiver'
+import { AndroidAdbReceiver } from './androidAdbReceiver'
+import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
+import type { AndroidConnectionMode } from '../../../src/shared/types'
+import { stateScore } from './mediaReceiverStatus'
+import { canProbeUsbAccessory } from './usbAccessoryProbe'
+import {
+  type LiveMediaReceiver,
+  type UsbAoaStatus,
+  type UsbControlRequest,
+  type UsbMediaFrame,
+  UsbAoaReceiver,
+} from './usbAoaReceiver'
+
+class MultiTransportReceiver implements LiveMediaReceiver {
+  private readonly receivers: LiveMediaReceiver[]
+  private lastActive: LiveMediaReceiver
+
+
+  constructor(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void, androidMode: AndroidConnectionMode) {
+    const hdcBinary = bundledHdcBinary()
+    const runHdc = hdcBinary ? createHdcRunner(hdcBinary) : null
+    const android = androidMode === 'adb'
+      ? new AndroidAdbReceiver(onFrame, onDisconnected, {
+        log: (level, message, details) => level === 'warn' ? logMainWarn(message, details) : logMainInfo(message, details),
+      })
+      : new UsbAoaReceiver(onFrame, onDisconnected, device => canProbeUsbAccessory(device.deviceDescriptor.idVendor, runHdc))
+    const ios = new IosTcpReceiver(onFrame, onDisconnected)
+    this.receivers = [android, ios]
+    if (hdcBinary) this.receivers.push(new HarmonyHdcReceiver(onFrame, onDisconnected, {
+      log: (level, message, details) => level === 'warn' ? logMainWarn(message, details) : logMainInfo(message, details),
+    }))
+    this.lastActive = android
+  }
+
+  status(): UsbAoaStatus {
+    const statuses = this.receivers.map((receiver) => receiver.status())
+    if (statuses.every((status) => status.state === 'waiting' && !status.deviceLabel && !status.error && !status.deviceDetectionUnavailable)) {
+      this.lastActive = this.receivers[0]
+      return { ...statuses[0], message: '等待手机通过 USB 连接' }
+    }
+    const receiver = this.activeReceiver()
+    this.lastActive = receiver
+    return receiver.status()
+  }
+
+  start(): void {
+    for (const receiver of this.receivers) receiver.start()
+  }
+
+  async stop(): Promise<void> {
+    await Promise.all(this.receivers.map((receiver) => receiver.stop()))
+  }
+
+  sendControl(request: UsbControlRequest): Promise<void> {
+    const receiver = this.activeReceiver()
+    const status = receiver.status()
+    if (status.state !== 'connected' && status.state !== 'streaming') {
+      throw new Error('手机 USB 尚未连接')
+    }
+    this.lastActive = receiver
+    return receiver.sendControl(request)
+  }
+
+  private activeReceiver(): LiveMediaReceiver {
+    let selected = this.lastActive
+    let best = stateScore(selected.status())
+    for (const receiver of this.receivers) {
+      const score = stateScore(receiver.status())
+      if (score > best || (score === best && receiver === this.lastActive)) {
+        selected = receiver
+        best = score
+      }
+    }
+    return selected
+  }
+}
+
+export function createLiveMediaReceiver(onFrame: (frame: UsbMediaFrame) => void, onDisconnected: () => void = () => {}, androidMode: AndroidConnectionMode = 'aoa'): LiveMediaReceiver {
+  return new MultiTransportReceiver(onFrame, onDisconnected, androidMode)
+}

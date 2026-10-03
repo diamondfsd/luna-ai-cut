@@ -121,14 +121,21 @@
   display: grid;
   width: 28px;
   height: 28px;
+  box-sizing: border-box;
+  padding: 0;
   place-items: center;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.42);
   color: var(--muted);
   cursor: pointer;
+  line-height: 0;
   font-family: inherit;
   transition: background 100ms ease;
+}
+
+.ui-dialog-close > svg {
+  display: block;
 }
 
 .ui-dialog-close:hover {
@@ -136,6 +143,24 @@
 }
 
 /* 头部 */
+.ui-dialog-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 40px;
+}
+
+.ui-dialog-header .ui-dialog-header-row > .ui-dialog-title {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-dialog-header-row > .ui-btn {
+  flex-shrink: 0;
+}
+
 .ui-dialog-header {
   display: flex;
   flex-direction: column;
@@ -163,9 +188,14 @@
 
 /* 内容体 */
 .ui-dialog-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   overflow: auto;
-  padding: 12px 20px;
-  color: var(--muted);
+  overscroll-behavior: contain;
+  padding: 20px;
+  color: var(--ink);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -178,7 +208,7 @@
   align-items: center;
   gap: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 14px 16px 16px;
+  padding: 14px 20px 16px;
 }
 
 .ui-dialog-footer .ui-btn {

@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import process from 'node:process'
+
+import { verifyHarmonyHdcResources } from './harmony-hdc-resources.mjs'
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const windowsNativeFiles = [
@@ -46,6 +49,15 @@ export function verifyWindowsNativeArtifact(nativeDir = join(projectRoot, 'luna-
 }
 
 export default async function beforePack(context) {
+  if (context.electronPlatformName === 'darwin' && context.arch === 3) {
+    const staged = process.env.LUNA_PACKAGE_RESOURCES_DIR
+    if (staged && existsSync(join(staged, 'harmony-hdc', 'hdc'))) {
+      verifyHarmonyHdcResources(join(staged, 'harmony-hdc'))
+      const options = context.packager.platformSpecificBuildOptions
+      const binary = 'Contents/Resources/harmony-hdc/hdc'
+      options.binaries = [...new Set([...(options.binaries ?? []), binary])]
+    }
+  }
   if (context.electronPlatformName !== 'win32') return
   verifyWindowsNativeArtifact(join(context.packager.projectDir, 'luna-render-core'))
 }

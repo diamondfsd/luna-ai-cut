@@ -1,0 +1,162 @@
+import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw, Square, Video } from 'lucide-react'
+
+import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
+import { LiveControlPanel } from '../components/LiveControlPanel'
+import { LiveOperationGuideDialog } from '../components/LiveOperationGuideDialog'
+import { flushLiveUsage } from '../hooks/useLiveUsage'
+import type { LiveStreamStatus } from '../shared/types'
+import '../styles/live-console.css'
+
+interface LiveConsolePageProps {
+  windowLiveMode: boolean
+  onWindowLiveModeChange: (enabled: boolean) => void
+}
+
+function stateLabel(status: LiveStreamStatus | null): string {
+  switch (status?.state) {
+    case 'running': return '直播中'
+    case 'waiting-usb': return '等待 USB'
+    case 'starting': return '连接中'
+    case 'stopping': return '停止中'
+    case 'ready': return '已就绪'
+    case 'error': return '异常'
+    default: return '未启动'
+  }
+}
+
+export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: LiveConsolePageProps) {
+  const [status, setStatus] = useState<LiveStreamStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [visibleError, setVisibleError] = useState<string | null>(null)
+  const pendingError = error || previewError || (status?.localPreviewError ? '画面播放异常' : null)
+
+  useEffect(() => {
+    setVisibleError(null)
+    if (!pendingError) return undefined
+    const timer = window.setTimeout(() => setVisibleError(pendingError), 3_000)
+    return () => window.clearTimeout(timer)
+  }, [pendingError])
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const next = await window.luna.liveStream.status()
+      setStatus(next)
+      setError(next.error)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshStatus()
+  }, [refreshStatus])
+
+  useEffect(() => {
+    if (!busy && (!status?.startedAt || status.state === 'stopping')) return undefined
+    const timer = window.setInterval(() => void refreshStatus(), 1_000)
+    return () => window.clearInterval(timer)
+  }, [busy, refreshStatus, status?.startedAt, status?.state])
+
+  const runAction = useCallback(async (action: () => Promise<void>) => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    let timeout: number | undefined
+    try {
+      await Promise.race([
+        action(),
+        new Promise<never>((_, reject) => {
+          timeout = window.setTimeout(() => reject(new Error('操作超时')), 10_000)
+        }),
+      ])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      window.clearTimeout(timeout)
+      setBusy(false)
+      void refreshStatus()
+    }
+  }, [busy, refreshStatus])
+
+  const active = Boolean(status?.startedAt) && status?.state !== 'stopping'
+  const outputTone = visibleError ? 'danger' : status?.usbState === 'streaming' ? 'active' : 'neutral'
+
+  const toggleLivePreviewWindow = () => {
+    void runAction(async () => {
+      const nextEnabled = !windowLiveMode
+      await window.luna.setLiveWindowMode(nextEnabled, nextEnabled ? '720p' : undefined)
+      onWindowLiveModeChange(nextEnabled)
+    })
+  }
+
+  return (
+    <main className="live-console-page">
+      <header className="live-console-header" data-live-window-controls>
+        <div className="live-console-title">
+          <span className={`live-console-status-dot ${outputTone}`} />
+          <h1>直播控制台</h1>
+          <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{status?.state === 'error' && !visibleError ? '连接中' : stateLabel(status)}</span>
+        </div>
+        <div className="live-console-actions">
+          <LiveOperationGuideDialog />
+          {(status?.usbState === 'streaming' || windowLiveMode) && (
+            <Button
+              variant={windowLiveMode ? 'secondary' : 'primary'}
+              size="compact"
+              icon={<Video size={14} />}
+              onClick={toggleLivePreviewWindow}
+              disabled={busy}
+            >
+              {windowLiveMode ? '关闭直播窗口' : '打开直播窗口'}
+            </Button>
+          )}
+          <Tooltip content="刷新状态">
+            <IconButton
+              variant="outline"
+              size="compact"
+              icon={<RefreshCw size={14} />}
+              aria-label="刷新状态"
+              title="刷新状态"
+              onClick={() => void refreshStatus()}
+              disabled={busy}
+            />
+          </Tooltip>
+          {active && (
+            <Button
+              variant="danger"
+              size="compact"
+              icon={<Square size={14} />}
+              onClick={() => void runAction(async () => {
+                flushLiveUsage()
+                await window.luna.liveStream.stop()
+                toast.success('已停止获取画面')
+              })}
+              disabled={busy}
+            >
+              停止获取
+            </Button>
+          )}
+        </div>
+      </header>
+
+      {visibleError && <p className="live-console-error" role="alert" data-live-window-controls>{visibleError}</p>}
+      {!status ? (
+        windowLiveMode ? null : <LoadingIndicator label="正在检查直播状态" />
+      ) : (
+        <LiveControlPanel
+          status={status}
+          busy={busy}
+          onPreviewErrorChange={setPreviewError}
+          onStatusChanged={() => void refreshStatus()}
+          onStart={() => void runAction(async () => {
+            await window.luna.liveStream.start()
+            toast.success('已开始获取画面')
+          })}
+        />
+      )}
+    </main>
+  )
+}

@@ -1,0 +1,13 @@
+.ui-dialog-content.director-main-content-dialog { width: min(640px, calc(100vw - 32px)); }
+
+.director-main-content-dialog .director-main-content-input {
+  display: block;
+  width: 100%;
+  height: min(360px, 50vh);
+  min-height: 180px;
+  min-width: 0;
+  flex: none;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.7;
+}

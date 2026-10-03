@@ -1,0 +1,53 @@
+.lab-shot-edit-attributes {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 3px 0;
+}
+
+.lab-shot-edit-attribute {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 5px;
+}
+
+.lab-shot-edit-attribute > span,
+.lab-shot-edit-remark > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.lab-shot-edit-remark {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 5px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 8px;
+}
+
+.lab-shot-edit-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.lab-shot-edit-description {
+  min-height: 58px;
+  grid-column: 1 / -1;
+  padding-block: 6px;
+  resize: vertical;
+}
+
+.ui-dialog-content.lab-shot-editor-dialog { width: min(680px, calc(100vw - 32px)); }
+.lab-shot-editor-fields { display: grid; gap: 16px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.lab-shot-editor-basics { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 16px; }
+.lab-shot-editor-fields .lab-shot-edit-attributes { gap: 16px; }
+.lab-shot-editor-fields .lab-shot-edit-attribute > span,
+.lab-shot-editor-fields .lab-shot-edit-remark > span { font-size: 12px; }
+.lab-shot-editor-conflict { margin: 0; color: var(--blue); font-size: 13px; }

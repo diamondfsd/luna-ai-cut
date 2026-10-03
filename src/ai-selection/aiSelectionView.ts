@@ -33,21 +33,21 @@ export function aiSelectionAnalysisProgress(session: AiSelectionSession | null):
   if (!session) return { phaseCompleted: 0, phaseTotal: 0, overallCompleted: 0, overallTotal: 0 }
   const photos = session.items.filter((item) => item.kind === 'image')
   const contentCompleted = photos.filter((item) => item.analysisState === 'failed' || Boolean(item.contentTagVersion || item.contentTagError)).length
-  const peopleCompleted = session.items.filter((item) => item.analysisState === 'failed' || Boolean(item.personEvidence) || item.semanticTags.includes('人物分析未完成')).length
-  const compositionCompleted = session.items.filter((item) => item.analysisState === 'failed' || item.compositionEvidence?.version === COMPOSITION_ANALYSIS_VERSION).length
+  const peopleCompleted = photos.filter((item) => item.analysisState === 'failed' || Boolean(item.personEvidence) || item.semanticTags.includes('人物分析未完成')).length
+  const compositionCompleted = photos.filter((item) => item.analysisState === 'failed' || item.compositionEvidence?.version === COMPOSITION_ANALYSIS_VERSION).length
   const phase = session.phase === 'content'
     ? { completed: contentCompleted, total: photos.length }
     : session.phase === 'people'
-      ? { completed: peopleCompleted, total: session.items.length }
+      ? { completed: peopleCompleted, total: photos.length }
       : session.phase === 'composition'
-        ? { completed: compositionCompleted, total: session.items.length }
+        ? { completed: compositionCompleted, total: photos.length }
         : session.phase === 'evidence'
-          ? { completed: contentCompleted + peopleCompleted + compositionCompleted, total: photos.length + session.items.length + session.items.length }
+          ? { completed: contentCompleted + peopleCompleted + compositionCompleted, total: photos.length * 3 }
           : { completed: session.counts.completed, total: session.counts.total }
   return {
     phaseCompleted: phase.completed,
     phaseTotal: phase.total,
     overallCompleted: session.counts.completed + contentCompleted + peopleCompleted + compositionCompleted,
-    overallTotal: session.counts.total + photos.length + session.items.length + session.items.length,
+    overallTotal: session.counts.total + photos.length * 3,
   }
 }

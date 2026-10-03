@@ -1,0 +1,93 @@
+.live-guide-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-guide-steps-harmony { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.live-guide-steps > li { min-width: 0; }
+
+.live-guide-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 126px;
+  border-radius: 12px;
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.live-guide-phone {
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 86px;
+  padding: 9px 3px 5px;
+  border: 2px solid var(--ink);
+  border-radius: 11px;
+  background: var(--canvas);
+}
+
+.live-guide-phone::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+
+.live-guide-phone-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.live-guide-phone-screen img { width: 38px; height: 38px; border-radius: 7px; }
+.live-guide-accent { color: var(--blue); }
+
+.live-guide-cable {
+  position: relative;
+  flex: 1;
+  max-width: 25px;
+  min-width: 12px;
+  height: 2px;
+  background: var(--blue);
+  color: var(--blue);
+}
+
+.live-guide-cable svg { position: absolute; top: -21px; left: calc(50% - 7px); }
+.live-guide-permission { padding: 2px 5px; border-radius: 4px; color: var(--blue); background: var(--parchment); font-size: 10px; }
+
+.live-guide-step-caption { display: flex; align-items: flex-start; gap: 7px; margin-top: 12px; }
+.live-guide-step-caption p { margin: 0; font-size: 13px; line-height: 1.6; }
+
+.live-guide-step-number {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--blue);
+  background: var(--parchment);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 540px) {
+  .live-guide-steps { grid-template-columns: minmax(0, 1fr); }
+  .live-guide-steps > li { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: 12px; }
+  .live-guide-illustration { height: 110px; }
+  .live-guide-step-caption { margin-top: 0; }
+}
