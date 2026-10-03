@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict'
 
 import { buildStartLiveStreamBody } from '../electron/devices/insta360/lunaControlMessages.ts'
+import { LunaPreviewControl, supportsPreviewAccessState } from '../electron/devices/insta360/lunaPreviewControl.ts'
+import { encodeBytesField, encodeStringField, encodeVarintField } from '../electron/devices/insta360/lunaBleCodec.ts'
 import { MEDIA_VIDEO, UCD2_MEDIA, parseMediaFrame } from '../electron/devices/insta360/insta360TcpCodec.ts'
 import { LocalVideoStreamServer } from '../electron/devices/common/localVideoStreamServer.ts'
 
@@ -19,6 +21,48 @@ assert.deepEqual(
   Buffer.from('100130283809400148285012', 'hex'),
   'START_LIVE_STREAM must match the mobile-app validated body',
 )
+
+function firmware(version, module = 1) {
+  return encodeBytesField(1, Buffer.concat([encodeVarintField(1, module), encodeStringField(2, version)]))
+}
+
+for (const [version, expected] of [['1.1.7', false], ['1.1.8', true], ['1.1.10', true], ['1.2.0', true], ['2.0.0', true]]) {
+  assert.equal(supportsPreviewAccessState(firmware(version)), expected)
+}
+assert.equal(supportsPreviewAccessState(firmware('1.1.8', 2)), false)
+assert.equal(supportsPreviewAccessState(Buffer.alloc(0)), false)
+
+function previewSession(version, failureCode) {
+  const calls = []
+  return {
+    calls,
+    async sendCommand(code, body) {
+      calls.push([code, body.toString('hex')])
+      return { code: code === failureCode ? 500 : 200, body: code === 242 ? firmware(version) : Buffer.alloc(0) }
+    },
+  }
+}
+
+const preview = new LunaPreviewControl()
+const currentSession = previewSession('1.1.8')
+await preview.start(currentSession)
+await preview.stop(currentSession)
+assert.deepEqual(currentSession.calls, [[242, ''], [118, '0805'], [1, '100130283809400148285012'], [2, ''], [118, '0801']])
+
+const legacySession = previewSession('1.1.7')
+await preview.start(legacySession)
+await preview.stop(legacySession)
+assert.deepEqual(legacySession.calls.map(([code]) => code), [242, 1, 2], 'old firmware must not receive access-state commands')
+
+const failedStart = previewSession('1.1.8', 1)
+await assert.rejects(preview.start(failedStart))
+assert.deepEqual(failedStart.calls.slice(-2), [[2, ''], [118, '0801']], 'failed start must stop streaming and restore idle')
+
+const failedStop = previewSession('1.1.8', 2)
+await preview.start(failedStop)
+await assert.rejects(preview.stop(failedStop))
+assert.deepEqual(failedStop.calls.at(-1), [118, '0801'], 'stop failure must still close preview access')
+
 
 const payload = Buffer.from('0000000167010203', 'hex')
 const parsed = parseMediaFrame(mediaFrame(payload))
