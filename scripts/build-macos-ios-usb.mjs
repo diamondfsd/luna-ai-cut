@@ -119,7 +119,7 @@ for (const arch of architectures) {
   copyFileSync(join(root, 'scripts', 'build-macos-ios-usb.mjs'), join(licenses, 'build-macos-ios-usb.mjs'))
   const manifest = {
     platform: 'darwin', arch, minimumMacOS: '12.0', tools,
-    licenseFiles: Object.fromEntries(readdirSync(licenses, { recursive: true }).filter((name) => statSync(join(licenses, name)).isFile()).map((name) => [name, createHash('sha256').update(readFileSync(join(licenses, name))).digest('hex')])),
+    licenseFiles: Object.fromEntries(readdirSync(licenses, { recursive: true }).filter((name) => !name.split('/').includes('.DS_Store') && statSync(join(licenses, name)).isFile()).map((name) => [name, createHash('sha256').update(readFileSync(join(licenses, name))).digest('hex')])),
     sources, buildScript: 'scripts/build-macos-ios-usb.mjs',
     files: Object.fromEntries([...copied].sort().map((name) => [name, {
       size: readFileSync(join(output, name)).length,

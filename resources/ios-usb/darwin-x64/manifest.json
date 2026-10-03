@@ -85,7 +85,7 @@
     }
   },
   "licenseFiles": {
-    "build-macos-ios-usb.mjs": "5fb93e4c7b42dcd86646cc0f3c4546018164f5b6deea21030bffba0857b26dbe",
+    "build-macos-ios-usb.mjs": "37be36ca8e04fab22c5668f82eb2099525c1eb3b76313f31e960cfa3a7062367",
     "libimobiledevice/COPYING": "7619c753cac95d4740220223bde48a032606fcaccde5e546f9bc444c81ab356d",
     "libimobiledevice/COPYING.LESSER": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
     "libimobiledevice/source.tar.gz": "ec73e7cf60607aad9263cd901b03c3fc9a11a0aa09d6544a2fe9745fe194acd9",
