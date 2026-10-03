@@ -2,6 +2,30 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.9.0",
+    "title": "v1.9.0 - 正式版发布说明",
+    "bodyHtml": "<h3>新增功能</h3>\n<ul>\n<li><strong>直播控制台</strong>：支持手机有线画面接入、相机实时预览、独立预览窗口、滤镜与水印。</li>\n<li><strong>手机连接</strong>：新增 Android、iPhone 和鸿蒙设备的有线连接支持。</li>\n<li><strong>导演计划</strong>：支持计划导入、素材同步、本地素材管理与镜头片段选择。</li>\n</ul>\n<h3>优化与修复</h3>\n<ul>\n<li>优化相机预览控制与直播连接状态显示。</li>\n<li>优化照片筛选、缩略图加载与 AI 分析。</li>\n<li>修复部分设备上的 AI 模型运行与工作区编辑问题。</li>\n<li>优化启动页面、设置与操作菜单。</li>\n</ul>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.8.8-hot.4",
+    "title": "v1.8.8-hot.4 - 热更新发布说明",
+    "bodyHtml": "<h3>性能优化</h3>\n<ul>\n<li><strong>优化大媒体库浏览</strong>：媒体页改用虚拟列表，减少一次性渲染的缩略图数量。</li>\n<li><strong>优化缩略图加载</strong>：增加加载状态，并修复缩略图加载完成后状态闪烁的问题。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.8.8-hot.2",
+    "title": "v1.8.8-hot.2 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 Live 图导出失败</strong>：封面靠近视频结尾时会自动选择可稳定读取的画面。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
+    "version": "1.8.8-hot.1",
+    "title": "v1.8.8-hot.1 — 热更新发布说明",
+    "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复 NAS 端口显示为 0</strong>：配置端口输入框清空后恢复为默认端口 <code>445</code>。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.8.8",
     "title": "v1.8.8 - 安装包发布说明",
     "bodyHtml": "<h3>Bug 修复</h3>\n<ul>\n<li><strong>修复安装后无法启动</strong>：NAS 共享连接已统一由本地 Rust 服务处理，不再依赖缺失的运行时模块。</li>\n</ul>",

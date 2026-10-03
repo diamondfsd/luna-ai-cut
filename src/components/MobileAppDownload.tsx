@@ -8,10 +8,13 @@ import './MobileAppDownload.css'
 const MOBILE_APP_DOWNLOAD_URLS = {
   ios: 'https://testflight.apple.com/join/7f59YZEH',
   android: 'https://lunaka.diamondfsd.com/',
+  harmony: 'https://appgallery.huawei.com/link/invite-test-wap?taskId=4701706546eacd13761d03da9e109b8b&invitationCode=5Z1nVRaK8Di',
 }
 
-export function MobileAppDownloadQr({ platform }: { platform: 'ios' | 'android' }) {
-  const label = platform === 'ios' ? 'iOS' : '安卓'
+export type MobileAppPlatform = keyof typeof MOBILE_APP_DOWNLOAD_URLS
+
+export function MobileAppDownloadQr({ platform }: { platform: MobileAppPlatform }) {
+  const label = { ios: 'iOS', android: '安卓', harmony: '鸿蒙' }[platform]
   const url = MOBILE_APP_DOWNLOAD_URLS[platform]
   const [generated, setGenerated] = useState<{ url: string; image: string | null; failed: boolean } | null>(null)
   useEffect(() => {
@@ -43,6 +46,7 @@ export function MobileAppDownloadButton({ size = 'compact' }: { size?: ButtonSiz
       trigger={<Button variant="secondary" size={size} icon={<Download size={14} />}>下载 App</Button>}>
       <MobileAppDownloadQr platform="ios" />
       <MobileAppDownloadQr platform="android" />
+      <MobileAppDownloadQr platform="harmony" />
     </Dialog>
   )
 }
