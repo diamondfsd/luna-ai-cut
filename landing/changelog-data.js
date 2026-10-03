@@ -2,6 +2,12 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.9.1",
+    "title": "v1.9.1 - macOS 修复版",
+    "bodyHtml": "<h3>修复</h3>\n<ul>\n<li>修复部分 Mac 无法启动 iPhone 有线连接的问题。</li>\n<li>Apple Silicon 和 Intel 安装包均内置 iPhone 连接工具，无需另行安装。</li>\n</ul>\n<p>\n本次仅更新 macOS；Windows 继续使用 v1.9.0。\n</p>",
+    "isHotfix": false
+  },
+  {
     "version": "1.9.0",
     "title": "v1.9.0 - 正式版发布说明",
     "bodyHtml": "<h3>新增功能</h3>\n<ul>\n<li><strong>直播控制台</strong>：支持手机有线画面接入、相机实时预览、独立预览窗口、滤镜与水印。</li>\n<li><strong>手机连接</strong>：新增 Android、iPhone 和鸿蒙设备的有线连接支持。</li>\n<li><strong>导演计划</strong>：支持计划导入、素材同步、本地素材管理与镜头片段选择。</li>\n</ul>\n<h3>优化与修复</h3>\n<ul>\n<li>优化相机预览控制与直播连接状态显示。</li>\n<li>优化照片筛选、缩略图加载与 AI 分析。</li>\n<li>修复部分设备上的 AI 模型运行与工作区编辑问题。</li>\n<li>优化启动页面、设置与操作菜单。</li>\n</ul>",
