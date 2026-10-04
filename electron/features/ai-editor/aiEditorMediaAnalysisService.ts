@@ -1,3 +1,5 @@
+import { cacheInspectionFrame, getCachedInspectionFrame } from './aiEditorFrameCache.ts'
+import { inspectionFileIdentity, recordInspectionEvidence } from './aiEditorInspectionEvidence.ts'
 import { execFile } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -85,7 +87,7 @@ async function renderFrame(
     '-hide_banner',
     '-loglevel',
     'error',
-    ...(kind === 'video' ? ['-ss', timeSec.toFixed(3)] : []),
+    ...(kind === 'video' ? ['-ss', String(timeSec)] : []),
     '-i',
     filePath,
     '-vf',
@@ -144,6 +146,14 @@ export async function inspectAiEditorLocalMedia(
     throw new Error('mediaIds 不能重复')
   }
 
+  if (options.frameTimes !== undefined) {
+    if (!options.frameTimes || typeof options.frameTimes !== 'object' || Array.isArray(options.frameTimes)
+      || Object.keys(options.frameTimes).some(id => !uniqueMediaIds.includes(id))
+      || Object.values(options.frameTimes).some(times => !Array.isArray(times) || !times.length || times.length > 12
+        || times.some(time => typeof time !== 'number' || !Number.isFinite(time) || time < 0)
+        || new Set(times).size !== times.length)
+      || Object.values(options.frameTimes).reduce((sum, times) => sum + times.length, 0) > 60) throw new Error('指定画面时间无效')
+  }
   const maxWidth = normalizeMaxWidth(options.maxWidth)
   const files = await getAiEditorLocalMediaFiles(uniqueMediaIds)
   const visualFiles = files.map((file) => {
@@ -153,18 +163,27 @@ export async function inspectAiEditorLocalMedia(
   const items = await mapWithConcurrency(visualFiles, ANALYSIS_CONCURRENCY, async (file): Promise<AiEditorLocalMediaInspectionItem> => {
     let duration = file.duration
     try {
+      const sourceIdentity = await inspectionFileIdentity(file.filePath)
       if (file.kind === 'video' && (!Number.isFinite(duration) || (duration ?? 0) <= 0)) {
         const [metadata] = await getAiEditorLocalMediaMetadata([file.mediaId])
         duration = metadata?.durationSec ?? undefined
       }
-      const times = frameTimes(file.kind, duration, mode)
-      const frames = await mapWithConcurrency(times, 2, async (timeSec) => ({
-        timeSec: Number(timeSec.toFixed(3)),
-        mimeType: 'image/jpeg' as const,
-        base64: await renderFrame(file.filePath, file.kind, timeSec, maxWidth),
-      }))
+      const requestedTimes = options.frameTimes?.[file.mediaId]
+      if (requestedTimes?.some(time => file.kind === 'image' ? time !== 0 : !duration || time >= duration)) throw new Error('指定画面时间超出素材范围')
+      const times = requestedTimes ?? frameTimes(file.kind, duration, mode)
+      const frames = await mapWithConcurrency(times, 2, async (timeSec) => {
+        const key = `${sourceIdentity}:${file.kind}:${timeSec}:${maxWidth}`
+        let base64 = getCachedInspectionFrame(key)
+        if (base64 === undefined) {
+          base64 = await renderFrame(file.filePath, file.kind, timeSec, maxWidth)
+          cacheInspectionFrame(key, base64)
+        }
+        return { timeSec, mimeType: 'image/jpeg' as const, base64 }
+      })
+      await recordInspectionEvidence(file.mediaId, file.filePath, frames.map(frame => frame.timeSec), sourceIdentity)
       return {
         mediaId: file.mediaId,
+        directorContexts: file.directorContexts,
         name: file.name,
         kind: file.kind,
         ...(duration === undefined ? {} : { duration }),
@@ -174,6 +193,7 @@ export async function inspectAiEditorLocalMedia(
     } catch (error) {
       return {
         mediaId: file.mediaId,
+        directorContexts: file.directorContexts,
         name: file.name,
         kind: file.kind,
         ...(file.duration === undefined ? {} : { duration: file.duration }),
@@ -281,6 +301,7 @@ export async function createAiEditorLocalMediaContactSheet(
     maxWidth: inspection.maxWidth,
     items: inspection.items.map((item) => ({
       mediaId: item.mediaId,
+      directorContexts: item.directorContexts,
       name: item.name,
       kind: item.kind,
       ...(item.duration === undefined ? {} : { duration: item.duration }),

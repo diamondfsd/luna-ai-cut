@@ -1,3 +1,4 @@
+import { useAgentChat } from './agent-chat/agentChatContext'
 import { useEffect } from 'react'
 import { ArrowLeft, Box, FolderSync, FolderDown, FolderOpen, ListFilter, Pencil, RefreshCw, Save, Search, WandSparkles, X, FileUp } from 'lucide-react'
 import { DirectorMaterialSyncControl } from './DirectorMaterialSyncControl'
@@ -84,6 +85,13 @@ export function DirectorLabView({ active }: DirectorLabViewProps) {
     openLocalPlanDirectory,
     syncStatusLabel,
   } = useDirectorLab(active)
+
+  const { setPageContext } = useAgentChat()
+  const contextualPlanId = active && activePlan?.local_directory ? activePlan.id : undefined
+  useEffect(() => {
+    setPageContext(contextualPlanId ? { directorPlanId: contextualPlanId } : {})
+    return () => setPageContext({})
+  }, [contextualPlanId, setPageContext])
 
   useEffect(() => {
     if (!active) return

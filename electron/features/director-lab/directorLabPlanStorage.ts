@@ -129,6 +129,7 @@ export function manifestForPlan(
         || shot.visual_description
         || '',
       duration_ms: shot.duration_ms,
+      ...(shot.shot_recipe !== undefined ? { shot_recipe: shot.shot_recipe } : {}),
       movement_description: legacyShotAttribute(shot, ['运镜说明', '运镜', '相机运动'])
         || shot.movement_description
         || '',
@@ -136,6 +137,8 @@ export function manifestForPlan(
         id: take.id,
         file_name: take.file_name,
         type: take.kind,
+        location: take.location ?? null,
+        source_camera_path: take.source_camera_path ?? null,
         created_at: take.created_at,
         captured_at: metadata[take.id]?.capturedAt ?? take.captured_at ?? null,
         duration_ms: metadata[take.id]?.durationMs ?? take.duration_ms ?? null,

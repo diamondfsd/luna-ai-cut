@@ -20,6 +20,8 @@ interface LocalManifestMedia {
   available?: unknown
   selected_range?: unknown
   markers?: unknown
+  location?: Record<string, unknown> | null
+  source_camera_path?: string | null
 }
 
 interface LocalManifestShot {
@@ -31,6 +33,7 @@ interface LocalManifestShot {
   visual_description?: unknown
   movement_description?: unknown
   duration_ms?: unknown
+  shot_recipe?: Record<string, unknown> | null
   media?: unknown
 }
 
@@ -147,6 +150,8 @@ async function localPlanFromManifest(manifestPath: string, probeMediaOne?: (requ
         }
         return {
           id: takeId,
+          location: item.location,
+          source_camera_path: item.source_camera_path,
           markers: Array.isArray(item.markers) ? validateDirectorTakeMarkers(item.markers) : [],
           kind: item.type === 'photo' ? 'photo' as const : 'video' as const,
           created_at: typeof item.created_at === 'string'
@@ -205,6 +210,7 @@ async function localPlanFromManifest(manifestPath: string, probeMediaOne?: (requ
         order: typeof shot.order === 'number' ? shot.order : shotIndex + 1,
         name: typeof shot.name === 'string' ? shot.name : `镜头 ${shotIndex + 1}`,
         attributes,
+        shot_recipe: shot.shot_recipe,
         remark: typeof shot.remark === 'string' ? shot.remark : '',
         visual_description: legacyShotAttribute(
           { attributes },

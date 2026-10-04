@@ -1,3 +1,4 @@
+import { directorEditToolModule } from '../features/ai-editor/directorEditToolModule.ts'
 import { createAgentSkillModule } from '../features/agent-skills/agentSkillModule.ts'
 import { agentWorkflowModule } from '../features/agent-workflows/agentWorkflowModule.ts'
 import { LUNA_HTTP_SKILL } from './lunaHttpSkill.ts'
@@ -14,6 +15,7 @@ const musicNames = new Set(['list_music_templates', 'get_music_template', 'gener
 export function appToolRegistry(options: LunaMcpServerOptions) {
   const modules: LunaToolModule[] = [
     agentWorkflowModule,
+    directorEditToolModule,
     createAgentSkillModule(context => appToolRegistry(context).skills),
     { id: 'editing-guide', tools: [], skills: [{ id: 'editing', purpose: 'editing',
       description: '视频剪辑、选段、字幕、音乐、包装和导出；可组合导演计划工具。进入流程后使用 list_editing_skills 发现场景 Skill，并按 description 选择。', instructions: LUNA_HTTP_SKILL }],

@@ -3,6 +3,7 @@ import type { AgentTaskPurpose, AiEditorAgentEvent, AiEditorAgentSession } from 
 export interface AgentTaskInput {
   request: string
   purpose?: AgentTaskPurpose
+  directorPlanId?: string
   projectId?: string | null
 }
 export interface AgentConversation {

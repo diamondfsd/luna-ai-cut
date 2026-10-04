@@ -1,3 +1,6 @@
+import { getDirectorPlanDir } from '../storage/fileService'
+import { listLocalDirectorPlans } from '../features/director-lab/directorLabPlanReader.ts'
+import { directorPlanContentSignature } from '../../src/lib/directorPlanSync.ts'
 import { app, BrowserWindow, clipboard, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { createAgentConversationStore } from '../features/external-agents/agentConversationStore'
@@ -30,6 +33,11 @@ export function registerAgentConversations(adapters: ReturnType<typeof createExt
     void store.capture(event).then(notify).catch(error => console.error('[AI 助手] 保存任务历史失败', error))
   })
   const launch = createAgentTaskCoordinator({ manager: agentSessionManager, store, adapters,
+    resolveDirectorPlan: async planId => {
+      const plan = (await listLocalDirectorPlans(getDirectorPlanDir(await getSettings()))).find(item => item.id === planId)
+      if (!plan) throw new Error('拍摄计划不存在或未下载')
+      return { planId: plan.id, signature: directorPlanContentSignature(plan) }
+    },
     connection: getAgentHttpConnection, copy: text => clipboard.writeText(text) })
   ipcMain.handle('external-agent:start-task', async (_event, id: string, input: AgentTaskInput) => {
     try { return await launch(id, input) } finally { notify() }

@@ -5,8 +5,11 @@ import type { AiEditorLocalMedia, AiEditorLocalMediaQuery } from '../../../src/s
 import { generatedMusicFileName } from '../music/musicMedia.ts'
 import { readGeneratedMusicTiming } from '../music/musicScoreTiming.ts'
 import { listDownloadedFiles } from '../../media/downloadedLibraryService'
-import { getLocalResourcesDir, getSettings } from '../../storage/fileService'
+import { getDirectorPlanDir, getLocalResourcesDir, getSettings } from '../../storage/fileService'
 import { assignAiEditorMediaIds } from './aiEditorMediaCatalog.ts'
+
+import { listLocalDirectorPlans } from '../director-lab/directorLabPlanReader.ts'
+import { directorMediaCandidates } from './aiEditorDirectorMedia.ts'
 
 const LEGACY_MEDIA_ID_PREFIX = 'local-media:'
 
@@ -85,7 +88,16 @@ async function listLocalMediaFiles(): Promise<LocalMediaFile[]> {
       return []
     }
   }))
-  const sorted = entries.flat().sort((left, right) => {
+  const directorFiles = directorMediaCandidates(await listLocalDirectorPlans(getDirectorPlanDir(settings)))
+  const merged = new Map(entries.flat().map(file => [path.resolve(file.filePath), file]))
+  for (const candidate of directorFiles) {
+    const stats = await fs.stat(candidate.filePath).catch(() => null)
+    if (!stats?.isFile()) continue
+    const existing = merged.get(candidate.filePath)
+    merged.set(candidate.filePath, { ...candidate, bytes: stats.size, modifiedAt: stats.mtime.toISOString(),
+      ...existing, directorContexts: [...existing?.directorContexts ?? [], ...candidate.directorContexts] })
+  }
+  const sorted = [...merged.values()].sort((left, right) => {
     const leftTime = Date.parse(left.capturedAt ?? left.modifiedAt)
     const rightTime = Date.parse(right.capturedAt ?? right.modifiedAt)
     return rightTime - leftTime || left.name.localeCompare(right.name)
@@ -170,6 +182,7 @@ function publicMedia(file: LocalMediaFile): AiEditorLocalMedia {
 }
 
 export async function listAiEditorLocalMedia(query: AiEditorLocalMediaQuery = {}): Promise<AiEditorLocalMedia[]> {
+  if (query.planId !== undefined && (typeof query.planId !== 'string' || !query.planId.trim() || query.planId.length > 128)) throw new Error('计划编号无效')
   const from = queryDate(query.from, '起始', 'start')
   const to = queryDate(query.to, '结束', 'end')
   if (from !== null && to !== null && from > to) throw new Error('起始日期不能晚于结束日期')
@@ -180,6 +193,7 @@ export async function listAiEditorLocalMedia(query: AiEditorLocalMediaQuery = {}
       : [...await listLocalMediaFiles(), ...await listGeneratedMusicFiles()]
         .sort((left, right) => Date.parse(right.capturedAt ?? right.modifiedAt) - Date.parse(left.capturedAt ?? left.modifiedAt))
   const filtered = files.filter((file) => {
+    if (query.planId && !file.directorContexts?.some(context => context.planId === query.planId)) return false
     if (query.kind && file.kind !== query.kind) return false
     const timestamp = Date.parse(file.capturedAt ?? file.modifiedAt)
     if (from !== null && timestamp < from) return false

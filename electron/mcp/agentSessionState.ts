@@ -108,6 +108,7 @@ export function clampProgress(progress: number): number {
 export function copySession(session: AiEditorAgentSession): AiEditorAgentSession {
   return {
     ...session,
+    directorPlanRef: session.directorPlanRef ? { ...session.directorPlanRef } : undefined,
     result: session.result ? { ...session.result } : undefined,
   }
 }

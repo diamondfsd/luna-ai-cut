@@ -39,10 +39,13 @@ try {
       attributes: [{ id: 'framing', name: '画面说明', description: '中景' }],
       remark: '注意收音',
       duration_ms: 5000,
+      shot_recipe: { version: 1, future_extension: { camera: [1, 2, 3] } },
       completed_takes: 0,
       takes: [
         {
           id: 'take-1',
+          source_camera_path: '/DCIM/source.mp4',
+          location: { latitude: 31, longitude: 121, coordinate_system: 'WGS84' },
           kind: 'video',
           created_at: '2026-01-01T00:00:00.000Z',
           file_name: 'first.mp4',
@@ -86,6 +89,13 @@ try {
 
   const manifest = JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8'))
   assert.equal(manifest.format, 'luna-director-plan-v1')
+  assert.deepEqual(manifest.shots[0].shot_recipe, plan.shots[0].shot_recipe)
+  assert.equal(manifest.shots[0].media[0].source_camera_path, '/DCIM/source.mp4')
+  assert.deepEqual(manifest.shots[0].media[0].location, plan.shots[0].takes[0].location)
+  assert.deepEqual(buildDirectorPlanUpdate(plan, 0).shots[0].shot_recipe, plan.shots[0].shot_recipe)
+  const changedRecipe = structuredClone(plan)
+  changedRecipe.shots[0].shot_recipe.future_extension.camera[0] = 9
+  assert.notEqual(directorPlanContentSignature(changedRecipe), directorPlanContentSignature(plan))
   assert.equal(manifest.shots[0].media[0].path, null)
   assert.equal(manifest.shots[0].media[1].path, 'media/01_Walk/02_second.mp4')
   assert.deepEqual(manifest.attributes, [{ id: 'framing', name: '画面说明' }])

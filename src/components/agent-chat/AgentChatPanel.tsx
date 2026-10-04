@@ -45,7 +45,7 @@ export function AgentChatPanel({ open, context, onOpenChange }: {
     setResult('')
     try {
       // The external Agent chooses a workflow from the live skill index.
-      const input = { request, projectId: context.projectId }
+      const input = { request, projectId: context.projectId, directorPlanId: context.directorPlanId }
       const response = copyOnly ? await window.luna.externalAgent.copyTask(selection.agent.id, input)
         : await window.luna.externalAgent.startTask(selection.agent.id, input)
       setSelectedId(response.conversation.id)

@@ -39,7 +39,7 @@ export class AgentSessionManager {
       })),
     }
   }
-  createRequest(request: string, projectId: string | null = null, purpose: AgentTaskPurpose = 'editing'): AiEditorAgentSession {
+  createRequest(request: string, projectId: string | null = null, purpose: AgentTaskPurpose = 'editing', directorPlanRef?: AiEditorAgentSession['directorPlanRef']): AiEditorAgentSession {
     const trimmed = request.trim()
     if (!trimmed) throw new Error('剪辑要求不能为空')
     if (this.session && ACTIVE_STATUSES.has(this.session.status)) {
@@ -52,6 +52,7 @@ export class AgentSessionManager {
       request: trimmed,
       revision: 1,
       projectId,
+      ...(directorPlanRef ? { directorPlanRef: { ...directorPlanRef } } : {}),
       purpose,
       status: 'queued',
       phase: 'waiting',

@@ -146,6 +146,9 @@ export interface DirectorLanPlanSummary {
   shots: DirectorLanShot[]
 }
 
+/** Opaque mobile recipe: retain every field; interpretation belongs to shot analysis. */
+export type DirectorShotRecipe = Record<string, unknown>
+
 export interface DirectorLanShot {
   id: string
   order: number
@@ -156,6 +159,7 @@ export interface DirectorLanShot {
   visual_description?: string
   movement_description?: string
   duration_ms: number
+  shot_recipe?: DirectorShotRecipe | null
   completed_takes: number
   takes: DirectorLanTake[]
 }
@@ -194,6 +198,8 @@ export interface DirectorTakeMarker {
 export interface DirectorLanTake {
   id: string
   kind: 'photo' | 'video'
+  source_camera_path?: string | null
+  location?: Record<string, unknown> | null
   created_at: string
   captured_at?: string | null
   duration_ms?: number | null

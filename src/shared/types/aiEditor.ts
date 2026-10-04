@@ -1,3 +1,4 @@
+import type { DirectorLanShot, DirectorLanTake } from './directorLab'
 import type { WorkspaceMediaAsset } from './workspace'
 import type { WorkspaceSubtitleTranscriptionResult } from './subtitles'
 
@@ -33,9 +34,28 @@ export interface GeneratedMusicTiming {
   percussionHits: { time: number; pitch: number; velocity: number }[]
 }
 
+export interface AiEditorDirectorContext {
+  planId: string
+  planTitle: string
+  mainContent: string
+  planSignature: string
+  shotId: string
+  shotOrder: number
+  shotName: string
+  attributes: DirectorLanShot['attributes']
+  remark: string
+  suggestedDurationMs: number
+  recipe?: DirectorLanShot['shot_recipe']
+  takeId: string
+  selectedRange: DirectorLanTake['selected_range']
+  markers: DirectorLanTake['markers']
+}
+
 export interface AiEditorLocalMedia {
+  directorContexts?: AiEditorDirectorContext[]
   musicTiming?: GeneratedMusicTiming
   /** Native renderer recovery only; omitted from public media listings. */
+  sourceFingerprint?: string
   sourcePath?: string
   mediaId: string
   name: string
@@ -50,6 +70,7 @@ export interface AiEditorLocalMedia {
 }
 
 export interface AiEditorLocalMediaQuery {
+  planId?: string
   limit?: number
   from?: string
   to?: string
@@ -90,6 +111,8 @@ export interface AiEditorLocalMediaMetadata {
 export type AiEditorLocalMediaInspectionMode = 'overview' | 'detail'
 
 export interface AiEditorLocalMediaInspectionOptions {
+  /** Requested original-source seconds, at most 12 per media and 60 per request. */
+  frameTimes?: Record<string, number[]>
   mode?: AiEditorLocalMediaInspectionMode
   maxWidth?: number
 }
@@ -101,6 +124,7 @@ export interface AiEditorLocalMediaInspectionFrame {
 }
 
 export interface AiEditorLocalMediaInspectionItem {
+  directorContexts?: AiEditorDirectorContext[]
   mediaId: string
   name: string
   kind: 'image' | 'video'
@@ -135,6 +159,7 @@ export interface AiEditorLocalMediaContactSheetCell {
 }
 
 export interface AiEditorLocalMediaContactSheetItem {
+  directorContexts?: AiEditorDirectorContext[]
   mediaId: string
   name: string
   kind: 'image' | 'video'
@@ -273,6 +298,7 @@ export type AiEditorAgentPhase =
 export type AgentTaskPurpose = 'auto' | 'editing' | 'director-plan'
 
 export interface AiEditorAgentSession {
+  directorPlanRef?: { planId: string; signature: string }
   purpose?: AgentTaskPurpose
   sessionId: string
   request: string
