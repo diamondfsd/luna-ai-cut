@@ -21,6 +21,26 @@ function copyLocalShareAssets() {
   }
 }
 
+// Hot updates live outside app.asar, so Node cannot resolve installation-only
+// dependencies relative to their JS files. Always resolve them from the app.
+function installedElectronDependencies() {
+  const prefix = '\0luna-installed:'
+  return {
+    name: 'luna-installed-electron-dependencies',
+    resolveId(id: string) {
+      return id === 'usb' || id === 'ws' ? `${prefix}${id}` : null
+    },
+    load(id: string) {
+      if (!id.startsWith(prefix)) return null
+      const dependency = id.slice(prefix.length)
+      return `import { app } from 'electron';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+export default createRequire(join(app.getAppPath(), 'package.json'))(${JSON.stringify(dependency)});`
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   publicDir: false,
@@ -34,7 +54,7 @@ export default defineConfig({
       main: {
         entry: 'electron/main.ts',
         vite: {
-          plugins: [inlineStartupVideo()],
+          plugins: [inlineStartupVideo(), installedElectronDependencies()],
           base: './',
           worker: {
             format: 'es',
@@ -47,9 +67,17 @@ export default defineConfig({
           },
           build: {
             rollupOptions: {
-              external: ['usb', 'ws'],
+              // Keep bootstrap side effects in main.js, which is deliberately
+              // excluded from hot archives; shared chunks must not boot again.
+              preserveEntrySignatures: 'strict',
               output: {
                 chunkFileNames: 'luna-[name].js',
+                onlyExplicitManualChunks: true,
+                manualChunks(id) {
+                  if (id === path.resolve(__dirname, 'electron/main.ts')
+                    || id === path.resolve(__dirname, 'electron/appMain.ts')) return
+                  return 'runtime'
+                },
               },
             },
           },

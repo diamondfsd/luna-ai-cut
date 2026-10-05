@@ -1,7 +1,7 @@
 {
   "name": "luna-ai-cut",
   "private": true,
-  "version": "1.9.1",
+  "version": "1.9.2",
   "packageManager": "pnpm@11.1.3",
   "description": "Insta360 Luna Ultra / Luna Pro Wi-Fi 桌面媒体管理工具",
   "author": "diamondfsd",
@@ -21,7 +21,7 @@
     "build": "node scripts/clean-electron-output.mjs && node scripts/build-native.mjs && node scripts/build-macos-helpers.mjs && tsc && vite build && node scripts/copy-ffmpeg.mjs && node scripts/copy-dolby-tools.mjs && LUNA_PACKAGE_RESOURCES_DIR=resources electron-builder",
     "init:rust": "node scripts/setup-rust.mjs",
     "build:rust": "node scripts/build-native.mjs",
-    "build:app": "node scripts/clean-electron-output.mjs && tsc && vite build",
+    "build:app": "node scripts/clean-electron-output.mjs && tsc && vite build && node scripts/verify-hot-update-entry.mjs",
     "publish:build-dependencies": "node scripts/publish-build-dependencies.mjs",
     "publish:hot": "node scripts/publish-hot-update.mjs",
     "publish:resources": "node scripts/publish-runtime-resources.mjs --upload",
