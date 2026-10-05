@@ -1,6 +1,5 @@
+import { iosUsbToolBinary } from './iosUsbTool'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 
 export type IosDeviceDiscoveryResult = {
   state: 'detected' | 'none' | 'unavailable'
@@ -12,25 +11,6 @@ const SCAN_TIMEOUT_MS = 3_000
 
 export function parseIdeviceIdOutput(output: string): string[] {
   return [...new Set(output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))]
-}
-
-function ideviceIdBinary(): string | null {
-  const configured = process.env.USB_VIDEO_IDEVICE_ID_BIN
-  const resourcesPath = process.resourcesPath
-  const bundled = process.platform === 'win32' && resourcesPath
-    ? join(resourcesPath, 'ios-usb', 'idevice_id.exe')
-    : null
-  const command = process.platform === 'win32' ? 'idevice_id.exe' : 'idevice_id'
-  const candidates = [
-    configured,
-    bundled,
-    ...(process.platform === 'win32' ? [join(process.cwd(), 'resources', 'ios-usb', 'win-x64', 'idevice_id.exe')] : []),
-    '/opt/homebrew/bin/idevice_id',
-    '/usr/local/bin/idevice_id',
-    '/usr/bin/idevice_id',
-    command,
-  ].filter((candidate): candidate is string => Boolean(candidate))
-  return candidates.find((candidate) => candidate === command || existsSync(candidate)) ?? null
 }
 
 export class IosDeviceDiscovery {
@@ -63,7 +43,7 @@ export class IosDeviceDiscovery {
 
   private scan(): void {
     if (!this.running || this.child || this.timer) return
-    const binary = ideviceIdBinary()
+    const binary = iosUsbToolBinary('idevice_id')
     if (!binary) {
       this.publish({ state: 'unavailable', deviceCount: 0 })
       this.scheduleNext()

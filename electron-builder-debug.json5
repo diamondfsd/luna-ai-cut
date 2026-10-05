@@ -73,10 +73,18 @@
     "binaries": [
       "Contents/Resources/macos-native/bluetoothCoreScanner",
       "Contents/Resources/macos-native/wifiCoreWlan",
-      "Contents/Resources/macos-native/livetool"
+      "Contents/Resources/macos-native/livetool",
+      "Contents/Resources/ios-usb/iproxy",
+      "Contents/Resources/ios-usb/idevice_id",
+      "Contents/Resources/ios-usb/idevicepair"
     ],
     "hardenedRuntime": true,
     "extraResources": [
+      {
+        "from": "resources/ios-usb/darwin-${arch}",
+        "to": "ios-usb",
+        "filter": ["iproxy", "idevice_id", "idevicepair", "*.dylib", "manifest.json", "README.md", "licenses/**/*"]
+      },
       {
         "from": "node_modules/7zip-bin/mac/${arch}/7za",
         "to": "tools/7za"

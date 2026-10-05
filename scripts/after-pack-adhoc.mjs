@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import process from 'node:process'
 import { verifyIosUsbResources } from './ios-usb-resources.mjs'
+import { verifyMacosIosUsbResources } from './macos-ios-usb-resources.mjs'
 import { verifyPackagedUsb } from './verify-packaged-usb.mjs'
 
 /** electron-builder 生成 DMG 前，对 macOS App 做 Ad Hoc 签名。 */
@@ -23,6 +24,7 @@ export default async function afterPack(context) {
     return
   }
   if (context.electronPlatformName !== 'darwin') return
+  verifyMacosIosUsbResources(join(context.appOutDir, appName, 'Contents', 'Resources', 'ios-usb'), context.arch === 3 ? 'arm64' : 'x64')
   if (process.env.LUNA_SIGNING_MODE === 'official') {
     console.log('[after-pack] 正式签名模式，交由 electron-builder 完成签名')
     return
@@ -46,6 +48,11 @@ export default async function afterPack(context) {
       entitlementsPath,
       helperPath,
     ], { stdio: 'inherit' })
+  }
+
+  const iosDir = join(appPath, 'Contents', 'Resources', 'ios-usb')
+  for (const name of readdirSync(iosDir).filter((name) => name.endsWith('.dylib') || ['iproxy', 'idevice_id', 'idevicepair'].includes(name))) {
+    execFileSync('codesign', ['--force', '--sign', '-', join(iosDir, name)], { stdio: 'inherit' })
   }
 
   const hdcDir = join(appPath, 'Contents', 'Resources', 'harmony-hdc')

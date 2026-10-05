@@ -6,6 +6,8 @@ import process from 'node:process'
 import { stageIosUsbResources, verifyIosUsbResources } from './ios-usb-resources.mjs'
 import { stageAndroidAdbResources, verifyAndroidAdbResources } from './android-adb-resources.mjs'
 
+import { stageMacosIosUsbResources, verifyMacosIosUsbResources } from './macos-ios-usb-resources.mjs'
+
 import { stageHarmonyHdcResources } from './harmony-hdc-resources.mjs'
 
 const root = resolve(import.meta.dirname, '..')
@@ -81,6 +83,7 @@ function copySelectedDirectory(sourceDir, destinationDir, predicate) {
   }
 }
 
+if (target === 'darwin') verifyMacosIosUsbResources(join(root, 'resources', 'ios-usb', targetName), arch)
 if (target === 'win32') verifyIosUsbResources(sourceDirectories.iosUsb)
 if (target === 'win32') verifyAndroidAdbResources()
 rmSync(stageRoot, { recursive: true, force: true })
@@ -93,6 +96,8 @@ if (target === 'win32') {
   stageIosUsbResources(join(stageRoot, 'ios-usb'), sourceDirectories.iosUsb)
   stageAndroidAdbResources(join(stageRoot, 'android-adb'))
 }
+
+if (target === 'darwin') stageMacosIosUsbResources(join(stageRoot, 'ios-usb'), arch)
 
 stageHarmonyHdcResources(join(stageRoot, 'harmony-hdc'), target, arch)
 
