@@ -131,9 +131,13 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
     }
     const serial = ready[0].serial
     this.statusValue.deviceLabel = this.driver.phoneLabel
-    if (this.forward?.serial !== serial) {
+    // A driver restart or brief USB interruption can remove the forwarding rule
+    // while the same phone remains visible. Never retry a failed socket against
+    // a cached forwarding port: recreate our rule before connecting again.
+    if (this.forward?.serial !== serial || !this.socket) {
       this.closeSocket(true)
       await this.releaseForward()
+      if (!this.running || generation !== this.generation) return
       const forward = await this.driver.createForward(this.dependencies.run, serial)
       if (!this.running || generation !== this.generation) {
         await this.driver.removeForward(this.dependencies.run, forward)
@@ -155,10 +159,11 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
       if (!isCurrent()) return
       this.diagnostic('等待手机画面超时', { localPort: port })
       this.closeSocket(true)
-      this.setStatus('waiting', '尚未收到画面，请打开手机直播')
+      this.setStatus('waiting', '未收到手机画面，正在重连')
     }, this.dependencies.handshakeMs)
     socket.once('connect', () => {
       if (!isCurrent()) return
+      this.setStatus('waiting', '等待手机画面')
       this.dependencies.log('info', `[${this.driver.label}] 手机推流端口已连接`, { localPort: port })
       void this.writeControl(socket, { version: 1, requestId: randomUUID(), delivery: 'transactional', type: 'capabilities.get' }).catch((error: unknown) => {
         if (!isCurrent()) return

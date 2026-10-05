@@ -115,6 +115,58 @@ await test('valid frames enable controls; confirmed disconnect notifies once and
   assert.equal(current.commands.some((command) => command.includes('--remove-all') || command.includes('kill-server')), false)
 })
 
+await test('an open port waits for valid media and timeout reconnects without claiming streaming', async () => {
+  const current = fixture({ handshakeMs: 50, retryMs: 100 })
+  try {
+    current.receiver.start()
+    await until(() => current.sockets.length === 1)
+    const socket = current.sockets[0]
+    socket.emit('connect')
+    assert.equal(current.receiver.status().message, '等待手机画面')
+    assert.equal(current.receiver.status().state, 'waiting')
+    assert.equal(current.receiver.status().controlReady, false)
+    socket.emit('data', Buffer.from('invalid input'))
+    await until(() => socket.destroyed)
+    assert.equal(current.receiver.status().message, '未收到手机画面，正在重连')
+    assert.equal(current.disconnections(), 0)
+    await until(() => current.sockets.length === 2)
+    current.sockets[1].emit('connect')
+    current.sockets[1].emit('data', frame(0x20, Buffer.from([0, 0, 0, 1, 0x26, 1])))
+    assert.equal(current.receiver.status().state, 'streaming')
+  } finally { await current.receiver.stop() }
+})
+
+await test('a lost forwarding rule is recreated even when the same phone stays detected', async () => {
+  let forwards = 0
+  const ports = []
+  const sockets = []
+  const current = fixture({
+    run: async (args) => {
+      if (args[0] === 'devices') return 'PHONE device'
+      if (args.includes('tcp:0')) return String(12345 + forwards++)
+      // Simulate the driver dropping the old rule without losing device discovery.
+      if (args.includes('--list')) return ''
+      return ''
+    },
+    connect: ({ port }) => {
+      ports.push(port)
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+  })
+  try {
+    current.receiver.start()
+    await until(() => ports.length === 1)
+    sockets[0].emit('error', new Error('ECONNREFUSED'))
+    await until(() => ports.length === 2)
+    assert.deepEqual(ports, [12345, 12346])
+    sockets[1].emit('connect')
+    sockets[1].emit('data', frame(0x20, Buffer.from([0, 0, 0, 1, 0x26, 1])))
+    assert.equal(current.receiver.status().state, 'streaming')
+  } finally { await current.receiver.stop() }
+})
+
 await test('stop during forward creation rolls back the late result without opening a socket', async () => {
   let release
   let forwarding = false
