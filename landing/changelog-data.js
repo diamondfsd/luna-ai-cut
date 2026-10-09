@@ -2,6 +2,24 @@
 // 用法: node landing/generate-changelog.cjs
 const CHANGELOG_DATA = [
   {
+    "version": "1.9.3",
+    "title": "v1.9.3 - 直播连接修复",
+    "bodyHtml": "<h3>修复</h3>\n<ul>\n<li>修复手机短暂断开（切换到其他应用、USB 瞬断或手机端重试）时电脑直接结束画面接收的问题。现在会保留直播窗口和当前连接等待手机恢复，恢复后自动继续；约 30 秒内未恢复才停止。</li>\n<li>修复直播启动或停止失败后连接未完全释放、无法重新开始的问题。</li>\n</ul>\n<h3>改进</h3>\n<ul>\n<li>直播控制台新增“重试”，等待手机、连接异常或画面无法显示时可直接重新开始。</li>\n<li>出错后重新开始会先结束上一次连接，不再停留在旧的失败状态。</li>\n<li>连接指引更新为“打开 Luna 咔，连接相机，并停留在拍摄页”，与手机端自动开始推流的行为一致。</li>\n</ul>\n<p>\nmacOS（Apple Silicon、Intel）与 Windows 统一更新至 v1.9.3。\n</p>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.9.2",
+    "title": "v1.9.2 - 连接与更新修复",
+    "bodyHtml": "<h3>修复</h3>\n<ul>\n<li>修复安卓、鸿蒙手机连接失败后无法恢复的问题。</li>\n<li>修正手机已连接时的等待画面提示。</li>\n<li>修复热更新重启后可能未生效、再次提示更新的问题。</li>\n</ul>\n<p>\nmacOS（Apple Silicon、Intel）与 Windows 统一更新至 v1.9.2。\n</p>",
+    "isHotfix": false
+  },
+  {
+    "version": "1.9.1-hot.1",
+    "title": "v1.9.1-hot.1 - 热更新发布说明",
+    "bodyHtml": "<h3>修复</h3>\n<ul>\n<li>修复安卓、鸿蒙手机连接失败后重试仍使用失效端口的问题。</li>\n<li>修正手机推流端口连接后的等待画面提示。</li>\n</ul>",
+    "isHotfix": true
+  },
+  {
     "version": "1.9.1",
     "title": "v1.9.1 - macOS 修复版",
     "bodyHtml": "<h3>修复</h3>\n<ul>\n<li>修复部分 Mac 无法启动 iPhone 有线连接的问题。</li>\n<li>Apple Silicon 和 Intel 安装包均内置 iPhone 连接工具，无需另行安装。</li>\n</ul>\n<p>\n本次仅更新 macOS；Windows 继续使用 v1.9.0。\n</p>",
