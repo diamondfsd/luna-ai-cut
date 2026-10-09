@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react'
 import { inlineStartupVideo } from './scripts/vite-inline-startup-video'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+const electronEntryPaths = new Set([
+  path.resolve(__dirname, 'electron/main.ts'),
+  path.resolve(__dirname, 'electron/appMain.ts'),
+].map((entry) => entry.replaceAll('\\', '/')))
 
 function copyLocalShareAssets() {
   return {
@@ -78,8 +82,7 @@ export default defineConfig({
                 chunkFileNames: 'luna-[name].js',
                 onlyExplicitManualChunks: true,
                 manualChunks(id) {
-                  if (id === path.resolve(__dirname, 'electron/main.ts')
-                    || id === path.resolve(__dirname, 'electron/appMain.ts')) return
+                  if (electronEntryPaths.has(id.replaceAll('\\', '/'))) return
                   return 'runtime'
                 },
               },
