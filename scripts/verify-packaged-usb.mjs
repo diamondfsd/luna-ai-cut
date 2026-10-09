@@ -8,7 +8,8 @@ const { listPackage } = libraryRequire('@electron/asar')
 
 export function verifyPackagedUsb(resourcesDir, platform, arch) {
   const archivePath = join(resourcesDir, 'app.asar')
-  const files = new Set(listPackage(archivePath))
+  const normalizeArchivePath = (filePath) => `/${filePath.replaceAll('\\', '/').replace(/^\/+/, '')}`
+  const files = new Set(listPackage(archivePath).map(normalizeArchivePath))
   const required = [
     '/node_modules/usb/package.json',
     '/node_modules/usb/dist/usb/bindings.js',
