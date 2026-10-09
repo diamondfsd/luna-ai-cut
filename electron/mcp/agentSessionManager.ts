@@ -39,11 +39,11 @@ export class AgentSessionManager {
       })),
     }
   }
-  createRequest(request: string, projectId: string | null = null, purpose: AgentTaskPurpose = 'editing', directorPlanRef?: AiEditorAgentSession['directorPlanRef']): AiEditorAgentSession {
+  createRequest(request: string, projectId: string | null = null, purpose: AgentTaskPurpose = 'auto', directorPlanRef?: AiEditorAgentSession['directorPlanRef']): AiEditorAgentSession {
     const trimmed = request.trim()
     if (!trimmed) throw new Error('剪辑要求不能为空')
     if (this.session && ACTIVE_STATUSES.has(this.session.status)) {
-      if ((this.session.purpose ?? 'editing') !== purpose) throw new AgentSessionError('TASK_TYPE_CONFLICT', '请先完成或停止当前任务')
+      if ((this.session.purpose ?? 'auto') !== purpose) throw new AgentSessionError('TASK_TYPE_CONFLICT', '请先完成或停止当前任务')
       return this.updateRequest(this.session.sessionId, trimmed)
     }
     const timestamp = nowIso()
@@ -87,7 +87,7 @@ export class AgentSessionManager {
     const normalizedAgentModel = agentModel?.trim() || null
     const current = this.session
     if (current && ACTIVE_STATUSES.has(current.status)) {
-      if (purpose && purpose !== (current.purpose ?? 'editing')) throw new AgentSessionError('TASK_TYPE_CONFLICT', '当前任务类型不同，请先完成或停止当前任务')
+      if (purpose && purpose !== (current.purpose ?? 'auto')) throw new AgentSessionError('TASK_TYPE_CONFLICT', '当前任务类型不同，请先完成或停止当前任务')
       const sameRequest = current.request === trimmed
       const sameAgent = !normalizedAgentId || !current.agentId || current.agentId === normalizedAgentId
       if (sameRequest && sameAgent) {
@@ -99,7 +99,7 @@ export class AgentSessionManager {
       }
       throw new AgentSessionError('SESSION_ALREADY_ACTIVE', '已有其他剪辑任务正在执行，请先完成或停止当前任务')
     }
-    const created = this.createRequest(trimmed, projectId, purpose ?? 'editing')
+    const created = this.createRequest(trimmed, projectId, purpose ?? 'auto')
     if (created.status !== 'queued') {
       if (this.session?.agentId === normalizedAgentId) {
         return { ok: true, state: 'claimed', session: copySession(this.session) }
@@ -111,13 +111,13 @@ export class AgentSessionManager {
     return claimed
   }
   selectWorkflow(sessionId: string, revision: number, purpose: Exclude<AgentTaskPurpose, 'auto'>): AiEditorAgentSession {
-    if (!['editing', 'director-plan'].includes(purpose)) throw new AgentSessionError('INVALID_PARAMS', '处理流程无效')
+    if (!['shooting', 'footage-creation', 'editing-workspace'].includes(purpose)) throw new AgentSessionError('INVALID_PARAMS', '处理流程无效')
     const gate = this.gate(sessionId, revision)
     if (!gate.allowed) throw new AgentSessionError(gate.error?.code ?? 'SESSION_NOT_ACTIVE', gate.error?.message ?? '任务不可用')
-    const currentPurpose = gate.session.purpose ?? 'editing'
+    const currentPurpose = gate.session.purpose ?? 'auto'
     if (currentPurpose !== 'auto' && currentPurpose !== purpose) throw new AgentSessionError('TASK_TYPE_CONFLICT', '当前任务已选择其他处理流程')
     if (currentPurpose === purpose) return copySession(gate.session)
-    this.session = { ...gate.session, purpose, projectId: purpose === 'director-plan' ? null : gate.session.projectId, updatedAt: nowIso() }
+    this.session = { ...gate.session, purpose, projectId: gate.session.projectId, updatedAt: nowIso() }
     this.emit({ type: 'progress', session: this.session, message: '已选择处理流程' })
     return copySession(this.session)
   }

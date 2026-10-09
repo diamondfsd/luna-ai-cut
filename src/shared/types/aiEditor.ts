@@ -1,29 +1,6 @@
 import type { DirectorLanShot, DirectorLanTake } from './directorLab'
-import type { WorkspaceMediaAsset } from './workspace'
 import type { WorkspaceSubtitleTranscriptionResult } from './subtitles'
-
-export interface AiEditorFileFilter {
-  name: string
-  extensions: string[]
-}
-
-export interface AiEditorFileDialogOptions {
-  defaultPath?: string
-  filters?: AiEditorFileFilter[]
-}
-
-export interface AiEditorProjectSnapshot {
-  projectId: string
-  projectName: string
-  editorDocument: string | null
-}
-
-export interface AiEditorProjectSummary {
-  projectId: string
-  projectName: string
-  createdAt: string
-  updatedAt: string
-}
+import type { AiEditorProjectApi, FootageSelectionProjectApi } from './aiEditing'
 
 export interface GeneratedMusicTiming {
   source: 'generated-score'
@@ -72,6 +49,7 @@ export interface AiEditorLocalMedia {
 export interface AiEditorLocalMediaQuery {
   planId?: string
   limit?: number
+  offset?: number
   from?: string
   to?: string
   kind?: 'image' | 'video' | 'audio'
@@ -236,22 +214,6 @@ export interface AiEditorMcpContent {
   mimeType?: string
 }
 
-export interface AiEditorProjectApi {
-  list(): Promise<AiEditorProjectSummary[]>
-  create(name: string, assets?: WorkspaceMediaAsset[]): Promise<AiEditorProjectSummary>
-  load(projectId: string): Promise<AiEditorProjectSnapshot>
-  save(projectId: string, editorDocument: string): Promise<void>
-  delete(projectId: string): Promise<void>
-  rename(projectId: string, name: string): Promise<AiEditorProjectSummary>
-}
-
-export interface AiEditorMcpRequest {
-  callId: string
-  kind: 'listTools' | 'callTool'
-  name?: string
-  args?: Record<string, unknown>
-}
-
 export interface AiEditorMcpResponse {
   ok: boolean
   result?: unknown
@@ -295,7 +257,7 @@ export type AiEditorAgentPhase =
   | 'failed'
   | 'cancelled'
 
-export type AgentTaskPurpose = 'auto' | 'editing' | 'director-plan'
+export type AgentTaskPurpose = 'auto' | 'shooting' | 'footage-creation' | 'editing-workspace'
 
 export interface AiEditorAgentSession {
   directorPlanRef?: { planId: string; signature: string }
@@ -368,12 +330,6 @@ export interface AiEditorAgentApi {
   onActivate(callback: () => void): () => void
 }
 
-export interface AiEditorMcpApi {
-  onRequest(callback: (request: AiEditorMcpRequest) => Promise<AiEditorMcpResponse>): () => void
-  getLauncherPath(): Promise<string | null>
-  getHttpConnection(): Promise<AiEditorHttpConnection | null>
-}
-
 export interface AiEditorHttpConnection {
   baseUrl: string
   skillUrl: string
@@ -385,9 +341,13 @@ export interface AiEditorHttpConnection {
 
 export interface AiEditorFileApi {
   onOpenProject(callback: (projectId: string | null) => void): () => void
-  openWindow(assets?: WorkspaceMediaAsset[]): Promise<void>
+  openWindow(mediaIds?: string[]): Promise<void>
+  resolveLocalMediaIds(paths: string[]): Promise<string[]>
+  exportProject(projectId: string): Promise<string | null>
+  listFilters(): Promise<Array<{ id: string; name: string; path: string }>>
+  listWatermarks(): Promise<Array<{ id: string; name: string; path: string; width: number; height: number }>>
   project: AiEditorProjectApi
-  mcp: AiEditorMcpApi
+  footageSelection: FootageSelectionProjectApi
   agent: AiEditorAgentApi
   listLocalMedia(query?: AiEditorLocalMediaQuery): Promise<AiEditorLocalMedia[]>
   getLocalMedia(mediaId: string): Promise<AiEditorLocalMedia>
@@ -397,15 +357,4 @@ export interface AiEditorFileApi {
   createMediaContactSheet(mediaIds: string[], options?: AiEditorLocalMediaContactSheetOptions): Promise<AiEditorLocalMediaContactSheetResult>
   transcribeLocalMedia(mediaId: string, options?: AiEditorLocalMediaTranscriptionOptions): Promise<AiEditorLocalMediaTranscriptionResult>
   transcribeAudioSamples(samples: Float32Array, options?: AiEditorLocalMediaTranscriptionOptions): Promise<AiEditorLocalMediaTranscriptionResult>
-  showSaveDialog(options: AiEditorFileDialogOptions): Promise<string | null>
-  showOpenDialog(options: AiEditorFileDialogOptions): Promise<string | null>
-  readFile(filePath: string): Promise<string>
-  readFileBytes(filePath: string): Promise<ArrayBuffer>
-  tempFilePath(extension: string): Promise<string>
-  writeFile(filePath: string, data: string): Promise<void>
-  openWrite(filePath: string): Promise<string>
-  writeChunk(handleId: string, data: ArrayBuffer | Uint8Array, position: number): Promise<void>
-  closeWrite(handleId: string): Promise<void>
-  abortWrite(handleId: string): Promise<void>
-  revealInFolder(filePath: string): Promise<void>
 }

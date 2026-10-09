@@ -8,7 +8,7 @@ export function register(context: import('./context').IpcContext): void {
   ipcMain.handle('external-agent:open-chat', (_event, input: unknown) => {
     if (!input || typeof input !== 'object') throw new Error('任务无效')
     const value = input as import('../../src/shared/types/agentChat').AgentChatContext
-    if ((value.purpose !== undefined && !['auto', 'editing', 'director-plan'].includes(value.purpose))
+    if ((value.purpose !== undefined && !['auto', 'shooting', 'footage-creation', 'editing-workspace'].includes(value.purpose))
       || (value.request !== undefined && (typeof value.request !== 'string' || value.request.length > 100_000))
       || (value.projectId != null && typeof value.projectId !== 'string')) throw new Error('任务无效')
     const window = context.win

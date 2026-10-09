@@ -15,7 +15,7 @@
 - 写入保持原子提交、并发保护和幂等行为。调用方不能绕过领域路径及授权范围校验。
 - 本地计划删除通过 `deleteLocalDirectorPlan` 串行校验目录与内容版本，移入系统废纸篓；不删除手机原计划。回归见 `scripts/test-director-local-plan-deletion.mjs`。
 - 本地计划编辑不隐式同步手机、不移动或删除素材、不创建剪辑项目。计划到剪辑的绑定仍属待实现流程，不能从架构文档推断已支持。
-- Agent 任务使用 `purpose=director-plan`。工具适配当前位于 `electron/mcp/directorPlanTools.ts`，通过应用注册表接入；新业务继续按领域模块规则组织。
+- Agent 拍摄计划任务使用 `purpose=shooting`。工具适配当前位于 `electron/mcp/directorPlanTools.ts`，通过应用注册表接入；新业务继续按领域模块规则组织。
 
 工具与服务索引：[本机服务](../../mcp/README.md)。
 非界面回归：`scripts/test-director-agent-tools.mjs`、`scripts/test-director-lab-plan-storage.mjs`；涉及素材同步时选择 `scripts/test-director-material-sync.mjs`。

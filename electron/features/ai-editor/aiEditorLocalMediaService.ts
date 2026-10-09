@@ -62,6 +62,12 @@ function normalizeLimit(value: number | undefined): number {
   return Math.min(value, 500)
 }
 
+function normalizeOffset(value: number | undefined): number {
+  if (value === undefined) return 0
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) throw new Error('素材起始位置无效')
+  return value
+}
+
 async function listLocalMediaFiles(): Promise<LocalMediaFile[]> {
   const settings = await getSettings()
   const root = path.resolve(getLocalResourcesDir(settings))
@@ -200,7 +206,8 @@ export async function listAiEditorLocalMedia(query: AiEditorLocalMediaQuery = {}
     if (to !== null && timestamp > to) return false
     return true
   })
-  return filtered.slice(0, normalizeLimit(query.limit)).map(publicMedia)
+  const offset = normalizeOffset(query.offset)
+  return filtered.slice(offset, offset + normalizeLimit(query.limit)).map(publicMedia)
 }
 
 export async function getAiEditorLocalMedia(mediaId: string): Promise<LocalMediaFile> {
@@ -232,6 +239,16 @@ export async function getAiEditorLocalMediaFiles(mediaIds: readonly string[]): P
     if (!file) throw new Error('本地素材不存在或已被移除，请重新调用 list_local_media')
     return file
   })
+}
+
+export async function resolveAiEditorLocalMediaPaths(filePaths: readonly string[]): Promise<string[]> {
+  if (!Array.isArray(filePaths) || filePaths.length > 500
+    || filePaths.some((value) => typeof value !== 'string' || !path.isAbsolute(value))) {
+    throw new Error('素材路径列表无效')
+  }
+  const files = [...await listLocalMediaFiles(), ...await listGeneratedMusicFiles()]
+  const mediaByPath = new Map(files.map((file) => [path.resolve(file.filePath), file.mediaId]))
+  return [...new Set(filePaths.map((filePath) => mediaByPath.get(path.resolve(filePath))).filter((id): id is string => Boolean(id)))]
 }
 
 export async function readAiEditorLocalMediaBytes(mediaId: string): Promise<ArrayBuffer> {

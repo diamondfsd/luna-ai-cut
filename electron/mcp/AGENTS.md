@@ -11,10 +11,10 @@
 - 领域指引通过模块 skills 注册；list_agent_skills/get_agent_skill 提供实时清单/全文，发现服务归 agent-skills。Markdown 端点仅兼容。用户不选择功能，Agent 通过 agent-workflows 选择执行流程；禁止在 RPC 判断自然语言或新增分类分支。
 - 工具清单和 OpenAPI 从注册表派生，不再维护第二份手工清单。工具名必须唯一；已注册工具未被处理时必须报错，不得落入其他领域。
 - 输入 schema 只用于发现，执行器仍须校验参数、授权范围、session/revision 和取消状态。`allowedPurposes` 不能替代领域内写入校验。
-- `lunaEditorToolModule.ts` 的 fallback 仅兼容现有动态 iframe 工具，未来领域不得借此接入。剪辑导出确认和过期请求校验必须留在剪辑领域。
+- 不提供 renderer 动态工具 fallback。新领域必须以本机 `LunaToolModule` 注册；剪辑写入/导出权限与过期请求校验留在剪辑领域。
 - auto 任务领取不激活剪辑，选择流程前禁止剪辑、音乐及计划写入；导演计划任务不激活剪辑窗口，不允许剪辑或音乐操作；不要依靠提示词代替服务端隔离。
 - 发现文件是最新地址的稳定入口。更新指引或地址契约时同步检查 HTTP、stdio、提示词及发现文件生命周期，不固定端口、不扫描端口。
-- 当前 `AiEditor*` 公共名称属于兼容契约；公共命名迁移应单独处理，不能顺便破坏 IPC 或 iframe。
+- 当前 `AiEditor*` 公共名称属于旧共享契约；公共命名迁移应与业务工具模块拆分开。
 
 ## 验证索引
 

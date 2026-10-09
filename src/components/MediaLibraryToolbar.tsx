@@ -112,20 +112,20 @@ export function MediaLibraryToolbar({ mode, currentDate }: MediaLibraryToolbarPr
     navigate('/ai-selection', { state: { paths, label: selectedScope ? `已选 ${paths.length} 个素材` : `本地资源 ${paths.length} 个素材` } })
   }
 
-  function openAiEditor(files = ctrl.selectedFiles): void {
-    const media = files
+  async function openAiEditor(files = ctrl.selectedFiles): Promise<void> {
+    const paths = files
       .filter((file) => (file.kind === 'image' || file.kind === 'video'))
       .map((file) => {
         const path = file.localPath ?? file.downloadFilePath ?? file.cacheFilePath ?? ''
-        if (!path) return null
-        return { path, name: file.name, kind: file.kind as 'image' | 'video' }
+        return path || null
       })
-      .filter((file): file is NonNullable<typeof file> => Boolean(file))
-    void window.luna.aiEditor.openWindow(media.map((item) => ({
-      ...item,
-      id: `${item.path}:${item.name}`,
-      thumbnailUrl: null,
-    })))
+      .filter((path): path is string => Boolean(path))
+    try {
+      const mediaIds = await window.luna.aiEditor.resolveLocalMediaIds(paths)
+      await window.luna.aiEditor.openWindow(mediaIds)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '打开 AI 剪辑失败')
+    }
   }
 
   async function handleCreateProject(): Promise<void> {

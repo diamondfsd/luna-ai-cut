@@ -17,7 +17,7 @@ export function createAgentTaskCoordinator(options: {
   return async (agentId: string, input: AgentTaskInput, copyOnly = false) => {
     if (busy) throw new Error('正在发起任务，请稍后')
     if (!input || typeof input.request !== 'string' || !input.request.trim() || input.request.length > 6000
-      || (input.purpose !== undefined && !['auto', 'editing', 'director-plan'].includes(input.purpose))
+      || (input.purpose !== undefined && !['auto', 'shooting', 'footage-creation', 'editing-workspace'].includes(input.purpose))
       || (input.directorPlanId !== undefined && (typeof input.directorPlanId !== 'string' || !input.directorPlanId.trim() || input.directorPlanId.length > 128))
       || (input.projectId != null && typeof input.projectId !== 'string')) throw new Error('任务要求无效')
     const purpose = input.purpose ?? 'auto'
@@ -32,7 +32,7 @@ export function createAgentTaskCoordinator(options: {
       const planRef = input.directorPlanId ? await options.resolveDirectorPlan?.(input.directorPlanId) : undefined
       if (input.directorPlanId && !planRef) throw new Error('拍摄计划不存在或未下载')
       const connection = await options.connection()
-      const session = options.manager.createRequest(input.request, purpose !== 'director-plan' ? input.projectId ?? null : null, purpose, planRef)
+      const session = options.manager.createRequest(input.request, input.projectId ?? null, purpose, planRef)
       sessionId = session.sessionId
       const base = buildAssistantAgentPrompt(connection, input.request)
       const prompt = `${base}\n\nLuna 已创建任务：sessionId=${session.sessionId}，purpose=${purpose}，revision=${session.revision}。请按技能工具返回的公共指引领取此任务并核对编号，不要新建其他任务。${session.projectId ? `上下文项目 ID：${JSON.stringify(session.projectId)}；仅当所选流程需要剪辑时通过工具确认并打开。` : ''}`

@@ -1,6 +1,6 @@
 export const MEMORY_SKILL = `# Luna application memory
 
-Use for saving, recalling, correcting or forgetting user context, preferences, project decisions and provisional analysis across Luna tasks. This is an application-level capability. It has no workflow: keep an auto task as auto, and do not open an editor or select editing/director-plan merely to use memory.
+Use for saving, recalling, correcting or forgetting user context, preferences, project decisions and provisional analysis across Luna tasks. This is an application-level capability. It has no workflow: keep an auto task as auto, and do not select shooting, footage-creation or editing-workspace merely to use memory.
 
 1. Claim and verify the handed-over task using the common task guidance. Read its exact request and current revision. All memory tools require sessionId/revision and work without the editor.
 2. For a request to remember a clear statement, use save_memory directly. Set kind=user-context for background such as the user's real footage/screen recordings/AI-generated audio. Use kind=preference only for an explicitly stated preference; a production method does not imply a style preference. Use scope=user for reusable context; this one project's decisions use scope=project and require its project association.

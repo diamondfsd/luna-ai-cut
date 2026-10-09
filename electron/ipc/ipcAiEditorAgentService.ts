@@ -17,8 +17,6 @@ function requireRequest(value: unknown): string {
 }
 
 export function activateAgentWindow(context: IpcContext): void {
-  const purpose = agentSessionManager.snapshot().session?.purpose
-  if (purpose && purpose !== 'editing') return
   const window = context.win
   if (!window || window.isDestroyed()) throw new Error('Luna AI Cut 窗口不可用')
   for (const target of BrowserWindow.getAllWindows()) {

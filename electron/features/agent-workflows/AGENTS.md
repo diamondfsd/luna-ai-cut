@@ -8,7 +8,7 @@
 - auto 任务领取不打开编辑器；未选择时禁止剪辑、音乐与导演计划写入。只读发现可用于判断。服务端隔离不依赖提示词。
 - `update_task_request` 只记录外部对话中用户实际提供的新要求，不能替用户改写意图。检查会话和 revision；成功后 Agent 必须 get_edit_request，旧导出确认须失效。首次原始存档保持不变。
 - 新指引使用安全且唯一的 skill id；`index` 保留给统一索引，不能覆盖。声明技能不等于授予写入权限。
-- 目前可选执行流程为 editing 和 director-plan；未来新增执行流程需同步公共契约、会话、策略和本领域工具 schema，不能新增用户功能下拉。
+- 目前可选执行流程为 shooting、footage-creation 和 editing-workspace；新增流程需同步公共契约、会话、策略和本领域工具 schema，不能新增用户功能下拉。
 - 选择流程后的结果引导直接执行已读技能，不强制重新查清单；缺失工具/技能时诚实报告能力不足，不改写用户目标、猜路径、调用未列出的工具或反复等待。/skill.md 保持全应用范围。
 
 回归：`scripts/test-luna-tool-modules.mjs`、`scripts/test-agent-conversations.mjs`。不启动 UI 验收或构建。

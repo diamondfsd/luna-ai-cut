@@ -1,3 +1,5 @@
+import { externalAgentApi } from './preloadExternalAgent'
+import { aiEditorApi } from './preloadAiEditor'
 import { ipcRenderer, contextBridge, webUtils } from 'electron'
 import type {
   AppSettings,
@@ -10,6 +12,8 @@ import type {
   ExportFileInput,
   ExportProgress,
   HotUpdateCheckResult,
+  LivePreviewWindowSettings,
+  LiveWindowResolution,
   LunaApi,
   LunaFile,
   NetworkDiagnosticsResult,
@@ -19,6 +23,10 @@ import type {
   WorkspaceObjectRemovalRequest,
   VideoExportSettings,
   DolbyVisionWatermarkExportRequest,
+  DirectorLabDownloadRequest,
+  LunaKaChannelMessageEvent,
+  LunaKaChannelStatusEvent,
+  LunaKaHttpRequestOptions,
   CustomWatermarkAsset,
   WatermarkSettings,
   DjiBluetoothRendererEvent,
@@ -29,7 +37,11 @@ import type {
   WifiPortCheckOptions,
   ExportTaskRecord,
   OriginalFileExportRequest,
-  AiEditorFileApi,
+  NasSyncEnqueueResult,
+  NasRemoteFile,
+  NasSyncProbeResult,
+  NasSyncSettings,
+  NasSyncStatus,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -37,21 +49,18 @@ interface ExportItemInput {
   sourcePath: string
   outputPath: string
 }
-
 interface ExportItemUpdate {
   progress?: number
   status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
   error?: string
   destinationPath?: string
 }
-
 interface WebGpuVideoProbeResult {
   duration: number | null
   fps: number | null
   width: number | null
   height: number | null
 }
-
 interface LunaExportTaskApi {
   create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
   addItems(taskId: string, items: ExportItemInput[]): Promise<void>
@@ -64,29 +73,49 @@ interface LunaExportTaskApi {
 
 const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   isPackaged: ipcRenderer.sendSync('app:is-packaged') === true,
-  startupReady: () => ipcRenderer.send('luna:startup-ready'),
-  aiEditor: {
-    project: {
-      list: () => ipcRenderer.invoke('ai-editor:list-projects'),
-      create: (name, assets) => ipcRenderer.invoke('ai-editor:create-project', name, assets),
-      load: (projectId) => ipcRenderer.invoke('ai-editor:load-project', projectId),
-      save: (projectId, editorDocument) => ipcRenderer.invoke('ai-editor:save-project', projectId, editorDocument),
-      delete: (projectId) => ipcRenderer.invoke('ai-editor:delete-project', projectId),
-      rename: (projectId, name) => ipcRenderer.invoke('ai-editor:rename-project', projectId, name),
+  lunaKaHttpClient: {
+    connect: (endpoint: string) => ipcRenderer.invoke('luna-ka-http-client:connect', endpoint),
+    request: <T,>(endpoint: string, requestPath: string, options?: LunaKaHttpRequestOptions) =>
+      ipcRenderer.invoke('luna-ka-http-client:request', endpoint, requestPath, options) as Promise<T>,
+    connectChannel: (endpoint: string) => ipcRenderer.invoke('luna-ka-http-client:channel:connect', endpoint),
+    sendChannelMessage: (endpoint: string, message: unknown) =>
+      ipcRenderer.invoke('luna-ka-http-client:channel:send', endpoint, message),
+    disconnectChannel: (endpoint: string) =>
+      ipcRenderer.invoke('luna-ka-http-client:channel:disconnect', endpoint),
+    onChannelMessage: (callback: (event: LunaKaChannelMessageEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: LunaKaChannelMessageEvent): void => callback(payload)
+      ipcRenderer.on('luna-ka-http-client:channel:message', listener)
+      return () => ipcRenderer.off('luna-ka-http-client:channel:message', listener)
     },
-    showSaveDialog: (options) => ipcRenderer.invoke('ai-editor:show-save-dialog', options),
-    showOpenDialog: (options) => ipcRenderer.invoke('ai-editor:show-open-dialog', options),
-    readFile: (filePath) => ipcRenderer.invoke('ai-editor:read-file', filePath),
-    readFileBytes: (filePath) => ipcRenderer.invoke('ai-editor:read-file-bytes', filePath),
-    tempFilePath: (extension) => ipcRenderer.invoke('ai-editor:temp-file-path', extension),
-    writeFile: (filePath, data) => ipcRenderer.invoke('ai-editor:write-file', filePath, data),
-    openWrite: (filePath) => ipcRenderer.invoke('ai-editor:open-write', filePath),
-    writeChunk: (handleId, data, position) => ipcRenderer.invoke('ai-editor:write-chunk', handleId, data, position),
-    closeWrite: (handleId) => ipcRenderer.invoke('ai-editor:close-write', handleId),
-    abortWrite: (handleId) => ipcRenderer.invoke('ai-editor:abort-write', handleId),
-    revealInFolder: (filePath) => ipcRenderer.invoke('ai-editor:reveal-in-folder', filePath),
-  } satisfies AiEditorFileApi,
+    onChannelStatus: (callback: (event: LunaKaChannelStatusEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: LunaKaChannelStatusEvent): void => callback(payload)
+      ipcRenderer.on('luna-ka-http-client:channel:status', listener)
+      return () => ipcRenderer.off('luna-ka-http-client:channel:status', listener)
+    },
+  },
+  startupReady: () => ipcRenderer.send('luna:startup-ready'),
+  aiEditor: aiEditorApi,
+  externalAgent: externalAgentApi,
+  trackPageOpened: (path: string) => ipcRenderer.send('usage:page-opened', path),
+  trackLiveUsage: (message) => ipcRenderer.send('usage:live', message),
   setFullScreen: (enabled: boolean) => ipcRenderer.invoke('window:set-fullscreen', enabled),
+  setLiveWindowMode: (enabled: boolean, resolution?: LiveWindowResolution, sourceAspectRatio?: number) =>
+    ipcRenderer.invoke('window:set-live-mode', enabled, resolution, sourceAspectRatio),
+  onLiveWindowModeEnd: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('window:live-mode-ended', listener)
+    return () => ipcRenderer.off('window:live-mode-ended', listener)
+  },
+  updateLivePreviewWindowSettings: (settings: LivePreviewWindowSettings) =>
+    ipcRenderer.send('live-preview-window:update-settings', settings),
+  getLivePreviewWindowSettings: () => ipcRenderer.invoke('live-preview-window:get-settings'),
+  onLivePreviewWindowSettings: (callback: (settings: LivePreviewWindowSettings) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, settings: LivePreviewWindowSettings): void => callback(settings)
+    ipcRenderer.on('live-preview-window:settings', listener)
+    return () => ipcRenderer.off('live-preview-window:settings', listener)
+  },
+  resizeLivePreviewWindow: (sourceAspectRatio: number) =>
+    ipcRenderer.invoke('live-preview-window:resize', sourceAspectRatio),
   onFullScreenChange: (callback: (isFullScreen: boolean) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, isFullScreen: boolean): void => callback(isFullScreen)
     ipcRenderer.on('window:fullscreen-changed', listener)
@@ -103,12 +132,14 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   exportDiagnosticsBundle: () => ipcRenderer.invoke('log:export-bundle'),
   clearLogs: () => ipcRenderer.invoke('log:clear'),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  copyText: (text: string) => ipcRenderer.invoke('clipboard:write-text', text),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('settings:save', settings),
   listDevices: () => ipcRenderer.invoke('devices:list'),
   chooseBaseDir: () => ipcRenderer.invoke('settings:chooseBaseDir'),
   chooseLocalResourcesDir: () => ipcRenderer.invoke('settings:chooseLocalResourcesDir'),
   chooseExportDir: () => ipcRenderer.invoke('settings:chooseExportDir'),
+  chooseDirectorPlanDir: () => ipcRenderer.invoke('settings:chooseDirectorPlanDir'),
   chooseTransferDirectory: (kind: 'download' | 'export', defaultPath?: string) => ipcRenderer.invoke('settings:chooseTransferDirectory', kind, defaultPath),
   chooseLutDir: () => ipcRenderer.invoke('settings:chooseLutDir'),
   chooseMockMediaDir: () => ipcRenderer.invoke('settings:chooseMockMediaDir'),
@@ -159,14 +190,17 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   cameraVideoStream: {
     start: (options) => ipcRenderer.invoke('camera-video-stream:start', options),
     stop: (options) => ipcRenderer.invoke('camera-video-stream:stop', options),
-    startObs: (options) => ipcRenderer.invoke('camera-video-stream:start-obs', options),
-    stopObs: (options) => ipcRenderer.invoke('camera-video-stream:stop-obs', options),
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
   },
-  obsStreamDemo: {
-    status: () => ipcRenderer.invoke('obs-stream-demo:status'),
-    start: () => ipcRenderer.invoke('obs-stream-demo:start'),
-    stop: () => ipcRenderer.invoke('obs-stream-demo:stop'),
+  liveStream: {
+    setAndroidConnectionMode: (mode) => ipcRenderer.invoke('live-stream:set-android-mode', mode),
+    installAppleDriver: () => ipcRenderer.invoke('live-stream:install-apple-driver'),
+    status: () => ipcRenderer.invoke('live-stream:status'),
+    start: () => ipcRenderer.invoke('live-stream:start'),
+    startCapture: () => ipcRenderer.invoke('live-stream:start-capture'),
+    stopCapture: () => ipcRenderer.invoke('live-stream:stop-capture'),
+    sendControl: (command) => ipcRenderer.invoke('live-stream:send-control', command),
+    stop: () => ipcRenderer.invoke('live-stream:stop'),
   },
   connectDevice: (options?: DeviceConnectOptions) => ipcRenderer.invoke('device:connect', options),
   checkConnection: (host?: string) => ipcRenderer.invoke('luna:checkConnection', host),
@@ -207,6 +241,37 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     addFiles: (filePaths: string[]) => ipcRenderer.invoke('local-media-share:add-files', filePaths),
     removeFile: (filePath: string) => ipcRenderer.invoke('local-media-share:remove-file', filePath),
   },
+  directorLab: {
+    discover: () => ipcRenderer.invoke('director-lab:discover'),
+    download: (request: DirectorLabDownloadRequest) => ipcRenderer.invoke('director-lab:download', request),
+    downloadPlan: (request) => ipcRenderer.invoke('director-lab:download-plan', request),
+    listLocalPlans: () => ipcRenderer.invoke('director-lab:list-local-plans'),
+    reconcilePlanDeletions: (endpoint, planIds) => ipcRenderer.invoke('director-lab:reconcile-plan-deletions', endpoint, planIds),
+    addLocalShot: (plan, shot) => ipcRenderer.invoke('director-lab:add-local-shot', plan, shot),
+    importShots: (plan, text) => ipcRenderer.invoke('director-lab:import-shots', plan, text),
+    importPlan: () => ipcRenderer.invoke('director-lab:import-plan'),
+    importPlanText: (text) => ipcRenderer.invoke('director-lab:import-plan-text', text),
+    saveLocalPlan: (plan, expectedSignature) => ipcRenderer.invoke('director-lab:save-local-plan', plan, expectedSignature),
+    importMaterials: (plan, shotId) => ipcRenderer.invoke('director-lab:import-materials', plan, shotId),
+    deleteLocalPlan: (planId, signature) => ipcRenderer.invoke('director-lab:delete-local-plan', planId, signature),
+    deleteLocalMaterial: (planId, takeId) => ipcRenderer.invoke('director-lab:delete-local-material', planId, takeId),
+    syncMaterials: (endpoint, planId, operationId) => ipcRenderer.invoke('director-lab:sync-materials', endpoint, planId, operationId),
+    onMaterialSyncProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorMaterialSyncProgress): void => callback(progress)
+      ipcRenderer.on('director-lab:material-sync-progress', listener)
+      return () => ipcRenderer.off('director-lab:material-sync-progress', listener)
+    },
+    acknowledgeLocalPlan: (remote, signature) => ipcRenderer.invoke('director-lab:acknowledge-local-plan', remote, signature),
+    prepareThumbnail: (url, positionMs) => ipcRenderer.invoke('director-lab:prepare-thumbnail', url, positionMs),
+    reconcileLocalPlan: (plan, resolveConflict) => ipcRenderer.invoke('director-lab:reconcile-local-plan', plan, resolveConflict),
+    onDownloadProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/shared/types').DirectorLabDownloadProgress): void => callback(progress)
+      ipcRenderer.on('director-lab:download-progress', listener)
+      return () => ipcRenderer.off('director-lab:download-progress', listener)
+    },
+    preparePreview: (request) => ipcRenderer.invoke('director-lab:prepare-preview', request),
+    probeMedia: (requests) => ipcRenderer.invoke('director-lab:probe-media', requests),
+  },
   getDownloadedRecords: (files: LunaFile[]) => ipcRenderer.invoke('downloads:records', files),
   revealFile: (filePath: string) => ipcRenderer.invoke('files:reveal', filePath),
   openPath: (targetPath: string) => ipcRenderer.invoke('files:openPath', targetPath),
@@ -214,6 +279,23 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
   copyFilesToDirectory: (filePaths: string[]) => ipcRenderer.invoke('files:copy-to-directory', filePaths),
   openPhotosApp: () => ipcRenderer.invoke('files:openPhotosApp'),
   deleteLocalFiles: (filePaths: string[]) => ipcRenderer.invoke('files:deleteLocal', filePaths),
+  nasSync: {
+    getStatus: (): Promise<NasSyncStatus> => ipcRenderer.invoke('nas-sync:status'),
+    setDebugMode: (enabled: boolean): Promise<NasSyncSettings> => ipcRenderer.invoke('nas-sync:set-debug-mode', enabled),
+    getDebugLocalRoot: (): Promise<string | null> => ipcRenderer.invoke('nas-sync:get-debug-local-root'),
+    probe: (config?: NasSyncSettings): Promise<NasSyncProbeResult> => ipcRenderer.invoke('nas-sync:probe', config),
+    listFiles: (): Promise<NasRemoteFile[]> => ipcRenderer.invoke('nas-sync:list-files'),
+    syncFiles: (filePaths: string[]): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-files', filePaths),
+    syncLocalResources: (): Promise<NasSyncEnqueueResult> => ipcRenderer.invoke('nas-sync:sync-local-resources'),
+    retryFailed: (): Promise<number> => ipcRenderer.invoke('nas-sync:retry-failed'),
+    cancelPending: (): Promise<void> => ipcRenderer.invoke('nas-sync:cancel-pending'),
+    clearFinished: (): Promise<number> => ipcRenderer.invoke('nas-sync:clear-finished'),
+  },
+  onNasSyncProgress: (callback: (status: NasSyncStatus) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: NasSyncStatus): void => callback(status)
+    ipcRenderer.on('nas-sync:progress', listener)
+    return () => ipcRenderer.off('nas-sync:progress', listener)
+  },
   readExifModel: (localPath: string) => ipcRenderer.invoke('luna:readExifModel', localPath),
   getWatermarkPath: (style: string, kind: 'image' | 'video') => ipcRenderer.invoke('luna:getWatermarkPath', style, kind) as Promise<{ filePath: string; width: number; height: number }>,
   getBorderLogoPath: (logoId: string) => ipcRenderer.invoke('luna:getBorderLogoPath', logoId) as Promise<string>,
@@ -370,6 +452,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
 
   // ── 热更新 ──
   getHotUpdateVersion: () => ipcRenderer.invoke('hot-update:current-version'),
+  getAutomaticHotUpdate: () => ipcRenderer.invoke('hot-update:automatic-result'),
   checkForHotUpdates: () => ipcRenderer.invoke('hot-update:check'),
   applyHotUpdate: (info: HotUpdateCheckResult) => ipcRenderer.invoke('hot-update:apply', info),
   clearHotUpdate: () => ipcRenderer.invoke('hot-update:clear'),

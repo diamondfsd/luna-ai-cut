@@ -1,4 +1,5 @@
 import type { AiEditorMcpResponse } from '../../src/shared/types/aiEditor.ts'
+import type { AgentTaskPurpose } from '../../src/shared/types/aiEditor.ts'
 import type { LunaMcpServerOptions } from './lunaMcpProtocol.ts'
 
 export interface LunaToolDefinition {
@@ -9,7 +10,7 @@ export interface LunaToolDefinition {
 export interface LunaAgentSkill {
   id: string
   description: string
-  purpose?: 'editing' | 'director-plan'
+  purpose?: Exclude<AgentTaskPurpose, 'auto'>
   instructions: string
 }
 /** Domains own schemas, execution and task policies; transports never enumerate domain names. */

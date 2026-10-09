@@ -14,7 +14,7 @@
 流程：用户描述 → 协调器创建 auto 会话并先存档 → 外部 Agent 通过工具发现技能清单与全文 → 按公共指引领取/核对任务 → 阅读匹配技能全文 → 仅当该技能声明 workflow 且任务需要业务时 `select_task_workflow` → 直接按已读指引执行 → 上报进度/结果。
 用户只在输入区选择 Agent，不选择业务功能。Luna 不运行本地关键词分类器。
 
-剪辑还会通过 `list_editing_skills/get_editing_skill` 发现并读取风格、场景 Skill。注册一个新领域指引可自动进入索引，新增执行流程仍需明确服务端契约与准入规则。
+拍摄计划、素材创作和剪辑工程分别由 shooting、footage-creation、editing-workspace Skill 指引。注册一个新领域指引可自动进入索引，新增执行流程仍需明确服务端契约与准入规则。
 
 外部 Agent 后续沟通通过 `update_task_request` 记录用户要求；所有任务均沿用原 sessionId 继续；每次新要求递增 revision、取消旧导出确认，发现匹配技能后仅在该业务需要时选择流程。
 

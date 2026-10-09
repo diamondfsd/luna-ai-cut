@@ -67,8 +67,7 @@ function httpToolPayload(rpcResponse: JsonRpcResponse): Record<string, unknown> 
     }
   }
 
-  // The renderer bridge wraps its ToolResult in { ok, result }. HTTP callers
-  // receive the ToolResult directly while retaining session metadata and images.
+  // HTTP callers receive the domain result directly while retaining task context and images.
   const nested = asRecord(structured.result)
   const sessionContext = asRecord(asRecord(structured.data)?.lunaAgent)
   const payload = nested && typeof nested.ok === 'boolean'
@@ -151,12 +150,7 @@ async function handleHttpRequest(
       writeJson(response, 200, {
         ok: true,
         tools: catalog.tools,
-        meta: {
-          luna: {
-            editorToolsReady: catalog.editorToolsReady,
-            ...(catalog.message ? { message: catalog.message } : {}),
-          },
-        },
+        meta: { luna: { workflowSkills: '/skills/index.md' } },
       })
     } else {
       writeJson(response, 200, openApiDocument(baseUrl, catalog))

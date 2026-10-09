@@ -6,6 +6,7 @@
 
 本文件说明整体设计；实际修改时先读所属目录的 `AGENTS.md` 和索引。分层约束以目录规范为维护入口，不只保留在设计文档中。
 
+- [AI 导拍与剪辑工作台](director-plan-ai-editing-workflow.md)
 - [本机服务与工具注册](../electron/mcp/README.md)
 - [应用级记忆与个人空间设计](app-memory-architecture.md) / [记忆目录](../electron/features/memory/README.md) / [个人空间目录](../electron/features/agent-space/README.md)
 - [领域服务扩展](../electron/features/AGENTS.md)，现有领域：[导演计划](../electron/features/director-lab/AGENTS.md)、[音乐](../electron/features/music/AGENTS.md)
@@ -32,7 +33,7 @@
 ```
 
 - 协议层 `lunaMcpRpc.ts`：解析 MCP 请求、通用模块权限检查、路由、结果封装；不判断导演计划、音乐或剪辑工具名。
-- 组合入口 `lunaAppToolModules.ts`：注册任务会话、音乐、导演计划模块，应用装配注册独立记忆模块，接收未来 `toolModules` 扩展。现有动态 iframe 工具以剪辑领域 fallback 接入，权限与执行逻辑在 `lunaEditorToolModule.ts`；这是旧桥接契约的兼容边界，后续领域不要放进 fallback。
+- 组合入口 `lunaAppToolModules.ts`：注册任务会话、拍摄计划、素材标注、剪辑工程模块，应用装配注册独立记忆模块，接收未来 `toolModules` 扩展。所有 Agent 工具由主进程领域模块提供，不存在 renderer 动态工具 fallback。
 - 模块契约 `lunaToolModule.ts`：模块 ID、工具名称/说明/输入 schema、可选任务类型权限、执行器和 skills 元数据/全文。工具名重复时拒绝注册；已注册工具的执行器未处理请求时返回内部错误，不能误入剪辑桥接。
 - 领域层：拥有参数校验、会话/revision 校验、取消、资源访问及持久化规则。输入 schema 用于发现，不能替代领域层运行时校验。模块依赖领域服务，不依赖具体外部 Agent。
 - 应用适配器：安装探测、打开/下载能力、草稿或剪贴板交接。不能创建项目、导演计划或保存任务历史。
@@ -41,7 +42,7 @@
 - 自主分流领域：Agent 根据技能工具实际返回的用户需求相关 description、workflow 和全文选择 Skill；`select_task_workflow` 仅在匹配技能声明 workflow 且用户需要该业务时启用；无 workflow 的应用级技能直接执行。未选择不会进入剪辑；不在 Luna 做关键词分类。`update_task_request` 接收外部用户后续要求，旧确认和旧 revision 失效。
 - 会话和历史：会话用于当前执行、revision、取消与确认；历史用于跨重启回看。历史不是第三方聊天同步或长期用户记忆。
 
-当前共享类型沿用 `AiEditor*` 命名以保持 IPC 和 iframe 兼容，但 RPC 路由已不以编辑器为扩展中心。后续迁移公共命名应独立进行，不同时改动现有桥接契约。
+共享类型中部分接口保留 `AiEditor*` 命名以兼容 PC 公共 API；RPC 工具按拍摄计划、素材标注和剪辑工程领域注册。
 
 ## 新功能接入
 

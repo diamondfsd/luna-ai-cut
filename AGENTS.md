@@ -1,12 +1,31 @@
 # AGENTS.md
 
+## 全应用 Agent 架构索引
+
+修改外部 Agent、本机服务、聊天入口或新增 Agent 能力之前，先读取对应目录的规则。目录中的 `AGENTS.md` 是维护约束，`README.md` 是职责和文件索引；下表提供跨层入口。
+
+| 改动范围 | 规范与索引 |
+| --- | --- |
+| 全应用分层与扩展流程 | [架构设计](docs/app-agent-architecture.md) |
+| HTTP/MCP、工具注册和会话 | [服务索引](electron/mcp/README.md)、[服务规则](electron/mcp/AGENTS.md) |
+| 全应用技能发现与读取工具 | [技能工具索引](electron/features/agent-skills/README.md)、[维护规则](electron/features/agent-skills/AGENTS.md) |
+| Agent 自主选技能与执行流程 | [流程索引](electron/features/agent-workflows/README.md)、[维护规则](electron/features/agent-workflows/AGENTS.md) |
+| 新领域向 Agent 暴露能力 | [领域规则](electron/features/AGENTS.md)、[导演计划](electron/features/director-lab/AGENTS.md)、[音乐](electron/features/music/AGENTS.md) |
+| 外部应用适配、任务交接与历史 | [适配器索引](electron/features/external-agents/README.md)、[维护规则](electron/features/external-agents/AGENTS.md) |
+| IPC 和主进程装配 | [IPC 规则](electron/ipc/AGENTS.md) |
+| 全局 AI 助手 | [面板索引](src/components/agent-chat/README.md)、[面板规则](src/components/agent-chat/AGENTS.md) |
+| 共享接口、事件与历史结构 | [契约规则](src/shared/types/AGENTS.md) |
+| 任务提示词与服务发现 | [提示词规则](src/lib/AGENTS.md) |
+
+新增业务应在所属领域注册工具模块，不向 RPC、外部应用适配器或聊天面板追加工具名分支。维护架构时同步更新受影响目录的索引；写清已实现能力与未来规划，不让历史方案替代现行规则。
+
 ## UI 组件规则
 
 本项目使用 `src/ui` 目录下的本地 UI 层，以及 Radix 基元提供可访问的低级行为。
 
 ### 共享组件清单
 
-使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Tabs、Switch、Tooltip、Collapsible、Select 等。
+使用 `src/ui` 组件管理所有共享控件。**所有 UI 组件默认基于 Radix 基元进行二次开发**，不使用原生 HTML 元素自制交互行为（如用 `<select>` 做下拉、用 JS 控制显隐等）。Radix 已提供的行为基元包括：Dialog、Popover、Switch、Tooltip、Collapsible、Select 等。
 
 | 组件 | 说明 |
 |------|------|
@@ -21,7 +40,7 @@
 | `Tooltip` | 悬停提示（基于 Radix） |
 | `Dialog` | 弹窗，统一通过 `title` / `description` / `footer` / `children` 等 props 使用（基于 Radix） |
 | `Popover` | 弹出面板，含 PopoverContent / PopoverTrigger / PopoverClose（基于 Radix） |
-| `Tabs` / `PillTabs` | 标签切换，`PillTabs` 是药丸形预设（基于 Radix） |
+| `DropdownMenu` | 紧凑操作菜单，含 Trigger / Content / Item（基于 Radix），用于更多操作；禁止用宽 Popover 搭配大按钮代替菜单 |
 | `LoadingIndicator` | 加载状态指示器 |
 
 > `TextField` 已弃用，请使用 `Input variant="pill"` 替代。
@@ -82,10 +101,11 @@
 | `title` | 弹窗标题 |
 | `description` | 弹窗描述 |
 | `children` | 主体内容 |
+| `bodyClassName` | 自动生成的正文容器自定义类名 |
 | `footer` | 底部操作栏 |
 | `className` | 弹窗内容面板自定义类名 |
 
-标题和描述自动组合为头部（带 `.ui-dialog-header`），footer 自动包裹 `.ui-dialog-footer`。需要自定义 body 样式时在 children 中自行包裹 div。
+标题和描述自动组合为头部（带 `.ui-dialog-header`），正文统一包裹 `.ui-dialog-body`，默认提供 20px 内边距与滚动，footer 自动包裹 `.ui-dialog-footer`。普通弹窗直接传 children，禁止重复包裹 `.ui-dialog-body`、关闭默认正文布局或为正文补外层边距。功能特有的分栏、排列等样式使用 `bodyClassName`，不要重复定义正文 padding 与 overflow。只有 `variant="fullscreen"` 的全屏媒体预览不添加正文容器。
 
 ### Popover 弹出面板
 
@@ -107,27 +127,6 @@
 - `sideOffset` — 与触发元素的间距，默认 6
 - 内容面板带阴影和箭头
 - 面板头部通过 `data-popover-header` 属性启用样式
-
-### Tabs 标签
-
-- **PillTabs** — 药丸形，类似 SegmentedControl，用于紧凑筛选切换
-- **Tabs / TabsList / TabsTrigger / TabsContent** — 原始 Radix 包装，用于内容区域标签
-
-```tsx
-// 药丸形
-<PillTabs value={tab} onValueChange={setTab}
-  items={[{value:'a', label:'素材'}, {value:'b', label:'标注'}]} />
-
-// 内容区标签
-<Tabs value={tab} onValueChange={setTab}>
-  <TabsList>
-    <TabsTrigger value="a">素材</TabsTrigger>
-    <TabsTrigger value="b">标注</TabsTrigger>
-  </TabsList>
-  <TabsContent value="a">素材内容</TabsContent>
-  <TabsContent value="b">标注内容</TabsContent>
-</Tabs>
-```
 
 ### 禁止行为
 
@@ -165,17 +164,25 @@ Radix 基元用于提供行为和可访问性，不施加视觉样式。**不要
 
 如果单文件过大（超过600左右）的情况下， 应该考虑合理的拆分模块，防止代码堆积。
 
+### 构建与打包授权
+
+- **禁止默认执行应用构建或打包**：只有用户在当前任务中明确要求时，才可运行 `pnpm build:app`、`pnpm build`、`pnpm pack:*` 或等价命令。代码修改、UI 改动、提交代码或常规验证本身不构成构建授权。
+- 不得通过测试脚本、其他命令或直接调用 Vite、electron-builder 等方式间接触发未经用户明确要求的应用构建或打包。执行命令前必须确认其实际行为。
+- 默认仅按改动风险运行相关非界面测试、独立且不生成构建产物的类型检查和变更范围 Lint；需要构建或打包时，先取得用户明确指示。
+
 ### 测试约定
 
-- 日常开发默认不启动应用执行界面化 UI 测试；必须验证 Electron 生命周期或关键用户行为时由 Codex 执行行为自动化，截图、视觉效果和手感集中在里程碑或 RC 验收。
+- 日常开发默认不启动应用执行界面化 UI 测试。除非用户在当前任务中明确要求，Codex 不得自行进行一对一（1-to-1）测试、手工交互验收或交互式逐项测试；默认仅执行构建、类型检查、Lint 和已有的非界面自动化测试。必须验证 Electron 生命周期或关键用户行为时，仍应优先使用仓库现有的行为自动化，截图、视觉效果和手感集中在用户明确要求的里程碑或 RC 验收。
 - 用户可以参与里程碑/RC 验收并提交 Bug 或需求，但用户验收不替代 Codex 的风险测试和发布前回归。
-- 仍需按改动风险执行构建、类型检查、Lint 和适用的非界面自动化测试。
+- 仍需按改动风险执行独立类型检查、Lint 和适用的非界面自动化测试；构建与打包遵守上述授权规则。
 - 测试顺序默认是非视觉自动化优先：先运行逻辑、服务、文件、持久化和错误日志断言，再运行 Electron 行为自动化；截图、效果观察和鼠标手感集中到功能里程碑或 RC，不穿插阻塞日常实现。
 - 测试按风险选择最小集合，不按功能点逐项堆用例。按钮文案、图标/枚举映射、静态布局、简单显隐、无分支 getter/setter 和薄封装默认不写专用测试，由 TypeScript、变更范围 Lint、代码审查或上层流程覆盖。
 - 必测范围集中在数据安全、持久化与迁移、IPC/文件/工作进程契约、异步取消和过期结果、下载中断恢复、模型空/坏结果、渲染与导出一致性，以及已发生的严重回归。
 - 新增测试必须对应明确故障；同一风险已有稳定上层覆盖时不重复补低层断言。优先纯函数/服务测试，只有必须验证 Electron 生命周期或真实用户行为时才启动应用。
-- 日常开发只运行与改动直接相关的测试、类型检查和变更范围 Lint；共享基础设施或公共契约变更运行相邻回归；完整 Electron、视觉、全量模型、三平台和完整套件只在里程碑、RC 或发布前执行。
+- 日常开发只运行与改动直接相关的测试、类型检查和变更范围 Lint；共享基础设施或公共契约变更运行相邻回归；完整 Electron、视觉、全量模型、三平台和完整套件只在里程碑、RC 或发布前执行。全量 E2E 仍须由用户在当前任务中明确要求，不能因构建、发版或验收请求而默认执行。
 - 对重复、脆弱、长期缓慢且不能定位真实故障的测试，应合并、替换或删除，不以测试数量作为质量指标。
+
+**全量 E2E 禁止默认执行**：除非用户在当前任务中明确要求，任何情况下都不得执行全量 `pnpm test:e2e` 或等价的全量 Playwright 运行，包括开发、构建、发版和验收场景。功能验证只运行用户明确指定或与改动直接相关的最小用例；执行前必须确认命令实际只选择目标用例，避免参数转发错误导致全量运行。
 
 Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-browser`、手写 CDP 客户端或其他测试执行器的 Electron E2E；临时人工排查不能替代仓库内的 Playwright 用例。
 
@@ -192,7 +199,7 @@ Electron E2E 必须统一使用 Playwright Test。禁止新增基于 `agent-brow
 1. 检查 `src/ui` 是否已有匹配的组件。
 2. 如果行为是共享的，以保守的 prop 扩展现有组件。
 3. 只有当样式属于特定页面或工作流时，才添加功能特定的 CSS 类。
-4. 提交 UI 改动前运行 `pnpm run build:app`。
+4. 提交 UI 改动前运行独立类型检查和变更范围 Lint；仅在用户明确要求构建时运行 `pnpm run build:app`。
 
 ## 项目概述
 
@@ -223,6 +230,13 @@ Luna AI Cut 是一款面向 Insta360 Luna Ultra 相机的桌面媒体管理。
 2. **浏览与下载** → 按日期分组浏览 → 单选/组选/框选 → 下载到本地
 3. **设置** → 下载目录、开发者模式、Mock Server、AI 配置
 
+### Wi-Fi / SSID 连接约束
+
+- 当前所有桌面计算机环境都不能稳定识别当前已连接的 SSID；操作系统和无线网卡厂商的安全策略、权限限制可能使 SSID 为空。当前 SSID 不能作为 Wi-Fi 是否连接、自动连接成功、失败、重试或网络恢复的标准。
+- 各厂商使用蓝牙的目的，是读取相机热点自己的 Wi-Fi 连接信息。蓝牙取得目标 SSID 和密码后，交给 macOS/Windows 系统网络接口完成连接；目标 SSID 是连接参数，不等同于系统读取的当前 SSID。
+- 连接结果必须用相机网段地址、厂商控制端口或协议握手确认。当前 SSID 只允许用于可选的扫描、日志和界面展示。
+- 断开相机时只清理应用持有的连接会话，不自动恢复之前的 Wi-Fi；必要时提示用户在系统 Wi-Fi 中手动切换。
+
 ### 技术栈
 
 - **前端**：React + TypeScript + Vite
@@ -243,7 +257,6 @@ src/
 │   ├── Input.tsx       # 输入框
 │   ├── Dialog.tsx      # 弹窗（Radix）
 │   ├── Popover.tsx     # 弹出面板（Radix）
-│   ├── Tabs.tsx        # 标签切换（Radix）
 │   ├── SegmentedControl.tsx  # 分段选择器
 │   ├── Switch.tsx      # 开关（Radix）
 │   ├── Tooltip.tsx     # 提示（Radix）
@@ -295,8 +308,36 @@ scripts/              # 构建、打包、发布与非 UI 测试脚本
 - 图标文件在 `build/` 目录（icon.icns / icon.ico / icon.png）
 - 打包产物输出到 `release/` 目录
 
+### 日志定位
+- 应用日志固定写入当前设置 `baseDir` 下的 `logs/`，不要从系统日志、第三方应用日志或其他项目目录查找。
+- 优先查看当天的 `main-YYYY-MM-DD-<version>.log`（主进程）和 `renderer-YYYY-MM-DD-<version>.log`（渲染进程）。本机排查可先读取个人记忆文件 `~/memory/luna-ai-cut.md` 获取当前机器的 `baseDir`；没有该文件时通过应用的“日志目录”接口确认。
+- 日志目录实现位于 `electron/infrastructure/loggerService.ts`，路径规则位于 `electron/storage/settingsService.ts` 的 `logDirForBaseDir()`；不确定 `baseDir` 时先通过应用的“日志目录”接口或 `window.luna.getLogDir()` 确认，再读取该目录。
+### AI 导拍与剪辑工作台
+
+- AI 工作台在 `src/pages/AiEditorPage.tsx` 组合拍摄计划、素材标注和剪辑工程三个页面；拍摄计划复用导演计划领域，素材标注和剪辑工程使用 `electron/features/ai-editor/` 中的原生服务。
+- 剪辑工程以 `LunaEditProject` 为唯一工程模型，保存在 `baseDir/ai-editor-projects/<id>/project.json`；标注工程保存在 `baseDir/footage-selection-projects/`。路径、稳定素材 ID 和 revision 由主进程校验。
+- 所有 Agent 工具必须注册到 `electron/mcp/lunaAppToolModules.ts` 的领域模块；renderer 不提供动态工具 fallback。流程使用 `shooting`、`footage-creation`、`editing-workspace` 技能，并由 Agent 按意图选择。
+- 视频合成继续使用 `luna-render-core`。页面只通过 preload API 访问主进程和渲染器，不在 renderer 中直接调用 Node.js、文件系统或原生模块。
+
 ### CI 打包
 - 推送 `v*` tag 时自动触发
 - 工作流文件：`.github/workflows/package-artifacts.yml`
 - macOS: macos-latest runner，生成 DMG
 - Windows: windows-latest runner，生成 NSIS 安装包
+
+### 发布构建说明
+- 推送正式版 tag 后，GitHub Actions 会异步执行三平台打包；仅在用户明确要求本地打包时，才可同时运行 `pnpm pack:mac:arm64` 或 `pnpm pack:mac:x64`，不需要等待 GitHub Actions 完成。
+- 本地产物位于 `release/<版本>/`。三平台产物齐全后可运行 `./scripts/deploy-release.sh v<版本>` 发布 GitCode；本地缺少某个平台时，再使用 `--from-github` 获取远程产物。
+
+## 强制代码组织规则
+
+- 单个源文件超过 500 行时，必须评估是否可以进行合理的模块化拆分，并在
+  代码评审中说明判断依据。
+- 单个源文件超过 600 行时，必须拆分为职责清晰的多个模块；除非存在明确且
+  经过评审确认的技术原因，不得以新增代码为由继续扩大文件规模。
+- 拆分时优先按领域职责、生命周期或依赖边界划分，避免仅按行数机械切割。
+
+## 应用级 Agent 架构索引
+
+- 应用框架记忆：[设计](docs/app-memory-architecture.md)、[目录规范](electron/features/memory/AGENTS.md)。记忆不归属于剪辑或导演计划，不需要打开编辑器。
+- Agent 个人空间：[目录规范](electron/features/agent-space/AGENTS.md)。用户指定 ~/.luna-ai-cut；记忆和任务历史不得随卸载、更新、baseDir 切换或项目删除而自动清理。

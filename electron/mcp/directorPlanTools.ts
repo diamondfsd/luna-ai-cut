@@ -52,7 +52,7 @@ export async function handleDirectorPlanTool(name: string, args: Record<string, 
     const gate = manager?.gateActiveTool()
     if (!gate) throw new DirectorPlanAgentError('SESSION_REQUIRED', '请先领取或创建任务')
     if (!gate.allowed) throw new DirectorPlanAgentError(gate.error?.code ?? 'SESSION_NOT_ACTIVE', gate.error?.message ?? '任务不可用')
-    if (gate.session.purpose === 'auto') throw new DirectorPlanAgentError('TASK_WORKFLOW_REQUIRED', '请先根据技能索引选择处理流程')
+    if (gate.session.purpose !== 'shooting') throw new DirectorPlanAgentError('TASK_TYPE_CONFLICT', '当前任务未选择 shooting 技能')
     if (args.sessionId !== gate.session.sessionId) throw new DirectorPlanAgentError('SESSION_NOT_FOUND', '任务编号无效')
     if (args.revision !== gate.session.revision) throw new DirectorPlanAgentError('REQUEST_UPDATED', '任务要求已更新，请重新读取')
   }

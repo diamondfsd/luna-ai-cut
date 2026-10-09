@@ -46,12 +46,7 @@ export async function handleRpc(
       id,
       result: {
         tools: catalog.tools,
-        _meta: {
-          luna: {
-            editorToolsReady: catalog.editorToolsReady,
-            ...(catalog.message ? { message: catalog.message } : {}),
-          },
-        },
+        _meta: { luna: { skills: '/skills/index.md' } },
       },
     }
   }
@@ -63,15 +58,15 @@ export async function handleRpc(
     const args = asRecord(params?.arguments) ?? {}
     const registry = appToolRegistry(options)
     const module = registry.resolve(name)
+    if (!module) return jsonRpcError(id, -32602, `未知工具: ${name}`)
     const purpose = options.agentSession?.snapshot().session?.purpose
-    const policy = module ?? registry.fallback
-    if (purpose && policy.allowedPurposes && !policy.allowedPurposes.includes(purpose)) {
+    if (purpose && module.allowedPurposes && !module.allowedPurposes.includes(purpose)) {
       const blocked = { ok: false, error: { code: 'TASK_TYPE_CONFLICT', message: '当前任务不支持此操作', retryable: false } }
       return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(blocked) }], isError: true, structuredContent: blocked } }
     }
     const callId = randomUUID()
-    const taskResult = module ? await module.execute(name, args, options, callId) : null
-    if (module && !taskResult) return jsonRpcError(id, -32603, `工具模块未处理已注册工具: ${name}`)
+    const taskResult = await module.execute(name, args, options, callId)
+    if (!taskResult) return jsonRpcError(id, -32603, `工具模块未处理已注册工具: ${name}`)
     if (taskResult) {
       const taskRecord = asRecord(taskResult.result)
       return {
@@ -86,8 +81,6 @@ export async function handleRpc(
         },
       }
     }
-
-    return { jsonrpc: '2.0', id, result: await registry.fallback.execute(name, args, options, callId) }
 
   }
 

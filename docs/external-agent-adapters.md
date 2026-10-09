@@ -40,7 +40,7 @@ Codex/ChatGPT 本机应用包：主进程 deep link parser 的 `threads/new` 分
 ## 统一任务面板
 
 `src/components/agent-chat/AgentChatPanel.tsx` 实现右侧非模态面板，复用共享 Radix Dialog 的焦点和关闭行为，不显示遮罩、不拦截页面操作。App 级 Provider 保持状态；`externalAgent.openChat` 保留跨窗口上下文接口，但不新增任何可见入口。
-AI 剪辑不再单独生成外部 Agent 提示词弹窗。原生 Bridge 的 `lunaAgent.openChat` 保持 iframe 与宿主的能力边界。
+拍摄计划、素材标注与剪辑工程共用全局 AI 助手入口，不单独创建领域聊天窗口。
 统一读取 Luna 任务服务快照与实时事件，展示用户要求、Agent 进度、结果、错误和取消；历史只读，不提供修改任务或删除记录入口；活动任务保留停止与导出确认。后续要求在外部 Agent 沟通，由 update_task_request 记录用户原话，再读取新 revision。
 先订阅再读取快照，按 sequence 合并并去重，避免初始化期间丢失更新和旧事件覆盖最新状态。面板最多保留 200 个任务事件。
 记录范围为 Luna 收到的任务事件，不读取 WorkBuddy/Codex 的全部聊天或推理。首次原始消息、实际交接提示词、进度、结果和错误保存在 `~/.luna-ai-cut/conversations/conversations.json`；首次消息在打开外部应用或复制提示词之前保存。顶部下拉选择历史与新对话；选中历史隐藏输入区，显示该记录实际使用的 Agent。删除 API 保留兼容，面板不提供删除入口。每条任务保留最近 200 个事件，原始消息独立保存，不随事件裁剪丢失；工具参数不进入历史。串行原子写入，损坏历史不会被空内容覆盖。重启后历史可读，旧任务不会自动恢复或被视为仍连接。
@@ -55,7 +55,7 @@ Agent 每次新任务、重启或连接失败后重新读文件，校验 `/.well
 
 ## 任务隔离
 
-全局任务从 `purpose=auto` 开始，领取不激活剪辑，未选择流程不能执行剪辑/音乐或计划写入。Agent 自主选择后，导演计划任务使用 `purpose=director-plan`，不激活剪辑窗口，禁止调用剪辑和音乐工具。剪辑任务使用 `purpose=editing`，保持现有会话、取消和导出确认规则。领取任务必须核对交接提示词中的任务编号；其他活动任务不会被新任务替换。草稿交接成功不代表 Agent 执行成功，后续沟通在所选 Agent 内进行，Luna 面板承接进度和结果。
+全局任务从 `purpose=auto` 开始。Agent 自主选择后，可进入 `purpose=shooting`、`purpose=footage-creation` 或 `purpose=editing-workspace`。领取任务必须核对交接提示词中的任务编号；其他活动任务不会被新任务替换。交接成功不代表 Agent 执行成功，后续沟通在所选 Agent 内进行，Luna 面板承接进度和结果。
 
 ## 对话交互调研（2026-10-02）
 

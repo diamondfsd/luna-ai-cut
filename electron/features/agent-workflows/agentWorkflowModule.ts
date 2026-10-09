@@ -6,10 +6,10 @@ export const agentWorkflowModule: LunaToolModule = {
   id: 'agent-workflows',
   tools: [{
     name: 'select_task_workflow',
-    description: 'After list_agent_skills/get_agent_skill, select the workflow declared by the matching skill. Requires the claimed session and current revision. Plan-only requests use director-plan; video editing or combined plan-and-video requests use editing. Ask in the external conversation if unclear. Never switch an already chosen workflow.',
+    description: 'After list_agent_skills/get_agent_skill, select the workflow declared by the matching App skill: shooting, footage-creation or editing-workspace. Requires the claimed session and current revision. Ask in the external conversation only when the task intent is materially ambiguous. Never switch an already chosen workflow.',
     inputSchema: { type: 'object', additionalProperties: false,
       properties: { sessionId: { type: 'string', minLength: 1 }, revision: { type: 'integer', minimum: 1 },
-        workflow: { type: 'string', enum: ['editing', 'director-plan'] } },
+        workflow: { type: 'string', enum: ['shooting', 'footage-creation', 'editing-workspace'] } },
       required: ['sessionId', 'revision', 'workflow'],
     },
   }, {
@@ -36,12 +36,13 @@ export const agentWorkflowModule: LunaToolModule = {
       if (Object.keys(args).some(key => !['sessionId', 'revision', 'workflow'].includes(key))
         || typeof args.sessionId !== 'string' || !args.sessionId
         || !Number.isInteger(args.revision) || Number(args.revision) < 1
-        || (args.workflow !== 'editing' && args.workflow !== 'director-plan')) {
+        || (args.workflow !== 'shooting' && args.workflow !== 'footage-creation' && args.workflow !== 'editing-workspace')) {
         throw new AgentSessionError('INVALID_PARAMS', '处理流程参数无效')
       }
       if (!context.agentSession) throw new AgentSessionError('SESSION_REQUIRED', '请先领取任务')
-      if (args.workflow === 'director-plan' && !context.directorPlanTools) throw new AgentSessionError('UNSUPPORTED', '导演计划暂不可用')
+      if (args.workflow === 'shooting' && !context.directorPlanTools) throw new AgentSessionError('UNSUPPORTED', '拍摄计划暂不可用')
       const session = context.agentSession.selectWorkflow(args.sessionId, Number(args.revision), args.workflow)
+      await context.activateWindow?.()
       return { ok: true, result: { ok: true, summary: '已选择处理流程', data: { session,
         guidance: 'Execute the already-read matching skill using its available tools. Workflow selection does not reveal new skills; do not repeat discovery just because it succeeded.' } } }
     } catch (error) {

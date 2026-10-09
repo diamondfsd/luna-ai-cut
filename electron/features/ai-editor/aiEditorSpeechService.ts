@@ -6,7 +6,7 @@ import type {
   WorkspaceSubtitleTranscriptionResult,
 } from '../../../src/shared/types'
 import { probeMedia } from '../../platform/ffmpeg/pipeline'
-import { transcribeVideo } from '../subtitles/subtitleTranscriptionService'
+import { transcribeAudioSamples as transcribeNativeAudioSamples, transcribeVideo } from '../subtitles/subtitleTranscriptionService'
 import { getAiEditorLocalMedia } from './aiEditorLocalMediaService'
 import {
   mergeSpeechChunkCues,
@@ -15,31 +15,45 @@ import {
   publicSpeechRange,
 } from './aiEditorSpeechChunking'
 
-export async function transcribeAiEditorLocalMedia(
-  mediaId: string,
-  options: AiEditorLocalMediaTranscriptionOptions = {},
-): Promise<AiEditorLocalMediaTranscriptionResult> {
-  const media = await getAiEditorLocalMedia(mediaId)
-  if (media.kind !== 'video') throw new Error('口播字幕识别只支持视频素材')
+interface SpeechSource {
+  mediaId: string
+  name: string
+  filePath?: string
+  durationSec?: number
+}
 
-  const probed = media.duration && media.duration > 0
-    ? media.duration
-    : (await probeMedia(media.filePath)).durationSeconds
+interface SpeechChunkResultRunner {
+  (chunk: { recognitionStartMs: number; recognitionEndMs: number }, signal: AbortSignal): Promise<WorkspaceSubtitleTranscriptionResult>
+}
+
+async function transcribeAiEditorSource(
+  source: SpeechSource,
+  options: AiEditorLocalMediaTranscriptionOptions = {},
+  runner?: SpeechChunkResultRunner,
+): Promise<AiEditorLocalMediaTranscriptionResult> {
+  const probed = source.durationSec && source.durationSec > 0
+    ? source.durationSec
+    : source.filePath
+      ? (await probeMedia(source.filePath)).durationSeconds
+      : 0
   if (!probed || probed <= 0) throw new Error('无法获取视频时长')
 
   const plan = planSpeechTranscriptionChunks(probed, options)
   const controller = new AbortController()
+  const runChunk: SpeechChunkResultRunner = runner ?? (source.filePath
+    ? (chunk, signal) => transcribeVideo({
+        requestId: randomUUID(),
+        filePath: source.filePath!,
+        startMs: chunk.recognitionStartMs,
+        endMs: chunk.recognitionEndMs,
+        language: 'zh',
+      }, signal, () => {})
+    : () => Promise.reject(new Error(`音频素材 ${source.name} 缺少可读取路径`)))
   const chunkResults: Array<WorkspaceSubtitleTranscriptionResult | null> = []
   for (const chunk of plan.chunks) {
     controller.signal.throwIfAborted()
     try {
-      const result = await transcribeVideo({
-        requestId: randomUUID(),
-        filePath: media.filePath,
-        startMs: chunk.recognitionStartMs,
-        endMs: chunk.recognitionEndMs,
-        language: 'zh',
-      }, controller.signal, () => {})
+      const result = await runChunk(chunk, controller.signal)
       chunk.cueCount = result.cues.length
       chunkResults.push(result)
     } catch (error) {
@@ -76,12 +90,51 @@ export async function transcribeAiEditorLocalMedia(
     requestId: randomUUID(),
     cues,
     performance,
-    mediaId: media.mediaId,
-    name: media.name,
+    mediaId: source.mediaId,
+    name: source.name,
     durationSec: probed,
     requestedRange: publicSpeechRange(plan.range),
     chunkDurationSec: plan.chunkDurationSec,
     overlapSec: plan.overlapSec,
     chunks: plan.chunks.map(publicSpeechChunk),
   }
+}
+
+export async function transcribeAiEditorLocalMedia(
+  mediaId: string,
+  options: AiEditorLocalMediaTranscriptionOptions = {},
+): Promise<AiEditorLocalMediaTranscriptionResult> {
+  const media = await getAiEditorLocalMedia(mediaId)
+  if (media.kind !== 'video') throw new Error('口播字幕识别只支持视频素材')
+  return transcribeAiEditorSource({
+    mediaId: media.mediaId,
+    name: media.name,
+    filePath: media.filePath,
+    durationSec: media.duration,
+  }, options)
+}
+
+export async function transcribeAiEditorAudioSamples(
+  samples: Float32Array,
+  options: AiEditorLocalMediaTranscriptionOptions = {},
+): Promise<AiEditorLocalMediaTranscriptionResult> {
+  if (!(samples instanceof Float32Array) || samples.length === 0) {
+    throw new Error('没有可识别的音频数据')
+  }
+  const durationSec = samples.length / 16_000
+  return transcribeAiEditorSource(
+    {
+      mediaId: 'luna:audio-samples',
+      name: 'Luna audio samples',
+      durationSec,
+    },
+    options,
+    (chunk, signal) => transcribeNativeAudioSamples({
+      requestId: randomUUID(),
+      samples,
+      startMs: chunk.recognitionStartMs,
+      endMs: chunk.recognitionEndMs,
+      language: 'zh',
+    }, signal, () => {}),
+  )
 }

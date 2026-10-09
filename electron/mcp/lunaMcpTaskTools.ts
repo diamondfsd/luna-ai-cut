@@ -1,5 +1,5 @@
 import { AGENT_TASK_TOOLS } from './lunaMcpTaskCatalog.ts'
-import { createAiEditorUserStoppedResult, type AiEditorAgentPhase, type AiEditorMcpResponse, type AiEditorMcpRequest } from '../../src/shared/types/aiEditor.ts'
+import { createAiEditorUserStoppedResult, type AiEditorAgentPhase, type AiEditorMcpResponse } from '../../src/shared/types/aiEditor.ts'
 import { AgentSessionError, type AgentToolResult } from './agentSessionManager.ts'
 import { addAgentContext, type LunaMcpServerOptions } from './lunaMcpProtocol.ts'
 
@@ -60,40 +60,6 @@ export function agentToolResponse(result: AgentToolResult | Record<string, unkno
 
 export function userStoppedResponse(): AiEditorMcpResponse {
   return agentToolResponse(createAiEditorUserStoppedResult())
-}
-
-export function requestRendererWithCancellation(
-  options: LunaMcpServerOptions,
-  request: AiEditorMcpRequest,
-): Promise<AiEditorMcpResponse> {
-  const manager = options.agentSession
-  if (!manager) return options.requestRenderer(request)
-
-  return new Promise<AiEditorMcpResponse>((resolve, reject) => {
-    let settled = false
-    const unsubscribe = manager.subscribe((event) => {
-      if (settled || !['cancelled', 'request-updated'].includes(event.type)) return
-      settled = true
-      unsubscribe()
-      resolve(event.type === 'request-updated'
-        ? agentToolResponse({ ok: false, error: { code: 'REQUEST_UPDATED', message: '请读取最新任务要求' } })
-        : userStoppedResponse())
-    })
-    void options.requestRenderer(request).then(
-      (response) => {
-        if (settled) return
-        settled = true
-        unsubscribe()
-        resolve(response)
-      },
-      (error: unknown) => {
-        if (settled) return
-        settled = true
-        unsubscribe()
-        reject(error)
-      },
-    )
-  })
 }
 
 function agentInvalidParams(message: string): AiEditorMcpResponse {
@@ -276,16 +242,16 @@ export async function handleAgentTaskTool(
       if (!request || !agentId || !agentType || !agentModel) {
         return agentInvalidParams('请同时上报 request、agentId、agentType 和 agentModel')
       }
-      if (args.purpose !== undefined && !['auto', 'editing', 'director-plan'].includes(String(args.purpose))) return agentInvalidParams('任务类型无效')
+      if (args.purpose !== undefined && !['auto', 'shooting', 'footage-creation', 'editing-workspace'].includes(String(args.purpose))) return agentInvalidParams('任务类型无效')
       const result = manager.startExternalRequest(
         request,
         agentId,
         stringArg(args, 'projectId'),
         agentType,
         agentModel,
-        args.purpose as 'auto' | 'editing' | 'director-plan' | undefined,
+        args.purpose as 'auto' | 'shooting' | 'footage-creation' | 'editing-workspace' | undefined,
       )
-      if (!result.session?.purpose || result.session.purpose === 'editing') await options.activateWindow?.()
+      if (result.session?.purpose && result.session.purpose !== 'auto') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
         summary: '已创建并领取任务',
@@ -306,7 +272,7 @@ export async function handleAgentTaskTool(
         agentType,
         agentModel,
       )
-      if (result.state === 'claimed' && (!result.session?.purpose || result.session.purpose === 'editing')) await options.activateWindow?.()
+      if (result.state === 'claimed' && result.session?.purpose && result.session.purpose !== 'auto') await options.activateWindow?.()
       return agentToolResponse({
         ok: true,
         summary: result.state === 'claimed' ? '已领取任务' : '当前没有新任务',
@@ -362,7 +328,7 @@ export async function handleAgentTaskTool(
     }
 
     if (name === 'activate_luna_window') {
-      if (manager.snapshot().session?.purpose && manager.snapshot().session?.purpose !== 'editing') return agentToolResponse({ ok: true, summary: '任务进度已发送到 AI 助手' })
+      if (manager.snapshot().session?.purpose && manager.snapshot().session?.purpose !== 'footage-creation' && manager.snapshot().session?.purpose !== 'editing-workspace') return agentToolResponse({ ok: true, summary: '任务进度已发送到 AI 助手' })
       await options.activateWindow?.()
       return agentToolResponse({ ok: true, summary: '已通知 Luna AI Cut 显示剪辑进度' })
     }

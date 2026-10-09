@@ -23,7 +23,7 @@ export function createAgentConversationStore(directory: () => Promise<string>, l
           migrate = true
         }
         const saved: unknown = JSON.parse(content)
-        if (!Array.isArray(saved) || saved.some(value => !value || typeof value.id !== 'string' || typeof value.request !== 'string' || typeof value.updatedAt !== 'string' || !['auto', 'editing', 'director-plan'].includes(value.purpose) || !value.session || !Array.isArray(value.events))) {
+        if (!Array.isArray(saved) || saved.some(value => !value || typeof value.id !== 'string' || typeof value.request !== 'string' || typeof value.updatedAt !== 'string' || !['auto', 'shooting', 'footage-creation', 'editing-workspace'].includes(value.purpose) || !value.session || !Array.isArray(value.events))) {
           throw new Error('任务历史内容无效')
         }
         items = saved
@@ -54,7 +54,7 @@ export function createAgentConversationStore(directory: () => Promise<string>, l
       const current = items.find(item => item.id === event.session.sessionId)
       const base: AgentConversation = current ?? {
         id: event.session.sessionId, agentId: event.session.agentId ?? '', agentName: event.session.agentType ?? 'Agent',
-        purpose: event.session.purpose ?? 'editing', request: event.session.request, prompt: '',
+        purpose: event.session.purpose ?? 'auto', request: event.session.request, prompt: '',
         createdAt: event.session.createdAt, updatedAt: event.timestamp, handoff: 'pending', session: event.session, events: [],
       }
       // Tool arguments can contain large media payloads; archive progress summaries only.
