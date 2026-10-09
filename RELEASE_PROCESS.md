@@ -2,7 +2,7 @@
 
 ## 概述
 
-默认使用本地工作树编译三平台安装包，再直接上传到 GitCode。除非用户明确要求，否则不使用 GitHub Actions 构建，也不以 GitHub Release 作为产物中转站。每次发版包含版本号升级、发布说明和 GitCode Release。
+每次正式发版有两条并行产物路径：本地构建 macOS ARM64、macOS x64 和 Windows x64 安装包；两个 macOS 包使用 Developer ID 签名、完成 Apple 公证并验证通过后，将本地产物上传到 GitCode。把版本 `v*` tag 推送到 GitHub 会自动触发 GitHub Actions 构建并发布 GitHub Release。GitHub 自动构建的 macOS 包是 Ad Hoc 包，不用于 GitCode 正式发布。
 
 安装包更新仍由用户手动触发。应用启动后每天最多自动查询一次热更新，但不会自动下载或安装；用户需要打开顶部问号窗口确认并应用热更新，安装包仍需点击“检查更新”后下载。
 
@@ -112,15 +112,15 @@ https://gitcode.com/<owner>/<repo>/releases/download/<release-tag>/<file-name>
 # 添加所有未提交的改动（工作区 + 暂存区）
 git add -A
 
-# 升级版本号（小版本号升级，X.Y.Z → X.(Y+1).0）
-npm version minor
+# 默认升级补丁版本号（X.Y.Z → X.Y.(Z+1)）
+npm version patch
 
 # 查看生成的版本 tag
 git describe --tags --abbrev=0
 ```
 
-> `npm version minor` 会自动修改 `package.json` 的版本号并创建 Git commit 和 tag。
-> 如需 patch 或 major 升级需特别说明。
+> `npm version patch` 会自动修改 `package.json` 的版本号并创建 Git commit 和 tag。
+> 如需 minor 或 major 升级需特别说明。
 
 ### 2. 创建发布说明
 
@@ -192,19 +192,14 @@ cargo xwin --version
 
 按照“macOS Release 签名与公证硬性要求”逐一检查 ARM64 和 x64 的 DMG 及 `.app`。必须确认签名身份为 Developer ID Application、公证票据已装订，并且 `codesign`、`spctl`、`xcrun stapler validate` 全部成功。检查未通过时禁止进入 GitCode 上传步骤。
 
-### 6. 推送代码
+### 6. 推送代码和版本 tag，触发 GitHub 自动打包
 
 ```bash
 git push origin <发布分支>
-```
-
-本地构建不依赖 GitHub Actions。默认 GitCode 发布只需推送发布分支，Git tag 可以保留在本地用于标记版本。
-
-如果需要 GitHub Actions/Release，必须额外显式推送 `v*` tag；推送分支不会自动推送本地 tag：
-
-```bash
 git push origin v<版本号>
 ```
+
+推送 `v*` tag 会触发 `.github/workflows/package-artifacts.yml`，自动构建并把安装包挂载到 GitHub Release。稳定版 tag 会构建 macOS ARM64、macOS x64 和 Windows x64；带 `-beta` 的 tag 当前会跳过 GitHub macOS x64 构建。GitCode 发布仍使用下节的本地三平台产物。
 
 推送前先确认远端没有同名 tag，或远端 tag 已指向目标 commit：
 
@@ -219,19 +214,17 @@ git ls-remote --tags origin "refs/tags/v<版本号>"
 git push --force origin v<版本号>
 ```
 
-只有用户明确要求 GitHub Actions/Release 时，才执行上述 tag 推送。
+### 6b. 上传本地正式产物到 GitCode
 
-### 6b. 上传到 GitCode（默认路径）
-
-上传脚本默认读取本地 `release/<版本号>/`，创建或更新 GitCode Release，并上传三平台安装包：
+完成三平台本地构建及 macOS 签名、公证检查后，上传脚本读取本地 `release/<版本号>/`，创建或更新 GitCode Release，并上传三个安装包：
 
 ```bash
 ./scripts/deploy-release.sh v<版本号>
 ```
 
-脚本不会访问 GitHub。beta/测试版不会更新稳定版 README 或公开下载页；稳定版会按原有流程同步下载地址和更新日志。脚本执行前需确保对应的 `RELEASE_NOTES_v<版本号>.md` 已存在。
+脚本不会访问 GitHub，也不会代替 macOS 公证检查。只有 ARM64、x64 的 DMG 均通过签名、公证和 Gatekeeper 验证后，才执行上传。beta/测试版不会更新稳定版 README 或公开下载页；稳定版会按原有流程同步下载地址和更新日志。脚本执行前需确保对应的 `RELEASE_NOTES_v<版本号>.md` 已存在。
 
-只有需要复用 GitHub Release 产物时，才显式使用旧路径：
+`--from-github` 是复用 GitHub Release 产物的旧路径，不属于正式 GitCode 发布流程；GitHub 的 Ad Hoc macOS 包不得代替已公证的本地包：
 
 ```bash
 ./scripts/deploy-release.sh --from-github v<版本号>
@@ -270,29 +263,20 @@ pnpm run publish:hot -- --version 1.8.0-beta.1-hot.1 --upload
 
 `1.8.0-beta.1-hot.1` 不能安装到 `1.8.0` 或 `1.8.0-beta.2`。稳定版继续使用 `vX.Y.Z` 和 `X.Y.Z-hot.N` 规则。
 
-## GitHub Release（仅明确要求时）
+## GitHub tag 自动打包
 
-| 参数 | 说明 |
-|------|------|
-| `--title "v1.1.0"` | Release 标题 |
-| `--notes-file FILE.md` | 从文件读取发布说明 |
-| `--notes "内容"` | 直接指定发布说明 |
-| `--draft` | 创建草稿（不公开发布） |
-| `--prerelease` | 标记为预发布版本 |
-| `--generate-notes` | 自动生成发布说明 |
-| `--target main` | 指定目标分支 |
+正式发布时推送 `v*` tag 后，`.github/workflows/package-artifacts.yml` 自动运行：稳定版会在 GitHub Actions 上构建 macOS ARM64、macOS x64 和 Windows x64 安装包，并将产物发布到同名 GitHub Release。带 `-beta` 的 tag 当前不会构建 macOS x64。无需手动运行 `gh release` 创建发布。
 
-仅当用户明确要求 GitHub Actions/Release 时，才使用 `gh release` 或推送会触发打包的 `v*` tag。此路径由 `.github/workflows/package-artifacts.yml` 负责构建和挂载附件，不改变默认的本地编译上传流程。
-
-GitHub 路径的最小检查应确认远端 tag 已存在，再等待对应的 `Package Artifacts` workflow：
+推送 tag 后确认 workflow 完成且 GitHub Release 附件齐全：
 
 ```bash
 git ls-remote --exit-code --tags origin "refs/tags/v<版本号>"
 gh run list --workflow package-artifacts.yml --branch v<版本号>
+gh run watch <run-id>
 gh release view v<版本号>
 ```
 
-GitHub Actions 的 macOS 自动构建只生成 Ad Hoc 包，不导入 Developer ID 证书、不执行 Apple notarization，也不需要配置 macOS 签名或公证 Secrets。GitHub Release 产物不能直接作为 GitCode 正式 Release 产物；上传 GitCode 前仍必须按本文件的 macOS 签名与公证流程重新构建并验证。
+GitHub Actions 的 macOS 自动构建只生成 Ad Hoc 包，不导入 Developer ID 证书，也不执行 Apple notarization。GitHub Release 供 GitHub 下载；GitCode 正式 Release 必须使用本地构建、已签名并完成公证验证的 macOS 包，以及本地 Windows 包。
 
 ## 日常热更新发布
 
