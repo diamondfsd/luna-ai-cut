@@ -8,15 +8,24 @@ import ts from 'typescript'
 const root = path.resolve('dist-electron')
 const visited = new Set()
 const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`), 'electron'])
+// The main process is emitted as ESM, where these CommonJS globals do not exist.
+const ambientNames = new Set(['__dirname', '__filename'])
 function visit(file) {
   if (visited.has(file)) return
   visited.add(file)
   assert.ok(existsSync(file), `Missing hot-update module: ${file}`)
   const text = readFileSync(file, 'utf8')
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+  const declaredAmbient = new Set()
+  const usedAmbient = new Set()
   function walk(node) {
     if (ts.isPropertyAccessExpression(node)) {
       assert.notEqual(node.name.text, 'requestSingleInstanceLock', `Bootstrap leaked into ${file}`)
+    }
+    if (ts.isIdentifier(node) && ambientNames.has(node.text)) {
+      const parent = node.parent
+      const declaresHere = ts.isVariableDeclaration(parent) && parent.name === node
+      ;(declaresHere ? declaredAmbient : usedAmbient).add(node.text)
     }
     let specifier
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) specifier = node.moduleSpecifier
@@ -32,6 +41,12 @@ function visit(file) {
     ts.forEachChild(node, walk)
   }
   walk(source)
+  for (const name of usedAmbient) {
+    assert.ok(
+      declaredAmbient.has(name),
+      `${name} is referenced from ${file} without a local definition; the ESM main process cannot provide it (bundled CommonJS dependency?)`,
+    )
+  }
 }
 visit(path.join(root, 'luna-appMain.js'))
 console.log(`Hot-update entry verified (${visited.size} modules)`)

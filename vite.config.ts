@@ -27,6 +27,10 @@ function installedElectronDependencies() {
   const prefix = '\0luna-installed:'
   return {
     name: 'luna-installed-electron-dependencies',
+    // vite:resolve runs before ordinary plugins, so a bare specifier would
+    // already be resolved into node_modules and inlined into the ESM output.
+    // Only a pre plugin can take over `usb` / `ws` before that happens.
+    enforce: 'pre' as const,
     resolveId(id: string) {
       return id === 'usb' || id === 'ws' ? `${prefix}${id}` : null
     },
