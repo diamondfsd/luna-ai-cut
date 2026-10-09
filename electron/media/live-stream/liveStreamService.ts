@@ -35,7 +35,13 @@ interface ActiveSession {
   capturePath: string | null
   livePreview: LivePreviewStreamService
   startedAt: string
+  reconnectTimer: NodeJS.Timeout | null
 }
+
+// A phone-side retry, a brief app switch or a USB hiccup drops the TCP session.
+// Keep the desktop session and its output window alive while the receiver
+// reconnects, and only give up when the phone stays away.
+const PHONE_RECONNECT_GRACE_MS = Number(process.env.LUNA_PHONE_RECONNECT_GRACE_MS ?? 30_000)
 
 const IDLE_USB_STATUS: UsbAoaStatus = {
   state: 'idle',
@@ -234,9 +240,13 @@ export async function sendLiveStreamControlCommand(command: LiveStreamControlCom
 }
 
 export function startLiveStream(): Promise<LiveStreamStatus> {
-  if (operation) return operation
+  if (operation) return operation.catch(() => undefined).then(() => startLiveStream())
   const task = (async () => {
-    if (activeSession) return getLiveStreamStatus()
+    if (activeSession) {
+      const status = activeSession.receiver.status()
+      if (status.state === 'connected' || status.state === 'streaming') return getLiveStreamStatus()
+      await clearActiveSession(false)
+    }
     const livePreview = new LivePreviewStreamService()
     await livePreview.start()
     const receiver = createLiveMediaReceiver((frame) => {
@@ -261,15 +271,24 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
     }, () => {
       const disconnectedSession = activeSession
       if (!disconnectedSession || disconnectedSession.receiver !== receiver || disconnectedSession.state !== 'running') return
-      logMainInfo('[直播流] 手机连接断开，停止画面接收')
-      // Leave the receiver callback before stopping it, and wait for any start operation.
-      void Promise.resolve().then(async () => {
-        if (operation) await operation
+      if (disconnectedSession.reconnectTimer) return
+      logMainInfo('[直播流] 手机连接断开，等待手机重连')
+      disconnectedSession.reconnectTimer = setTimeout(() => {
+        disconnectedSession.reconnectTimer = null
         if (activeSession !== disconnectedSession || disconnectedSession.state !== 'running') return
-        await stopLiveStream()
-      }).catch((error: unknown) => {
-        logMainWarn('[直播流] 断开后停止失败', { error: error instanceof Error ? error.message : String(error) })
-      })
+        const state = disconnectedSession.receiver.status().state
+        if (state === 'connected' || state === 'streaming') return
+        logMainInfo('[直播流] 手机未在限定时间内重连，停止画面接收')
+        // Leave the receiver callback before stopping it, and wait for any start operation.
+        void Promise.resolve().then(async () => {
+          if (operation) await operation
+          if (activeSession !== disconnectedSession || disconnectedSession.state !== 'running') return
+          await stopLiveStream()
+        }).catch((error: unknown) => {
+          logMainWarn('[直播流] 断开后停止失败', { error: error instanceof Error ? error.message : String(error) })
+        })
+      }, PHONE_RECONNECT_GRACE_MS)
+      disconnectedSession.reconnectTimer.unref()
     }, androidConnectionMode)
     const session: ActiveSession = {
       state: 'running',
@@ -282,12 +301,18 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
       capturePath: process.env.LUNA_USB_CAPTURE_PATH ?? null,
       livePreview,
       startedAt: new Date().toISOString(),
+      reconnectTimer: null,
     }
     activeSession = session
-    liveUsage?.start(session.startedAt)
-    receiver.start()
-    logMainInfo('[直播流] 手机输入接收已启动', { androidConnectionMode })
-    return getLiveStreamStatus()
+    try {
+      liveUsage?.start(session.startedAt)
+      receiver.start()
+      logMainInfo('[直播流] 手机输入接收已启动', { androidConnectionMode })
+      return await getLiveStreamStatus()
+    } catch (error) {
+      await clearActiveSession(false)
+      throw error
+    }
   })().finally(() => {
     operation = null
   })
@@ -295,19 +320,39 @@ export function startLiveStream(): Promise<LiveStreamStatus> {
   return task
 }
 
-export function stopLiveStream(): Promise<LiveStreamStatus> {
-  if (operation) return operation
-  const task = (async () => {
-    const session = activeSession
-    if (session) {
-      session.state = 'stopping'
-      onPhoneDisconnected()
-      liveUsage?.stop(session.startedAt)
-      await session.receiver.stop()
-      await stopLiveStreamCapture()
-      await session.livePreview.stop()
-      activeSession = null
+// Always release every resource, even if capture finalization or receiver shutdown fails.
+async function clearActiveSession(reportErrors = true): Promise<void> {
+  const session = activeSession
+  if (!session) return
+  session.state = 'stopping'
+  if (session.reconnectTimer) clearTimeout(session.reconnectTimer)
+  session.reconnectTimer = null
+  const errors: unknown[] = []
+  try {
+    for (const cleanup of [
+      () => onPhoneDisconnected(),
+      () => liveUsage?.stop(session.startedAt),
+      () => session.receiver.stop(),
+      () => stopLiveStreamCapture(),
+      () => session.livePreview.stop(),
+    ]) {
+      try {
+        await cleanup()
+      } catch (error) {
+        errors.push(error)
+        logMainWarn('[直播流] 会话清理失败', { error: error instanceof Error ? error.message : String(error) })
+      }
     }
+  } finally {
+    if (activeSession === session) activeSession = null
+  }
+  if (reportErrors && errors.length) throw errors[0]
+}
+
+export function stopLiveStream(): Promise<LiveStreamStatus> {
+  if (operation) return operation.catch(() => undefined).then(() => stopLiveStream())
+  const task = (async () => {
+    await clearActiveSession()
     logMainInfo('[直播流] 输入接收已停止')
     return getLiveStreamStatus()
   })().finally(() => {

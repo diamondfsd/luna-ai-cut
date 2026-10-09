@@ -47,7 +47,7 @@ export function LiveConnectionGuides({ status }: { status: LiveStreamStatus }) {
         trigger={<Button variant="ghost" size="mini">鸿蒙原生连接指引</Button>}>
         <div className="live-guide-instructions">
           <LiveConnectionGuideSteps platform="harmony" />
-          <p>使用支持直播的鸿蒙原生 Luna 咔版本，保持相机页面在前台。</p>
+          <p>使用支持直播的鸿蒙原生 Luna 咔版本。</p>
         </div>
         <GuideDownload platform="harmony" />
       </Dialog>

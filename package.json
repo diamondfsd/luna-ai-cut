@@ -78,7 +78,7 @@
     "test:luna-ble": "node --experimental-strip-types scripts/test-luna-ble-protocol.mjs",
     "test:camera-video-stream": "node --experimental-strip-types scripts/test-camera-video-stream.mjs",
     "test:live-stream-capture": "node --experimental-strip-types scripts/test-live-stream-capture.mjs",
-    "test:ios-tcp-receiver": "node scripts/test-ios-tcp-receiver.mjs",
+    "test:ios-tcp-receiver": "node scripts/test-ios-tcp-receiver.mjs && node scripts/test-live-stream-retry.mjs",
     "test:harmony-hdc": "node --experimental-strip-types scripts/test-harmony-hdc.mjs",
     "test:android-adb": "node --experimental-strip-types scripts/test-android-adb.mjs",
     "check:android-adb-resources": "node scripts/android-adb-resources.mjs",

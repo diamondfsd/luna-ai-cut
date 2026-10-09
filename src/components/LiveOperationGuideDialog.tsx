@@ -10,7 +10,7 @@ function GuideScreen({ children }: { children: ReactNode }) {
 
 export function LiveOperationGuideDialog() {
   const steps = [
-    { text: '在手机 Luna 咔中连接相机。',
+    { text: '在手机 Luna 咔中连接相机，并停留在拍摄页。',
       image: <><div className="live-operation-phone"><img src={lunaKaLogo} alt="" /></div><Wifi size={20} /><Camera size={40} strokeWidth={1.5} /></> },
     { text: '用 USB 线连接手机和电脑。',
       image: <><Smartphone size={45} strokeWidth={1.5} /><div className="live-operation-usb"><Usb size={20} /><span /></div><Laptop size={62} strokeWidth={1.5} /></> },

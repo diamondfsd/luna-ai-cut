@@ -152,6 +152,10 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           onPreviewErrorChange={setPreviewError}
           onStatusChanged={() => void refreshStatus()}
           onStart={() => void runAction(async () => {
+            if (status.receiverConnected && (previewError || status.localPreviewError || status.error)) {
+              flushLiveUsage()
+              await window.luna.liveStream.stop()
+            }
             await window.luna.liveStream.start()
             toast.success('已开始获取画面')
           })}

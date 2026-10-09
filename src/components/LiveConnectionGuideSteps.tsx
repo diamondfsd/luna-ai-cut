@@ -13,7 +13,7 @@ export function LiveConnectionGuideSteps({ platform }: { platform: 'ios' | 'andr
   const steps = [
     ...(harmony ? [{ text: '打开设置，进入“关于本机”，连续点击“软件版本”，开启开发者模式，再开启 USB 调试。', illustration: <GuidePhone><Usb size={23} className="live-guide-accent" /></GuidePhone> }] : []),
     {
-      text: '打开 Luna 咔，连接相机。',
+      text: '打开 Luna 咔，连接相机，并停留在拍摄页。',
       illustration: <><GuidePhone><img src={lunaKaLogo} alt="" /></GuidePhone><Wifi size={19} className="live-guide-accent" /><Camera size={35} strokeWidth={1.5} /></>,
     },
     {
