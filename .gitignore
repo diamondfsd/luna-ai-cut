@@ -44,7 +44,13 @@ resources/bgm/soundfonts/*.sha256
 .onnxruntime-cache/
 .package-resources/
 docs/*
+!docs/ai-editor-skills-memory-architecture.md
+!docs/director-plan-ai-editing-workflow.md
+!docs/external-agent-adapters.md
+!docs/app-agent-architecture.md
+!docs/app-memory-architecture.md
 !docs/camera-media-architecture.md
+!docs/windows-ios-usb-live.md
 
 # Local deploy config
 scripts/deploy-release.conf
@@ -82,6 +88,7 @@ luna-render-core/luna-smb2-worker
 luna-render-core/luna-smb2-worker.exe
 luna-render-core/dxcompiler.dll
 luna-render-core/dxil.dll
+luna-render-core/onnxruntime*.dll
 luna-render-core/av*.dll
 luna-render-core/sw*.dll
 luna-render-core/*.dll.tmp
@@ -89,3 +96,9 @@ luna-render-core/DXC-LICENSE-*.txt
 luna-render-core/ASR-LICENSE-*.txt
 worktrees/
 *com*.jpg
+# Local artifacts from the retired ONNX provider probe
+scripts/onnx-provider-probe/target/
+
+# Reproducible macOS iPhone USB source/build cache
+.cache/ios-usb-sources/
+.cache/ios-usb-build.log
