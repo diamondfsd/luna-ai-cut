@@ -69,7 +69,7 @@ export function DirectorLabPairDialog({ open, onOpenChange, onPaired }: Props) {
   }))
 
   async function pair(): Promise<void> {
-    if (pairingCode.length !== 8 || pairing) return
+    if (pairingCode.length !== 6 || pairing) return
     let endpoint: string
     try {
       if (addressMode === 'manual') {
@@ -103,13 +103,14 @@ export function DirectorLabPairDialog({ open, onOpenChange, onPaired }: Props) {
     open={open}
     onOpenChange={onOpenChange}
     title="配对手机"
+    tone="dark"
     className="director-lab-pair-dialog"
     bodyClassName="director-lab-pair-dialog-body"
     closeOnMaskClick={!pairing}
     showCloseButton={!pairing}
     footer={<>
       <Button variant="secondary" disabled={pairing} onClick={() => onOpenChange(false)}>取消</Button>
-      <Button variant="primary" disabled={pairing || !canPair || pairingCode.length !== 8}
+      <Button variant="primary" disabled={pairing || !canPair || pairingCode.length !== 6}
         onClick={() => void pair()}>{pairing ? '配对中' : '配对'}</Button>
     </>}
   >
@@ -158,13 +159,13 @@ export function DirectorLabPairDialog({ open, onOpenChange, onPaired }: Props) {
         fullWidth
         className="director-lab-pair-code"
         aria-label="配对码"
-        placeholder="输入 8 位配对码"
+        placeholder="输入 6 位配对码"
         inputMode="numeric"
         autoComplete="one-time-code"
-        maxLength={8}
+        maxLength={6}
         disabled={pairing}
         value={pairingCode}
-        onChange={(event) => setPairingCode(event.target.value.replace(/\D/g, '').slice(0, 8))}
+        onChange={(event) => setPairingCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
       />
       {error && <p className="director-lab-pair-error" role="alert">{error}</p>}
     </div>

@@ -4,7 +4,7 @@
 
 .director-lab-pair-fields {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .director-lab-pair-mode {
@@ -13,6 +13,10 @@
 
 .director-lab-pair-mode > * {
   flex: 1;
+}
+
+.director-lab-pair-mode .ui-btn-group-btn {
+  height: 44px;
 }
 
 .director-lab-pair-device {
@@ -24,6 +28,23 @@
 .director-lab-pair-device .ui-select-full {
   min-width: 0;
   flex: 1;
+}
+
+.director-lab-pair-device .ui-btn-utility {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+}
+
+.director-lab-pair-dialog .ui-input-pill,
+.director-lab-pair-dialog .ui-select-pill {
+  height: 44px;
+  border-radius: 12px;
+}
+
+.director-lab-pair-dialog .ui-dialog-footer .ui-btn {
+  min-height: 44px;
 }
 
 .director-lab-pair-code {

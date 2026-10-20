@@ -148,7 +148,7 @@ export class LunaKaHttpClient {
   async pair(endpoint: string, pairingCode: string): Promise<{ deviceId: string }> {
     const base = this.normalizeEndpoint(endpoint)
     const code = pairingCode.trim()
-    if (!/^\d{8}$/.test(code)) throw new Error('请输入 8 位配对码')
+    if (!/^\d{6}$/.test(code)) throw new Error('请输入 6 位配对码')
     await this.ensureLoaded()
     const phone = await this.readPhoneInfo(base)
     if (!phone.deviceId) throw new Error('手机版本不支持配对码，请更新手机应用')
