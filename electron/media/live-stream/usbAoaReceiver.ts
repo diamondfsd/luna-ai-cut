@@ -111,6 +111,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       state: 'waiting',
       message: '等待手机通过 USB 连接',
       error: null,
+      connectionDiagnostics: [],
     }
     usb.usb.on('attach', this.handleAttach)
     usb.usb.on('detach', this.handleDetach)
@@ -135,6 +136,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       vendorId: null,
       productId: null,
       error: null,
+      connectionDiagnostics: [],
     }
   }
 
@@ -247,6 +249,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
           productId: null,
           controlReady: false,
           error: null,
+          connectionDiagnostics: [],
         }
       }
     } catch (error) {
@@ -265,6 +268,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
         vendorId: idVendor,
         productId: idProduct,
         error: null,
+        connectionDiagnostics: [],
       }
       logMainInfo('[USB AOA] 手机支持配件协议，开始切换', { ...usbDeviceDetails(device), protocolVersion: version })
     })
@@ -304,7 +308,10 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
           this.pending = consumeFrames(
             Buffer.concat([this.pending, data]),
             (frame) => this.handleFrame(frame),
-            (reason) => logMainWarn(`[USB AOA] 丢弃无效 UCD2 帧：${reason}`),
+            (reason) => {
+              this.statusValue.connectionDiagnostics = [{ source: '安卓 USB', message: '手机画面数据异常，请重试', detail: reason }]
+              logMainWarn(`[USB AOA] 丢弃无效 UCD2 帧：${reason}`)
+            },
           )
         }
       },
@@ -322,6 +329,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       productId: device.deviceDescriptor.idProduct,
       controlReady: true,
       error: null,
+      connectionDiagnostics: [],
     }
     logMainInfo('[USB AOA] Bulk 端点已打开', { ...usbDeviceDetails(device), interfaceNumber: interfaceInfo.interfaceNumber, inEndpoint: inEndpoint.address, outEndpoint: outEndpoint.address })
     inEndpoint.on('data', session.onData)
@@ -394,6 +402,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       videoBytes: this.statusValue.videoBytes + (isVideo ? frame.raw.length : 0),
       lastVideoFrameAt: isVideo ? receivedAt : this.statusValue.lastVideoFrameAt,
       error: null,
+      connectionDiagnostics: [],
     }
     this.onFrame(frame)
   }
@@ -480,6 +489,7 @@ export class UsbAoaReceiver implements LiveMediaReceiver {
       state: 'error',
       message: detail,
       error: detail,
+      connectionDiagnostics: [{ source: '安卓 USB', message: detail, detail: JSON.stringify(details) }],
     }
     void this.disconnectAccessory('detached')
   }

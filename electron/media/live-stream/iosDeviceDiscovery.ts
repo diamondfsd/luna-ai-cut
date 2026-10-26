@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 
 export type IosDeviceDiscoveryResult = {
   state: 'detected' | 'none' | 'unavailable'
+  detail?: string
   deviceCount: number
 }
 
@@ -45,16 +46,16 @@ export class IosDeviceDiscovery {
     if (!this.running || this.child || this.timer) return
     const binary = iosUsbToolBinary('idevice_id')
     if (!binary) {
-      this.publish({ state: 'unavailable', deviceCount: 0 })
+      this.publish({ state: 'unavailable', deviceCount: 0, detail: 'iPhone 检测工具不可用' })
       this.scheduleNext()
       return
     }
 
     let child: ChildProcess
     try {
-      child = spawn(binary, ['-l'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
-    } catch {
-      this.publish({ state: 'unavailable', deviceCount: 0 })
+      child = spawn(binary, ['-l'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    } catch (error) {
+      this.publish({ state: 'unavailable', deviceCount: 0, detail: String(error) })
       this.scheduleNext()
       return
     }
@@ -62,6 +63,7 @@ export class IosDeviceDiscovery {
     this.child = child
     const generation = this.generation
     let output = ''
+    let stderr = ''
     let finished = false
     const finish = (result: IosDeviceDiscoveryResult) => {
       if (finished) return
@@ -78,10 +80,11 @@ export class IosDeviceDiscovery {
     child.stdout?.on('data', (chunk: Buffer | string) => {
       if (output.length < 16_384) output += String(chunk)
     })
-    child.once('error', () => finish({ state: 'unavailable', deviceCount: 0 }))
+    child.stderr?.on('data', (chunk: Buffer | string) => { stderr = (stderr + String(chunk)).slice(-2_000) })
+    child.once('error', (error) => finish({ state: 'unavailable', deviceCount: 0, detail: error.message }))
     child.once('close', (code) => {
       if (code !== 0) {
-        finish({ state: 'unavailable', deviceCount: 0 })
+        finish({ state: 'unavailable', deviceCount: 0, detail: stderr || `iPhone device detection exited: ${code}` })
         return
       }
       const deviceCount = parseIdeviceIdOutput(output).length
@@ -89,7 +92,7 @@ export class IosDeviceDiscovery {
     })
     this.timer = setTimeout(() => {
       child.kill('SIGTERM')
-      finish({ state: 'unavailable', deviceCount: 0 })
+      finish({ state: 'unavailable', deviceCount: 0, detail: stderr || 'iPhone device detection timed out (3000ms)' })
     }, SCAN_TIMEOUT_MS)
   }
 
@@ -102,7 +105,7 @@ export class IosDeviceDiscovery {
   }
 
   private publish(result: IosDeviceDiscoveryResult): void {
-    if (this.lastResult?.state === result.state && this.lastResult.deviceCount === result.deviceCount) return
+    if (this.lastResult?.state === result.state && this.lastResult.deviceCount === result.deviceCount && this.lastResult.detail === result.detail) return
     this.lastResult = result
     this.onResult?.(result)
   }

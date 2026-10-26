@@ -1,3 +1,15 @@
+import type { UsbAoaStatus } from './usbMediaReceiver'
+
+export function receiverDiagnostics(statuses: UsbAoaStatus[], selected: UsbAoaStatus) {
+  return (selected.controlReady ? [selected] : statuses).flatMap((status) => {
+    if (status.connectionDiagnostics?.length) return status.connectionDiagnostics
+    if (!status.error) return []
+    const source = status.transport === 'ios-tcp' ? 'iPhone'
+      : status.transport === 'harmony-hdc' ? '鸿蒙手机' : '安卓手机'
+    return [{ source, message: status.message, detail: status.error }]
+  })
+}
+
 interface ReceiverStatus {
   state: 'streaming' | 'connected' | 'switching' | 'waiting' | 'error' | 'idle'
   deviceLabel: string | null

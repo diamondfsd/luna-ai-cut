@@ -1,4 +1,4 @@
-import type { LiveStreamControlCommand, LiveStreamControlDelivery } from '../../../src/shared/types'
+import type { LiveConnectionDiagnostic, LiveStreamControlCommand, LiveStreamControlDelivery } from '../../../src/shared/types'
 import { UCD2_MAGIC, USB_STREAM_CONTROL_COMMAND } from './usbAoaProtocol.ts'
 
 export type UsbControlRequest = LiveStreamControlCommand & {
@@ -23,6 +23,7 @@ export interface LiveMediaReceiver {
 export type UsbAoaState = 'idle' | 'waiting' | 'switching' | 'connected' | 'streaming' | 'error'
 
 export interface UsbAoaStatus {
+  connectionDiagnostics?: LiveConnectionDiagnostic[]
   state: UsbAoaState
   transport: 'usb-aoa' | 'ios-tcp' | 'android-adb' | 'harmony-hdc'
   message: string

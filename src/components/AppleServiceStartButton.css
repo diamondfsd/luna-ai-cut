@@ -1,0 +1,9 @@
+.apple-service-start { display: grid; gap: 8px; }
+.apple-service-start pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: text;
+}

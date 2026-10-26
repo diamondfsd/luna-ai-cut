@@ -192,6 +192,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
   },
   liveStream: {
+    startAppleService: () => ipcRenderer.invoke('live-stream:start-apple-service'),
     setAndroidConnectionMode: (mode) => ipcRenderer.invoke('live-stream:set-android-mode', mode),
     installAppleDriver: () => ipcRenderer.invoke('live-stream:install-apple-driver'),
     status: () => ipcRenderer.invoke('live-stream:status'),

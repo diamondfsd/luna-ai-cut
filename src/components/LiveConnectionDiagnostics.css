@@ -1,0 +1,19 @@
+.live-connection-diagnostics { display: grid; gap: 12px; min-width: 0; }
+.live-connection-diagnostics-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.live-connection-diagnostics-header strong { font-size: 13px; }
+.live-connection-diagnostic { display: grid; gap: 8px; min-width: 0; }
+.live-connection-diagnostic p { margin: 0; font-size: 13px; line-height: 1.5; }
+.live-connection-diagnostic pre {
+  margin: 0;
+  padding: 8px;
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--parchment);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: text;
+}

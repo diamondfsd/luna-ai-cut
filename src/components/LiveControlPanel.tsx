@@ -13,6 +13,7 @@ import { FilterPanel } from '../workspace/lut/FilterPanel'
 import { captureLiveLutFrame } from '../workspace/lut/liveLutThumbnail'
 import { AnnexBVideoCanvas } from './AnnexBVideoCanvas'
 import { LiveCameraControlPanel } from './LiveCameraControlPanel'
+import { LiveConnectionDiagnostics } from './LiveConnectionDiagnostics'
 import { LiveConnectionGuides } from './LiveConnectionGuides'
 import { MobileAppDownloadButton } from './MobileAppDownload'
 import { AndroidUsbConnectionMode } from './AndroidUsbConnectionMode'
@@ -184,7 +185,7 @@ export function LiveControlPanel({
   const handlePreviewError = useCallback((message: string) => {
     setPreviewError(message)
     window.luna.log('warn', '直播画面播放异常', { error: message })
-    onPreviewErrorChange('画面播放异常')
+    onPreviewErrorChange(message)
   }, [onPreviewErrorChange])
 
   const handleColorChange = useCallback((patch: Partial<EditPipeline['color']>) => {
@@ -327,7 +328,7 @@ export function LiveControlPanel({
 
       <aside className="live-control-pane" data-live-window-controls aria-label="直播设置">
         <AndroidUsbConnectionMode status={status} onChanged={onStatusChanged} />
-        {consoleError && <p className="live-control-error" role="alert">{consoleError}</p>}
+        <LiveConnectionDiagnostics status={status} errors={[consoleError, previewError, status.localPreviewError, status.error]} onChanged={onStatusChanged} />
         {(status.state === 'waiting-usb' || status.state === 'error' || previewError || status.localPreviewError) && (
           <Button variant="secondary" size="compact" onClick={onStart} disabled={busy}>重试</Button>
         )}

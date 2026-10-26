@@ -9,11 +9,11 @@ type ProbeService = () => Promise<boolean>
 const SERVICE_QUERY = "$services = @(Get-Service -ErrorAction Stop | Where-Object { $_.Name -like '*Apple*Mobile*Device*' -or $_.DisplayName -like '*Apple*Mobile*Device*' }); if ($services.Count -eq 0) { 'missing' } elseif ($services | Where-Object { $_.Status -eq 'Running' }) { 'running' } else { 'stopped' }"
 const SIGNATURE_QUERY = "$signature = Get-AuthenticodeSignature -LiteralPath $env:LUNA_APPLE_DRIVER_PATH -ErrorAction Stop; @{ status = [string]$signature.Status; subject = [string]$signature.SignerCertificate.Subject } | ConvertTo-Json -Compress"
 
-function powershell(command: string, env?: NodeJS.ProcessEnv): Promise<string> {
+export function powershell(command: string, env?: NodeJS.ProcessEnv, timeout = 5_000): Promise<string> {
   const binary = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
   return new Promise((resolve, reject) => {
     execFile(binary, ['-NoProfile', '-NonInteractive', '-Command', command], {
-      windowsHide: true, timeout: 5_000, maxBuffer: 16_384, env,
+      windowsHide: true, timeout, maxBuffer: 16_384, env,
     }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()))
   })
 }
@@ -45,13 +45,17 @@ export async function checkAppleDeviceSupport(
   platform: string = process.platform,
   query: QueryService = queryService,
   probe: ProbeService = probeService,
+  onError: (error: unknown) => void = () => {},
 ): Promise<AppleDeviceSupportState> {
   if (platform !== 'win32') return 'not-required'
   try {
     const state = await query()
     if (state !== 'running') return state
-    return await probe() ? 'ready' : 'unavailable'
-  } catch {
+    if (await probe()) return 'ready'
+    onError(new Error('Apple Mobile Device Service: 127.0.0.1:27015 unreachable'))
+    return 'unavailable'
+  } catch (error) {
+    onError(error)
     return 'unavailable'
   }
 }

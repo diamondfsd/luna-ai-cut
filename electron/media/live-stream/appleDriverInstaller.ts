@@ -45,7 +45,7 @@ export class AppleDriverInstaller {
       controller.abort()
     }, 10 * 60_000)
     timeout.unref()
-    this.progress = { ...this.progress, state: 'downloading', completedBytes: 0 }
+    this.progress = { state: 'downloading', completedBytes: 0, totalBytes: this.dependencies.definition.sizeBytes }
     const task = Promise.resolve().then(async () => {
       signal.throwIfAborted()
       const filePath = await this.dependencies.download(
@@ -66,7 +66,7 @@ export class AppleDriverInstaller {
       this.progress = { ...this.progress, state: 'opened' }
     }).catch((error: unknown) => {
       const phase = this.progress.state
-      this.progress = { ...this.progress, state: 'error' }
+      this.progress = { ...this.progress, state: 'error', error: error instanceof Error ? error.message : String(error) }
       this.dependencies.onError?.(error)
       if (timedOut) throw new Error('驱动下载超时，请重试')
       if (signal.aborted) throw new Error('下载已取消')

@@ -195,7 +195,7 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
         const receivedAt = new Date().toISOString()
         const streaming = isVideo || this.statusValue.state === 'streaming'
         this.statusValue = {
-          ...this.statusValue, state: streaming ? 'streaming' : 'connected', controlReady: true, error: null,
+          ...this.statusValue, state: streaming ? 'streaming' : 'connected', controlReady: true, error: null, connectionDiagnostics: [],
           message: streaming ? '正在接收手机视频' : '手机 USB 已连接，等待视频',
           frames: this.statusValue.frames + 1, bytes: this.statusValue.bytes + frame.raw.length, lastFrameAt: receivedAt,
           videoFrames: this.statusValue.videoFrames + Number(isVideo),
@@ -245,6 +245,9 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
   }
 
   private diagnostic(message: string, details: unknown): void {
+    this.statusValue.connectionDiagnostics = [{
+      source: this.driver.phoneLabel, message, detail: JSON.stringify(details),
+    }]
     const key = JSON.stringify([message, details])
     if (key === this.lastDiagnostic) return
     this.lastDiagnostic = key

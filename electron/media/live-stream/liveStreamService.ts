@@ -1,3 +1,4 @@
+import { appleSupportDiagnostic } from '../../../src/shared/liveConnectionDiagnostics'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs'
 import { app } from 'electron'
@@ -16,7 +17,7 @@ import {
 } from './usbAoaReceiver'
 import { createLiveMediaReceiver } from './mediaReceiver'
 import { LivePreviewStreamService } from './livePreviewStreamService'
-import { getAppleDeviceSupportStatus, getAppleDriverDownloadStatus } from './appleDeviceSupportService'
+import { getAppleDeviceSupportStatus, getAppleDeviceSupportError, getAppleDriverDownloadStatus } from './appleDeviceSupportService'
 import type {
   AndroidConnectionMode,
   LiveStreamControlCapabilities,
@@ -121,6 +122,8 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     ? '等待手机通过 USB 连接' : usb.message
   const state = statusState(usb.state)
   const error = usb.error ?? null
+  const appleDiagnostic = !usb.controlReady ? appleSupportDiagnostic(appleDeviceSupport) : null
+  if (appleDiagnostic && getAppleDeviceSupportError()) appleDiagnostic.detail = getAppleDeviceSupportError()!
   if (activeSession) liveUsage?.capabilities(activeSession.startedAt, usb.controlReady, activeSession.capabilities)
 
   return {
@@ -128,6 +131,10 @@ export async function getLiveStreamStatus(): Promise<LiveStreamStatus> {
     platform: process.platform,
     androidConnectionMode,
     appleDeviceSupport,
+    connectionDiagnostics: [
+      ...(usb.connectionDiagnostics ?? []),
+      ...(appleDiagnostic ? [appleDiagnostic] : []),
+    ],
     appleDriverDownload: getAppleDriverDownloadStatus(),
     controlReady: usb.controlReady,
     lastControlResult: activeSession?.lastControlResult ?? null,
@@ -228,6 +235,10 @@ export async function sendLiveStreamControlCommand(command: LiveStreamControlCom
     liveUsage?.control(session.startedAt, command.type, false)
   } catch (error) {
     liveUsage?.control(session.startedAt, command.type, true)
+    session.lastControlResult = {
+      requestId, type: command.type, ok: false,
+      error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString(),
+    }
     throw error
   }
   if ((command.type === 'zoom.preview' || command.type === 'zoom.set') && session.capabilities) {

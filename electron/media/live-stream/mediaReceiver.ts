@@ -4,7 +4,7 @@ import { HarmonyHdcReceiver } from './harmonyHdcReceiver'
 import { AndroidAdbReceiver } from './androidAdbReceiver'
 import { logMainInfo, logMainWarn } from '../../infrastructure/loggerService'
 import type { AndroidConnectionMode } from '../../../src/shared/types'
-import { stateScore } from './mediaReceiverStatus'
+import { receiverDiagnostics, stateScore } from './mediaReceiverStatus'
 import { canProbeUsbAccessory } from './usbAccessoryProbe'
 import {
   type LiveMediaReceiver,
@@ -37,13 +37,17 @@ class MultiTransportReceiver implements LiveMediaReceiver {
 
   status(): UsbAoaStatus {
     const statuses = this.receivers.map((receiver) => receiver.status())
-    if (statuses.every((status) => status.state === 'waiting' && !status.deviceLabel && !status.error && !status.deviceDetectionUnavailable)) {
+    if (statuses.every((status) => status.state === 'waiting' && !status.deviceLabel && !status.error && !status.deviceDetectionUnavailable && !status.connectionDiagnostics?.length)) {
       this.lastActive = this.receivers[0]
       return { ...statuses[0], message: '等待手机通过 USB 连接' }
     }
     const receiver = this.activeReceiver()
     this.lastActive = receiver
-    return receiver.status()
+    const selected = receiver.status()
+    return {
+      ...selected,
+      connectionDiagnostics: receiverDiagnostics(statuses, selected),
+    }
   }
 
   start(): void {

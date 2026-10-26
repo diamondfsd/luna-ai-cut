@@ -168,6 +168,22 @@ try {
       assert.equal(socket.writes[1][7], (socket.writes[0][7] + 1) & 0xff)
     })
 
+    await suite.test('proxy errors stay visible across retries, recover on frames and ignore old processes', async (context) => {
+      const { harness, receiver, socket } = await setup(context)
+      const proxy = harness.proxies[0]
+      proxy.stdout.emit('data', Buffer.from('Connecting to usbmuxd failed, terminating.\n'))
+      socket.emit('error', new Error('read ECONNRESET'))
+      assert.match(receiver.status().connectionDiagnostics[0].detail, /usbmuxd/)
+      harness.advance(1_500)
+      const next = harness.sockets[1]
+      next.emit('connect')
+      next.emit('data', videoFrame)
+      assert.deepEqual(receiver.status().connectionDiagnostics, [])
+      await receiver.stop()
+      proxy.stderr.emit('data', Buffer.from('late native failure\n'))
+      assert.deepEqual(receiver.status().connectionDiagnostics, [])
+    })
+
     await suite.test('silent TCP listeners time out without pretending to be an iPhone', async (context) => {
       const { harness, receiver, socket } = await setup(context)
       socket.emit('connect')

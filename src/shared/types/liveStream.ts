@@ -105,7 +105,15 @@ export interface LiveStreamControlCapabilities {
   }
 }
 
+export interface LiveConnectionDiagnostic {
+  source: string
+  message: string
+  detail: string
+  action?: 'install-apple-driver' | 'start-apple-service'
+}
+
 export interface LiveStreamStatus {
+  connectionDiagnostics?: LiveConnectionDiagnostic[]
   state: LiveStreamState
   platform: string
   androidConnectionMode: AndroidConnectionMode
@@ -140,6 +148,7 @@ export type AppleDeviceSupportState = 'not-required' | 'missing' | 'stopped' | '
 export type AndroidConnectionMode = 'aoa' | 'adb'
 
 export interface AppleDriverDownloadStatus {
+  error?: string
   state: 'idle' | 'downloading' | 'verifying' | 'opening' | 'opened' | 'error'
   completedBytes: number
   totalBytes: number
@@ -152,6 +161,7 @@ export interface LiveStreamApi {
   stopCapture(): Promise<string | null>
   sendControl(command: LiveStreamControlCommand): Promise<string>
   stop(): Promise<LiveStreamStatus>
+  startAppleService(): Promise<void>
   installAppleDriver(): Promise<void>
   setAndroidConnectionMode(mode: AndroidConnectionMode): Promise<LiveStreamStatus>
 }

@@ -1,5 +1,5 @@
 import { app, ipcMain } from 'electron'
-import { cancelAppleDriverInstall, installAppleDriver } from '../media/live-stream/appleDeviceSupportService'
+import { cancelAppleDriverInstall, installAppleDriver, startAppleService } from '../media/live-stream/appleDeviceSupportService'
 
 import {
   getLiveStreamStatus,
@@ -14,6 +14,7 @@ import type { AndroidConnectionMode, LiveStreamControlCommand } from '../../src/
 
 export function register(): void {
   app.on('before-quit', cancelAppleDriverInstall)
+  ipcMain.handle('live-stream:start-apple-service', () => startAppleService())
   ipcMain.handle('live-stream:install-apple-driver', () => installAppleDriver())
   ipcMain.handle('live-stream:set-android-mode', (_event, mode: AndroidConnectionMode) => setAndroidConnectionMode(mode))
   ipcMain.handle('live-stream:status', () => getLiveStreamStatus())

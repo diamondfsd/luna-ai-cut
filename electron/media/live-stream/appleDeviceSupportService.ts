@@ -1,3 +1,4 @@
+import { startAppleDeviceService } from '../../platform/windows/appleDeviceServiceControl'
 import { app, shell } from 'electron'
 import { join } from 'node:path'
 import { APPLE_DEVICE_SUPPORT_INSTALLER } from '../../../src/shared/appleDeviceSupport'
@@ -22,12 +23,20 @@ const installer = new AppleDriverInstaller({
 
 let supportCheck: Promise<AppleDeviceSupportState> | null = null
 let checkedAt = 0
+let supportError: string | null = null
+
+export function getAppleDeviceSupportError(): string | null {
+  return supportError
+}
 
 export function getAppleDeviceSupportStatus(): Promise<AppleDeviceSupportState> {
   if (process.platform !== 'win32' || process.arch !== 'x64') return Promise.resolve('not-required')
   if (!supportCheck || Date.now() - checkedAt >= 5_000) {
     checkedAt = Number.POSITIVE_INFINITY
-    supportCheck = checkAppleDeviceSupport().finally(() => { checkedAt = Date.now() })
+    supportError = null
+    supportCheck = checkAppleDeviceSupport(process.platform, undefined, undefined, (error) => {
+      supportError = error instanceof Error ? error.message : String(error)
+    }).finally(() => { checkedAt = Date.now() })
   }
   return supportCheck
 }
@@ -42,4 +51,16 @@ export function installAppleDriver(): Promise<void> {
 
 export function cancelAppleDriverInstall(): void {
   installer.cancel()
+}
+
+let startOperation: Promise<void> | null = null
+
+export function startAppleService(): Promise<void> {
+  if (startOperation) return startOperation
+  startOperation = startAppleDeviceService().finally(() => {
+    supportCheck = null
+    checkedAt = 0
+    startOperation = null
+  })
+  return startOperation
 }

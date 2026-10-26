@@ -14,7 +14,7 @@ const modules = {
   electron: 'export const app = { getPath: () => "unused" }',
   loggerService: 'export const logMainInfo = () => {}; export const logMainWarn = () => {}',
   usbAoaReceiver: 'export const USB_STREAM_CONTROL_RESULT = 0x31; export const USB_STREAM_VIDEO = 0x20; export const controlDelivery = () => "transactional"',
-  appleDeviceSupportService: 'export const getAppleDeviceSupportStatus = async () => ({}); export const getAppleDriverDownloadStatus = () => ({})',
+  appleDeviceSupportService: 'export const getAppleDeviceSupportStatus = async () => ({}); export const getAppleDeviceSupportError = () => null; export const getAppleDriverDownloadStatus = () => ({})',
   mediaReceiver: `export function createLiveMediaReceiver(onFrame, onDisconnected) {
     const h = globalThis.__lunaLiveRetry;
     const receiver = { onFrame, onDisconnected, stopped: false, value: { state: 'waiting', transport: 'ios-tcp', controlReady: false },

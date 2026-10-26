@@ -29,9 +29,10 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   const [status, setStatus] = useState<LiveStreamStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [statusReadError, setStatusReadError] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [visibleError, setVisibleError] = useState<string | null>(null)
-  const pendingError = error || previewError || (status?.localPreviewError ? '画面播放异常' : null)
+  const pendingError = error || statusReadError || previewError || status?.error || status?.localPreviewError
 
   useEffect(() => {
     setVisibleError(null)
@@ -44,9 +45,9 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
     try {
       const next = await window.luna.liveStream.status()
       setStatus(next)
-      setError(next.error)
+      setStatusReadError(null)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
+      setStatusReadError(reason instanceof Error ? reason.message : String(reason))
     }
   }, [])
 
@@ -55,8 +56,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
   }, [refreshStatus])
 
   useEffect(() => {
-    if (!busy && (!status?.startedAt || status.state === 'stopping')) return undefined
-    const timer = window.setInterval(() => void refreshStatus(), 1_000)
+    const timer = window.setInterval(() => void refreshStatus(), status?.startedAt || busy ? 1_000 : 3_000)
     return () => window.clearInterval(timer)
   }, [busy, refreshStatus, status?.startedAt, status?.state])
 

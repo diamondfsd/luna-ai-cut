@@ -1,3 +1,4 @@
+import { AppleServiceStartButton } from './AppleServiceStartButton'
 import { Button, Dialog } from '../ui'
 import type { LiveStreamStatus } from '../shared/types'
 import { AppleDriverDownloadButton } from './AppleDriverDownloadButton'
@@ -20,17 +21,17 @@ export function LiveConnectionGuides({ status }: { status: LiveStreamStatus }) {
         trigger={<Button variant="ghost" size="mini">苹果连接指引</Button>}>
         <div className="live-guide-instructions">
         <LiveConnectionGuideSteps platform="ios" />
-        {status.platform === 'win32' && status.appleDeviceSupport === 'missing' && (
+        {status.platform === 'win32' && (
           <>
             <p>安装苹果设备驱动后重新连接。</p>
             <AppleDriverDownloadButton status={status.appleDriverDownload} />
           </>
         )}
         {status.platform === 'win32' && status.appleDeviceSupport === 'stopped' && (
-          <p>请在系统服务中启动 Apple Mobile Device Service。</p>
+          <><p>苹果设备服务未启动。</p><AppleServiceStartButton /></>
         )}
         {status.platform === 'win32' && status.appleDeviceSupport === 'unavailable' && (
-          <p>苹果设备服务不可用，请重启电脑后重试。</p>
+          <><p>苹果设备服务不可用。</p><AppleServiceStartButton /></>
         )}
         </div>
         <GuideDownload platform="ios" />
