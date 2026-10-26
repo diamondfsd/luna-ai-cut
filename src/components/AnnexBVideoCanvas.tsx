@@ -7,6 +7,8 @@ import { livePreviewOutputSize } from './livePreviewSizing'
 interface DecodedVideoFrame {
   displayWidth: number
   displayHeight: number
+  format?: string | null
+  colorSpace?: { primaries?: string | null; transfer?: string | null; matrix?: string | null; fullRange?: boolean | null }
   close(): void
 }
 
@@ -80,6 +82,10 @@ export function AnnexBVideoCanvas({
   onEffectErrorRef.current = onEffectError
 
   useEffect(() => {
+    window.luna.log('info', '[直播预览] 调色设置', { lutEnabled: Boolean(lutPath), lutIntensity, colorAdjustments })
+  }, [lutPath, lutIntensity, colorAdjustments])
+
+  useEffect(() => {
     void webGpuRendererRef.current?.setLut(lutPath, lutIntensity).catch((error: unknown) => {
       onEffectError?.(error instanceof Error ? error.message : String(error))
     })
@@ -104,17 +110,29 @@ export function AnnexBVideoCanvas({
     let disposed = false
     let webGpuRenderer: LiveVideoWebGpuRenderer | null = null
     let webGpuActive = false
+    const startedAt = Date.now()
+    const stats = { bytes: 0, chunks: 0, submitted: 0, decoded: 0, keyframes: 0, errors: 0 }
+    const diagnose = (event: string, details: Record<string, unknown> = {}) => {
+      window.luna.log('info', '[直播预览] ' + event, { ...stats, elapsedMs: Date.now() - startedAt,
+        codec, configured, seenKeyframe, pendingUnits: pendingUnits.length, carryBytes: carry.length,
+        renderer: webGpuActive ? 'webgpu' : 'canvas2d', ...details })
+    }
+    diagnose('开始')
+    const diagnosticTimer = setInterval(() => diagnose('播放统计'), 15_000)
 
     setWebGpuReady(false)
     onWebGpuReadyChange?.(false)
 
     if (!codecs) {
+      clearInterval(diagnosticTimer)
+      diagnose('解码器不可用')
       onError('当前系统不支持相机视频预览')
       return () => undefined
     }
 
     if (webGpuCanvas) {
       void LiveVideoWebGpuRenderer.create(webGpuCanvas, () => {
+        diagnose('显示设备丢失')
         webGpuRenderer = null
         webGpuRendererRef.current = null
         webGpuActive = false
@@ -127,6 +145,7 @@ export function AnnexBVideoCanvas({
           renderer?.dispose()
           return
         }
+        diagnose('显示初始化', { available: Boolean(renderer) })
         webGpuRenderer = renderer
         webGpuRendererRef.current = renderer
         if (renderer) {
@@ -136,6 +155,7 @@ export function AnnexBVideoCanvas({
           })
         }
       }).catch((error: unknown) => {
+        diagnose('显示初始化失败', { error: String(error) })
         console.error('[LivePreview] WebGPU 初始化失败，继续使用兼容预览', error)
       })
     }
@@ -165,6 +185,8 @@ export function AnnexBVideoCanvas({
         frame.close()
         return
       }
+      stats.decoded += 1
+      if (stats.decoded === 1) diagnose('首个解码画面', { width: frame.displayWidth, height: frame.displayHeight, format: frame.format, colorSpace: frame.colorSpace ? { primaries: frame.colorSpace.primaries, transfer: frame.colorSpace.transfer, matrix: frame.colorSpace.matrix, fullRange: frame.colorSpace.fullRange } : null })
       const outputSize = livePreviewOutputSize(frame.displayWidth, frame.displayHeight)
       let gpuRendered = false
       try {
@@ -175,6 +197,7 @@ export function AnnexBVideoCanvas({
           onWebGpuReadyChange?.(true)
         }
       } catch (error) {
+        diagnose('显示回退', { error: String(error) })
         console.error('[LivePreview] WebGPU 渲染失败，已切换兼容预览', error)
         webGpuRenderer?.dispose()
         webGpuRenderer = null
@@ -183,11 +206,14 @@ export function AnnexBVideoCanvas({
         setWebGpuReady(false)
         onWebGpuReadyChange?.(false)
       }
-      if (!gpuRendered && !webGpuActive) drawFallback(frame, outputSize.width, outputSize.height)
-      const dimensions = outputSize
-      onDecodedFrameRef.current?.(frame as unknown as CanvasImageSource, frame.displayWidth, frame.displayHeight)
-      frame.close()
-      onFrame(dimensions)
+      try {
+        if (!gpuRendered && !webGpuActive) drawFallback(frame, outputSize.width, outputSize.height)
+        onDecodedFrameRef.current?.(frame as unknown as CanvasImageSource, frame.displayWidth, frame.displayHeight)
+      } finally {
+        // Recording or fallback drawing errors must not retain decoder surfaces.
+        frame.close()
+      }
+      onFrame(outputSize)
     }
 
     const consume = async () => {
@@ -198,11 +224,21 @@ export function AnnexBVideoCanvas({
 
       for (;;) {
         const { value, done } = await reader.read()
-        if (done || disposed) break
+        if (done || disposed) {
+          if (!disposed) diagnose('视频流结束')
+          break
+        }
         if (!value) continue
+        stats.bytes += value.length
+        stats.chunks += 1
         const merged = new Uint8Array(carry.length + value.length)
         merged.set(carry)
         merged.set(value, carry.length)
+        // A malformed stream must not grow memory indefinitely while waiting for headers.
+        if (merged.length + pendingUnits.reduce((sum, unit) => sum + unit.length, 0) > 32 * 1024 * 1024) {
+          diagnose('视频缓冲超限')
+          throw new Error('视频数据异常，请重新连接')
+        }
         const units = splitNalUnits(merged)
         if (units.length === 0) {
           carry = merged
@@ -223,6 +259,8 @@ export function AnnexBVideoCanvas({
           decoder = new codecs.Decoder({
             output: paint,
             error: (decoderError) => {
+              stats.errors += 1
+              diagnose('异步解码失败', { error: decoderError.message })
               resetDecoder()
               if (!disposed) onError(`视频解码失败：${decoderError.message}`)
             },
@@ -234,6 +272,7 @@ export function AnnexBVideoCanvas({
             return
           }
           configured = true
+          diagnose('解码配置', { codecString })
         }
 
         const drained = drainAccessUnits(pendingUnits, codec)
@@ -241,14 +280,17 @@ export function AnnexBVideoCanvas({
         for (const unit of drained.access) {
           if (decoder?.state !== 'configured') break
           if (!unit.key && !seenKeyframe) continue
-          if (unit.key) seenKeyframe = true
+          if (unit.key) { seenKeyframe = true; stats.keyframes += 1 }
           try {
+            stats.submitted += 1
             decoder.decode(new codecs.Chunk({
               type: unit.key ? 'key' : 'delta',
               timestamp,
               data: unit.data,
             }))
           } catch (decodeError) {
+            stats.errors += 1
+            diagnose('同步解码失败', { error: String(decodeError) })
             resetDecoder()
             if (!disposed) onError(`视频解码失败：${decodeError instanceof Error ? decodeError.message : String(decodeError)}`)
           }
@@ -259,10 +301,13 @@ export function AnnexBVideoCanvas({
 
     void consume().catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return
+      if (!disposed) diagnose('读取失败', { error: String(error) })
       if (!disposed) onError(error instanceof Error ? error.message : String(error))
     })
     return () => {
       disposed = true
+      clearInterval(diagnosticTimer)
+      diagnose('结束')
       abort.abort()
       try { decoder?.close() } catch { /* Decoder may already be closed. */ }
       webGpuRenderer?.dispose()

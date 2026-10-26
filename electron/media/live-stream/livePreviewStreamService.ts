@@ -1,3 +1,4 @@
+import { logMainInfo } from '../../infrastructure/loggerService'
 import { LocalVideoStreamServer } from '../../devices/common/localVideoStreamServer'
 
 export interface LivePreviewStatus {
@@ -10,12 +11,15 @@ export interface LivePreviewStatus {
 /** Forwards raw Annex-B HEVC frames to the renderer for WebCodecs preview. */
 export class LivePreviewStreamService {
   private readonly server = new LocalVideoStreamServer('video/hevc')
+  private diagnosticTimer: NodeJS.Timeout | null = null
   private statusValue: LivePreviewStatus = { url: null, port: null, frames: 0, error: null }
 
   async start(): Promise<LivePreviewStatus> {
     if (this.statusValue.url) return this.status()
     try {
       const local = await this.server.start()
+      this.diagnosticTimer = setInterval(() => this.logStats('运行'), 15_000)
+      this.diagnosticTimer.unref()
       this.statusValue = { ...this.statusValue, url: local.url, port: local.port, error: null }
     } catch (error) {
       this.statusValue = {
@@ -36,7 +40,14 @@ export class LivePreviewStreamService {
     return { ...this.statusValue }
   }
 
+  private logStats(phase: string): void {
+    logMainInfo('[直播预览] 转发统计', { phase, frames: this.statusValue.frames, ...this.server.stats() })
+  }
+
   async stop(): Promise<void> {
+    if (this.diagnosticTimer) clearInterval(this.diagnosticTimer)
+    this.diagnosticTimer = null
+    this.logStats('停止')
     await this.server.stop()
     this.statusValue = { url: null, port: null, frames: 0, error: null }
   }

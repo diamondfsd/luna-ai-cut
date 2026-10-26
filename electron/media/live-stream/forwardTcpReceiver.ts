@@ -153,11 +153,19 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
     const socket = this.dependencies.connect({ host: '127.0.0.1', port })
     this.socket = socket
     this.pending = Buffer.alloc(0)
+    const connectedAt = Date.now()
+    let receivedBytes = 0
+    let receivedFrames = 0
+    let videoFrames = 0
+    let lastDataAt: number | null = null
+    const connectionStats = () => ({ localPort: port, elapsedMs: Date.now() - connectedAt,
+      receivedBytes, receivedFrames, videoFrames, pendingBytes: this.pending.length,
+      idleMs: lastDataAt === null ? null : Date.now() - lastDataAt, confirmed: this.confirmed })
     this.setStatus('waiting', '请打开手机直播')
     const isCurrent = () => this.running && this.socket === socket && !socket.destroyed
     this.handshakeTimer = setTimeout(() => {
       if (!isCurrent()) return
-      this.diagnostic('等待手机画面超时', { localPort: port })
+      this.diagnostic('等待手机画面超时', connectionStats())
       this.closeSocket(true)
       this.setStatus('waiting', '未收到手机画面，正在重连')
     }, this.dependencies.handshakeMs)
@@ -173,11 +181,15 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
     })
     socket.on('data', (chunk: Buffer) => {
       if (!isCurrent()) return
+      receivedBytes += chunk.length
+      lastDataAt = Date.now()
       this.pending = consumeFrames(Buffer.concat([this.pending, chunk]), (frame) => {
         if (!isCurrent()) return
         if (this.handshakeTimer) clearTimeout(this.handshakeTimer)
         this.handshakeTimer = null
+        receivedFrames += 1
         const isVideo = frame.streamType === USB_STREAM_VIDEO
+        if (isVideo && videoFrames++ === 0) this.dependencies.log('info', `[${this.driver.label}] 首个视频帧`, connectionStats())
         if (!this.confirmed) this.dependencies.log('info', `[${this.driver.label}] 手机连接已确认`)
         this.confirmed = true
         const receivedAt = new Date().toISOString()
@@ -195,12 +207,13 @@ export class ForwardTcpReceiver implements LiveMediaReceiver {
     })
     socket.once('error', (error) => {
       if (!this.running || this.socket !== socket) return
-      this.diagnostic('推流连接失败', { error: error.message })
+      this.diagnostic('推流连接失败', { ...connectionStats(), error: error.message })
       this.closeSocket(true)
       this.setStatus('waiting', '请打开手机直播')
     })
-    socket.once('close', () => {
+    socket.once('close', (hadError) => {
       if (!this.running || this.socket !== socket) return
+      this.dependencies.log('warn', `[${this.driver.label}] 推流连接关闭`, { ...connectionStats(), hadError })
       this.closeSocket(true)
       this.setStatus('waiting', '手机连接已断开')
     })
