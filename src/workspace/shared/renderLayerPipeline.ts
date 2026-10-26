@@ -204,6 +204,10 @@ export function buildLocalColorPrecomposition(
       positioning: undefined,
       // 预合成核心会把局部参数应用到上一层结果，因此这里只传当前蒙版自身的调整。
       color: beautyRenderColor(pipeline, adjustmentMasks[index]),
+      // 全局还原 LUT 和滤镜已在底图上应用；局部调色不能再次套用。
+      restoreLutId: undefined,
+      lutId: undefined,
+      lutIntensity: undefined,
       zIndex: index + 1,
     })),
   ]
