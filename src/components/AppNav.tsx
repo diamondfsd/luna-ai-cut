@@ -1,6 +1,5 @@
-import { useAgentChat } from './agent-chat/agentChatContext'
 import { useState } from 'react'
-import { Camera, MessageSquare, MonitorCog, Unplug } from 'lucide-react'
+import { Camera, MonitorCog, Unplug } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 import type { CameraConnectionMode, ConnectionStatus, DeviceDefinition } from '../shared/types'
@@ -10,7 +9,7 @@ import { HelpDialog } from './HelpDialog'
 import { SendToPhoneDialog } from './SendToPhoneDialog'
 import { CameraLivePreviewDialog } from './CameraLivePreviewDialog'
 import { NasSyncPopover } from './NasSyncPopover'
-import { Button, IconButton, Tooltip } from '../ui'
+import { IconButton, Tooltip } from '../ui'
 import '../styles/nav.css'
 
 interface AppNavProps {
@@ -21,7 +20,6 @@ interface AppNavProps {
 }
 
 export function AppNav({ activeDevice, connection, sourceMode, onChangeConnection }: AppNavProps) {
-  const agentChat = useAgentChat()
   const { exportProgress } = useExportProgress()
   const [previewOpen, setPreviewOpen] = useState(false)
   const connected = Boolean(connection?.controlOk)
@@ -113,8 +111,6 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           />
           <SendToPhoneDialog />
           <HelpDialog />
-          <Button size="compact" variant="secondary" icon={<MessageSquare size={14} />} aria-expanded={agentChat.isOpen}
-            aria-controls="global-agent-chat" onClick={agentChat.toggle}>AI 助手</Button>
           {cameraPreviewSupported && (
             <CameraLivePreviewDialog
               open={previewOpen}
