@@ -6,6 +6,7 @@ import { useMediaLib, type CardSize } from '../pages/useMediaLibraryController'
 import type { LunaFile } from '../shared/types'
 import { Button, IconButton, LoadingIndicator } from '../ui'
 import '../styles/media-date-navigation.css'
+import '../styles/media-gallery-scrollbars.css'
 import '../styles/media-gallery-virtual.css'
 
 interface MediaGalleryProps {

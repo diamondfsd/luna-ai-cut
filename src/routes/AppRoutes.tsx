@@ -165,7 +165,7 @@ export function AppRoutes() {
 
       <div className="route-stack" key={pagesKey}>
 
-        <AppRoute path="/library">
+        <AppRoute path="/library" className="media-library-route">
           {showDeviceConnect && (
             <DeviceConnectPage
               activeDevice={activeDevice}
@@ -191,7 +191,7 @@ export function AppRoutes() {
           )}
         </AppRoute>
 
-        <AppRoute path="/local-resources">
+        <AppRoute path="/local-resources" className="media-library-route">
           <LocalMediaPage />
         </AppRoute>
 

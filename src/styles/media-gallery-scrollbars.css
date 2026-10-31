@@ -1,0 +1,22 @@
+/* 媒体列表与日期导航使用浅色背景，需要清晰且方便拖动的滚动条。 */
+.media-library-route::-webkit-scrollbar,
+.workspace-import-body > .gallery::-webkit-scrollbar,
+.media-date-nav-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.media-library-route::-webkit-scrollbar-thumb,
+.workspace-import-body > .gallery::-webkit-scrollbar-thumb,
+.media-date-nav-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(29, 35, 41, 0.38);
+  background-clip: padding-box;
+}
+
+.media-library-route::-webkit-scrollbar-thumb:hover,
+.workspace-import-body > .gallery::-webkit-scrollbar-thumb:hover,
+.media-date-nav-list::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(29, 35, 41, 0.58);
+}
