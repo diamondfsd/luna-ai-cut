@@ -562,14 +562,14 @@ async function runBatchExportQueue(
         if (isLive) {
           try {
             const videoResult = await window.luna.previewLivePhoto(entry.sourcePath)
-            const videoUrl = videoResult.source
-            if (videoUrl) {
-              const videoRes = await window.luna.workspace.getMediaResolution(videoUrl).catch(() => res)
+            const videoPath = videoResult.cachedPath
+            if (videoResult.kind === 'video' && videoPath) {
+              const videoRes = await window.luna.workspace.getMediaResolution(videoPath).catch(() => res)
               const liveQualityPreset = exportConfig
                 ? resolveExportConfig(exportConfig, videoRes.width, videoRes.height).qualityPreset ?? 'high'
                 : 'high'
               const videoLayers: PreviewLayer[] = exportLayers.map((layer, i) =>
-                i === 0 ? { ...layer, filePath: videoUrl, isVideo: true } : layer,
+                i === 0 ? { ...layer, filePath: videoPath, isVideo: true } : layer,
               )
               const baseName = baseNameFromPath(entry.sourcePath)
               if (appleLivePhoto) {
