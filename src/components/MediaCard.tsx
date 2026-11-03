@@ -138,8 +138,6 @@ function MediaCardImpl({
           )}
           <IconButton variant="ghost" className="select-chip" onClick={() => onToggle(file)} title="选择" icon={selected ? <Check size={15} /> : undefined} />
         </>
-      ) : downloadedPath ? (
-        <IconButton variant="light" className="downloaded-folder-btn" onClick={() => onRevealPath(downloadedPath)} title="在文件夹中显示" icon={<FolderOpen size={14} />} />
       ) : (
         selectVisible && (
           <IconButton
