@@ -112,6 +112,26 @@ export interface LiveConnectionDiagnostic {
   action?: 'install-apple-driver' | 'start-apple-service'
 }
 
+export type LiveConnectionDebugTarget = 'ios' | 'android-adb' | 'harmony-hdc'
+export type LiveConnectionDebugStepState = 'passed' | 'failed' | 'skipped'
+
+export interface LiveConnectionDebugStep {
+  id: string
+  title: string
+  state: LiveConnectionDebugStepState
+  detail: string
+  durationMs: number
+}
+
+export interface LiveConnectionDebugReport {
+  target: LiveConnectionDebugTarget
+  platform: string
+  startedAt: string
+  completedAt: string
+  state: 'passed' | 'failed'
+  steps: LiveConnectionDebugStep[]
+}
+
 export interface LiveStreamStatus {
   connectionDiagnostics?: LiveConnectionDiagnostic[]
   state: LiveStreamState
@@ -155,6 +175,7 @@ export interface AppleDriverDownloadStatus {
 }
 
 export interface LiveStreamApi {
+  diagnoseConnection(target: LiveConnectionDebugTarget): Promise<LiveConnectionDebugReport>
   status(): Promise<LiveStreamStatus>
   start(): Promise<LiveStreamStatus>
   startCapture(): Promise<string>

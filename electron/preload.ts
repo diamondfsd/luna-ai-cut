@@ -11,6 +11,7 @@ import type {
   ExportProgress,
   HotUpdateCheckResult,
   LivePreviewWindowSettings,
+  LiveConnectionDebugTarget,
   LiveWindowResolution,
   LunaApi,
   LunaFile,
@@ -192,6 +193,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     status: (options) => ipcRenderer.invoke('camera-video-stream:status', options),
   },
   liveStream: {
+    diagnoseConnection: (target: LiveConnectionDebugTarget) => ipcRenderer.invoke('live-stream:diagnose-connection', target),
     startAppleService: () => ipcRenderer.invoke('live-stream:start-apple-service'),
     setAndroidConnectionMode: (mode) => ipcRenderer.invoke('live-stream:set-android-mode', mode),
     installAppleDriver: () => ipcRenderer.invoke('live-stream:install-apple-driver'),

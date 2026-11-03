@@ -1,0 +1,171 @@
+.live-connection-debug-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 48px));
+  background: #202023;
+  color: #f2f2f4;
+}
+
+.live-connection-debug-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-connection-debug-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: #e8e8eb;
+  font-size: 13px;
+}
+
+.live-connection-debug-select {
+  width: 220px;
+}
+
+.live-connection-debug-hint {
+  margin: 0;
+  color: #a1a1a6;
+  font-size: 12px;
+}
+
+.live-connection-debug-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  color: #b9b9bf;
+  font-size: 13px;
+}
+
+.live-connection-debug-spin {
+  animation: live-connection-debug-rotate 1s linear infinite;
+}
+
+.live-connection-debug-error {
+  margin: 0;
+  color: #ff6961;
+  font-size: 12px;
+}
+
+.live-connection-debug-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-connection-debug-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 13px;
+}
+
+.live-connection-debug-summary.passed {
+  color: #5edb79;
+}
+
+.live-connection-debug-summary.failed {
+  color: #ff746d;
+}
+
+.live-connection-debug-summary span {
+  color: #a1a1a6;
+  font-size: 11px;
+}
+
+.live-connection-debug-results ol {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-connection-debug-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.live-connection-debug-step > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.live-connection-debug-step.passed > svg,
+.live-connection-debug-step.passed .live-connection-debug-step-heading span {
+  color: #5edb79;
+}
+
+.live-connection-debug-step.failed > svg,
+.live-connection-debug-step.failed .live-connection-debug-step-heading span {
+  color: #ff746d;
+}
+
+.live-connection-debug-step.skipped > svg,
+.live-connection-debug-step.skipped .live-connection-debug-step-heading span {
+  color: #98989e;
+}
+
+.live-connection-debug-step-copy {
+  min-width: 0;
+}
+
+.live-connection-debug-step-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.live-connection-debug-step-heading strong {
+  color: #ededf0;
+  font-weight: 550;
+}
+
+.live-connection-debug-step-heading span,
+.live-connection-debug-step time {
+  flex: 0 0 auto;
+  color: #a1a1a6;
+  font-size: 10px;
+}
+
+.live-connection-debug-step p {
+  margin: 4px 0 0;
+  color: #b4b4ba;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.live-connection-debug-step time {
+  padding-top: 2px;
+}
+
+@keyframes live-connection-debug-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .live-connection-debug-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .live-connection-debug-select {
+    width: 100%;
+  }
+}

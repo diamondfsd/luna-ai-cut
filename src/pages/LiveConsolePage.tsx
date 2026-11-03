@@ -3,6 +3,7 @@ import { RefreshCw, Square, Video } from 'lucide-react'
 
 import { Button, IconButton, LoadingIndicator, Tooltip, toast } from '../ui'
 import { LiveControlPanel } from '../components/LiveControlPanel'
+import { LiveConnectionDebugDialog } from '../components/LiveConnectionDebugDialog'
 import { LiveOperationGuideDialog } from '../components/LiveOperationGuideDialog'
 import { flushLiveUsage } from '../hooks/useLiveUsage'
 import type { LiveStreamStatus } from '../shared/types'
@@ -101,6 +102,7 @@ export function LiveConsolePage({ windowLiveMode, onWindowLiveModeChange }: Live
           <span className={`live-console-badge ${status?.usbState === 'streaming' ? 'active' : ''}`}>{status?.state === 'error' && !visibleError ? '连接中' : stateLabel(status)}</span>
         </div>
         <div className="live-console-actions">
+          <LiveConnectionDebugDialog />
           <LiveOperationGuideDialog />
           {(status?.usbState === 'streaming' || windowLiveMode) && (
             <Button
