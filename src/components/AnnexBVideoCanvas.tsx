@@ -110,6 +110,7 @@ export function AnnexBVideoCanvas({
     let disposed = false
     let webGpuRenderer: LiveVideoWebGpuRenderer | null = null
     let webGpuActive = false
+    let readErrorReported = false
     const startedAt = Date.now()
     const stats = { bytes: 0, chunks: 0, submitted: 0, decoded: 0, keyframes: 0, errors: 0 }
     const diagnose = (event: string, details: Record<string, unknown> = {}) => {
@@ -186,6 +187,7 @@ export function AnnexBVideoCanvas({
         return
       }
       stats.decoded += 1
+      readErrorReported = false
       if (stats.decoded === 1) diagnose('首个解码画面', { width: frame.displayWidth, height: frame.displayHeight, format: frame.format, colorSpace: frame.colorSpace ? { primaries: frame.colorSpace.primaries, transfer: frame.colorSpace.transfer, matrix: frame.colorSpace.matrix, fullRange: frame.colorSpace.fullRange } : null })
       const outputSize = livePreviewOutputSize(frame.displayWidth, frame.displayHeight)
       let gpuRendered = false
@@ -216,99 +218,143 @@ export function AnnexBVideoCanvas({
       onFrame(outputSize)
     }
 
+    const waitBeforeReconnect = (delayMs: number) => new Promise<void>((resolve) => {
+      const onAbort = () => {
+        clearTimeout(timer)
+        abort.signal.removeEventListener('abort', onAbort)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        abort.signal.removeEventListener('abort', onAbort)
+        resolve()
+      }, delayMs)
+      abort.signal.addEventListener('abort', onAbort, { once: true })
+    })
+
     const consume = async () => {
-      const response = await fetch(url, { signal: abort.signal })
-      if (!response.ok) throw new Error(`相机预览连接失败（${response.status}）`)
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('相机没有返回视频画面')
+      let retryDelayMs = 300
+      while (!disposed) {
+        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+        let shouldReconnect = false
+        try {
+          const response = await fetch(url, { signal: abort.signal })
+          if (!response.ok) throw new Error(`相机预览连接失败（${response.status}）`)
+          reader = response.body?.getReader() ?? null
+          if (!reader) throw new Error('相机没有返回视频画面')
 
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done || disposed) {
-          if (!disposed) diagnose('视频流结束')
-          break
-        }
-        if (!value) continue
-        stats.bytes += value.length
-        stats.chunks += 1
-        const merged = new Uint8Array(carry.length + value.length)
-        merged.set(carry)
-        merged.set(value, carry.length)
-        // A malformed stream must not grow memory indefinitely while waiting for headers.
-        if (merged.length + pendingUnits.reduce((sum, unit) => sum + unit.length, 0) > 32 * 1024 * 1024) {
-          diagnose('视频缓冲超限')
-          throw new Error('视频数据异常，请重新连接')
-        }
-        const units = splitNalUnits(merged)
-        if (units.length === 0) {
-          carry = merged
-          continue
-        }
-        const tail = units[units.length - 1]!
-        carry = new Uint8Array(4 + tail.length)
-        carry.set([0, 0, 0, 1])
-        carry.set(tail, 4)
-        for (const unit of units.slice(0, -1)) pendingUnits.push(unit.slice())
-        if (pendingUnits.length === 0) continue
+          for (;;) {
+            const { value, done } = await reader.read()
+            if (done || disposed) {
+              if (!disposed) {
+                diagnose('视频流断开，准备重连')
+                if (!readErrorReported) {
+                  readErrorReported = true
+                  onError('直播画面连接已断开，正在重连')
+                }
+                shouldReconnect = true
+              }
+              break
+            }
+            if (!value) continue
+            retryDelayMs = 300
+            stats.bytes += value.length
+            stats.chunks += 1
+            const merged = new Uint8Array(carry.length + value.length)
+            merged.set(carry)
+            merged.set(value, carry.length)
+            // A malformed stream must not grow memory indefinitely while waiting for headers.
+            if (merged.length + pendingUnits.reduce((sum, unit) => sum + unit.length, 0) > 32 * 1024 * 1024) {
+              diagnose('视频缓冲超限')
+              throw new Error('视频数据异常，请重新连接')
+            }
+            const units = splitNalUnits(merged)
+            if (units.length === 0) {
+              carry = merged
+              continue
+            }
+            const tail = units[units.length - 1]!
+            carry = new Uint8Array(4 + tail.length)
+            carry.set([0, 0, 0, 1])
+            carry.set(tail, 4)
+            for (const unit of units.slice(0, -1)) pendingUnits.push(unit.slice())
+            if (pendingUnits.length === 0) continue
 
-        codec ??= detectCodec(pendingUnits)
-        if (!codec) continue
-        if (!configured) {
-          const codecString = buildCodecString(pendingUnits, codec)
-          if (!codecString) continue
-          decoder = new codecs.Decoder({
-            output: paint,
-            error: (decoderError) => {
-              stats.errors += 1
-              diagnose('异步解码失败', { error: decoderError.message })
-              resetDecoder()
-              if (!disposed) onError(`视频解码失败：${decoderError.message}`)
-            },
-          })
-          try {
-            decoder.configure({ codec: codecString, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' })
-          } catch (error) {
-            onError(`视频格式无法播放：${error instanceof Error ? error.message : String(error)}`)
-            return
+            codec ??= detectCodec(pendingUnits)
+            if (!codec) continue
+            if (!configured) {
+              const codecString = buildCodecString(pendingUnits, codec)
+              if (!codecString) continue
+              decoder = new codecs.Decoder({
+                output: paint,
+                error: (decoderError) => {
+                  stats.errors += 1
+                  diagnose('异步解码失败', { error: decoderError.message })
+                  resetDecoder()
+                  if (!disposed) onError(`视频解码失败：${decoderError.message}`)
+                },
+              })
+              try {
+                decoder.configure({ codec: codecString, optimizeForLatency: true, hardwareAcceleration: 'prefer-hardware' })
+              } catch (error) {
+                onError(`视频格式无法播放：${error instanceof Error ? error.message : String(error)}`)
+                return
+              }
+              configured = true
+              diagnose('解码配置', { codecString })
+            }
+
+            const drained = drainAccessUnits(pendingUnits, codec)
+            pendingUnits = drained.pending
+            for (const unit of drained.access) {
+              if (decoder?.state !== 'configured') break
+              if (!unit.key && !seenKeyframe) continue
+              if (unit.key) { seenKeyframe = true; stats.keyframes += 1 }
+              try {
+                stats.submitted += 1
+                decoder.decode(new codecs.Chunk({
+                  type: unit.key ? 'key' : 'delta',
+                  timestamp,
+                  data: unit.data,
+                }))
+              } catch (decodeError) {
+                stats.errors += 1
+                diagnose('同步解码失败', { error: String(decodeError) })
+                resetDecoder()
+                if (!disposed) onError(`视频解码失败：${decodeError instanceof Error ? decodeError.message : String(decodeError)}`)
+              }
+              timestamp += 33333
+            }
           }
-          configured = true
-          diagnose('解码配置', { codecString })
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          if (disposed) return
+          const message = error instanceof Error ? error.message : String(error)
+          diagnose('读取失败，准备重连', { error: message })
+          if (!readErrorReported) {
+            readErrorReported = true
+            onError(message)
+          }
+          shouldReconnect = true
+        } finally {
+          void reader?.cancel().catch(() => undefined)
         }
 
-        const drained = drainAccessUnits(pendingUnits, codec)
-        pendingUnits = drained.pending
-        for (const unit of drained.access) {
-          if (decoder?.state !== 'configured') break
-          if (!unit.key && !seenKeyframe) continue
-          if (unit.key) { seenKeyframe = true; stats.keyframes += 1 }
-          try {
-            stats.submitted += 1
-            decoder.decode(new codecs.Chunk({
-              type: unit.key ? 'key' : 'delta',
-              timestamp,
-              data: unit.data,
-            }))
-          } catch (decodeError) {
-            stats.errors += 1
-            diagnose('同步解码失败', { error: String(decodeError) })
-            resetDecoder()
-            if (!disposed) onError(`视频解码失败：${decodeError instanceof Error ? decodeError.message : String(decodeError)}`)
-          }
-          timestamp += 33333
-        }
+        if (!shouldReconnect || disposed) break
+        resetDecoder()
+        carry = new Uint8Array(0)
+        pendingUnits = []
+        timestamp = 0
+        await waitBeforeReconnect(retryDelayMs)
+        retryDelayMs = Math.min(retryDelayMs * 2, 5_000)
       }
     }
 
-    void consume().catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      if (!disposed) diagnose('读取失败', { error: String(error) })
-      if (!disposed) onError(error instanceof Error ? error.message : String(error))
-    })
+    void consume()
     return () => {
       disposed = true
       clearInterval(diagnosticTimer)
-      diagnose('结束')
       abort.abort()
+      diagnose('结束')
       try { decoder?.close() } catch { /* Decoder may already be closed. */ }
       webGpuRenderer?.dispose()
       if (webGpuRendererRef.current === webGpuRenderer) webGpuRendererRef.current = null

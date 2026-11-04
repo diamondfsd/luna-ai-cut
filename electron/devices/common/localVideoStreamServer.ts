@@ -11,7 +11,8 @@ export interface LocalVideoStreamStats {
   totalDisconnections: number
   publishedBytes: number
   droppedBytesNoClient: number
-  droppedBytesBackpressure: number
+  backpressureEvents: number
+  maxQueuedBytes: number
 }
 
 const PRE_CLIENT_BUFFER_BYTES = 4 * 1024 * 1024
@@ -133,13 +134,11 @@ export class LocalVideoStreamServer {
         this.clients.delete(client)
         continue
       }
-      // Dropping a frame while a renderer is behind is preferable to building
-      // an unbounded response buffer. The camera will send another keyframe.
-      if (client.writableNeedDrain) {
-        this.statsValue.droppedBytesBackpressure += frame.length
-        continue
-      }
-      client.write(frame)
+      // write(false) means Node accepted the bytes but its buffer is above the
+      // high-water mark. Keep the encoded stream intact and track the backlog;
+      // dropping arbitrary HEVC bytes would corrupt dependent frames.
+      if (!client.write(frame)) this.statsValue.backpressureEvents += 1
+      this.statsValue.maxQueuedBytes = Math.max(this.statsValue.maxQueuedBytes, client.writableLength)
     }
   }
 
@@ -190,7 +189,8 @@ export class LocalVideoStreamServer {
       totalDisconnections: 0,
       publishedBytes: 0,
       droppedBytesNoClient: 0,
-      droppedBytesBackpressure: 0,
+      backpressureEvents: 0,
+      maxQueuedBytes: 0,
     }
   }
 }
