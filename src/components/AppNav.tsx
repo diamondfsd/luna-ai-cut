@@ -55,6 +55,9 @@ export function AppNav({ activeDevice, connection, sourceMode, onChangeConnectio
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'active' : '')}>
             设置
           </NavLink>
+          <NavLink to="/lab" className={({ isActive }) => (isActive ? 'active' : '')}>
+            实验室
+          </NavLink>
           {(import.meta.env.DEV) && (
             <NavLink to="/ble-debug" className={({ isActive }) => (isActive ? 'active' : '')}>
               调试

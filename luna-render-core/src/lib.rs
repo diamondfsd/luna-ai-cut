@@ -8,6 +8,7 @@ mod logging;
 mod macos;
 mod media;
 mod native_preview;
+mod panorama;
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -21,6 +22,7 @@ use napi::bindgen_prelude::{AsyncTask, Buffer};
 use napi::{Env, Task};
 use napi_derive::napi;
 pub use native_preview::*;
+pub use panorama::stitch_panorama_async;
 
 /// Run the Windows GPU video export without Electron or N-API.
 ///

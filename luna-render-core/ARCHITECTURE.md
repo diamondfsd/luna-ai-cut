@@ -73,6 +73,9 @@ luna-render-core/
     │   ├── geometry.rs
     │   ├── image.rs
     │   └── probe.rs
+    ├── panorama.rs
+    ├── vendor/
+    │   └── panoloom-core/
     ├── macos/
     │   ├── mod.rs
     │   └── av_bridge.m
@@ -200,6 +203,8 @@ crate 门面和 N-API 入口，允许包含：
 4. 是否是不依赖 GPU 的通用媒体能力？放入 `media/`。
 5. 是否持有平台句柄或包含 FFI？放入平台模块或 `external.rs`。
 6. 两个以上模块出现同类实现时，先抽取到已有公共层，不新增 `utils.rs` 大杂烩。
+
+独立于时间线、图层和 GPU 合成的 360° 全景工作流放在 `panorama.rs`；它负责输入校验、注册图像解码、N-API 异步任务和输出 XMP 元数据。特征匹配、姿态估计、球面投影、接缝与融合由 vendored `panoloom-core` 提供，桌面流程通过拍摄网格把匹配限制在几何相邻照片。
 
 只有在现有职责无法准确容纳、并且新能力有独立生命周期时才创建新模块。
 

@@ -224,6 +224,18 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   detectILog: (filePath: string) => ipcRenderer.invoke('luna:detectILog', filePath),
   downloadFiles: (files: LunaFile[], targetDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, targetDir),
+  choosePanoramaPhotos: (photoCount: 19 | 24 | 32) =>
+    ipcRenderer.invoke('panorama:choose-local-photos', photoCount),
+  downloadPhonePanoramaRecord: (endpoint: string, recordId: string) =>
+    ipcRenderer.invoke('panorama:download-phone-record', endpoint, recordId),
+  stitchPanorama: (request: {
+    paths: string[]
+    poses: number[][]
+    rows: 3 | 4
+    columns: 6 | 8
+    targetWidth: 16000 | 24000 | 32000
+  }) =>
+    ipcRenderer.invoke('panorama:stitch', request),
   cancelDownloads: () => ipcRenderer.invoke('luna:cancelDownloads'),
   exportFiles: (files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings) =>
     ipcRenderer.invoke('luna:exportFiles', files, exportDir, watermarkSettings, videoExportSettings),

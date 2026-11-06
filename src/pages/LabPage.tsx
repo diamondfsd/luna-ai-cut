@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { ChevronRight, Film } from 'lucide-react'
+import { ChevronRight, Film, Globe2 } from 'lucide-react'
 
 import { DirectorLabView } from '../components/DirectorLabView'
+import { PanoramaStitchingLabView } from '../components/PanoramaStitchingLabView'
 import '../styles/lab.css'
 
-type LabFeature = 'director'
+type LabFeature = 'director' | 'panorama'
 
 interface LabPageProps {
   pageActive: boolean
@@ -17,7 +18,7 @@ export function LabPage({ pageActive }: LabPageProps) {
     <>
       <div
         className="lab-page lab-menu-page"
-        style={{ display: feature === 'director' ? 'none' : undefined }}
+        style={{ display: feature ? 'none' : undefined }}
       >
         <div className="lab-menu-shell">
           <header className="lab-menu-header">
@@ -27,6 +28,18 @@ export function LabPage({ pageActive }: LabPageProps) {
             </div>
           </header>
           <section className="lab-feature-grid" aria-label="实验功能">
+            <button
+              className="lab-feature-card"
+              type="button"
+              onClick={() => setFeature('panorama')}
+            >
+              <span className="lab-feature-icon"><Globe2 size={20} /></span>
+              <span className="lab-feature-copy">
+                <strong>360 全景合成</strong>
+                <small>读取相机最近 32 张照片并生成全景图</small>
+              </span>
+              <ChevronRight className="lab-feature-action" size={18} />
+            </button>
             <button
               className="lab-feature-card"
               type="button"
@@ -45,6 +58,12 @@ export function LabPage({ pageActive }: LabPageProps) {
       <div hidden={feature !== 'director'}>
         <DirectorLabView
           active={pageActive && feature === 'director'}
+          onBack={() => setFeature(null)}
+        />
+      </div>
+      <div hidden={feature !== 'panorama'}>
+        <PanoramaStitchingLabView
+          active={pageActive && feature === 'panorama'}
           onBack={() => setFeature(null)}
         />
       </div>

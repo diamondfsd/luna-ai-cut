@@ -1,0 +1,34 @@
+PanoLoom
+Copyright 2026 PanoLoom contributors
+
+This product includes software developed as part of the PanoLoom project
+(https://github.com/PanoLoom/PanoLoom), licensed under the Apache License 2.0.
+
+Portions of the stitching engine (crates/panoloom-core) are Rust translations
+of algorithms and code from OpenCV (https://github.com/opencv/opencv),
+Copyright OpenCV team, licensed under the Apache License 2.0.
+Affected areas include (list maintained as the port progresses):
+  - ORB feature detection (orb.rs, fast.rs, orb_pattern.rs, cvmath.rs,
+    imgproc.rs) — modules/features2d/src/{orb,fast,fast_score,keypoint}.cpp,
+    modules/core/src/mathfuncs_core.simd.hpp
+  - pairwise matching (matcher.rs) — modules/stitching/src/matchers.cpp
+  - RANSAC homography + LM (homography.rs, rng.rs) —
+    modules/calib3d/src/{fundam,ptsetreg,levmarq}.cpp,
+    modules/core/src/lapack.cpp, opencv2/core/operations.hpp
+  - FAST detector code is additionally covered by its original BSD notice
+    (Copyright 2006, 2008 Edward Rosten), reproduced in fast.rs sources.
+  - rotation estimation, wave correction, graph utilities (estimation.rs,
+    camera.rs) — modules/stitching/src/{motion_estimators,autocalib,util}.cpp
+  - bundle adjustment (bundle.rs) — modules/stitching/src/motion_estimators.cpp,
+    modules/calib3d/src/{compat_ptsetreg,calibration}.cpp,
+    modules/core/src/{lapack,matmul}.cpp
+  - spherical warping + remap (warp.rs) — modules/stitching/src/warpers.cpp,
+    stitching/detail/warpers_inl.hpp, modules/imgproc/src/imgwarp.cpp
+  - exposure compensation (exposure.rs) —
+    modules/stitching/src/exposure_compensate.cpp, modules/core/src/lu.impl
+  - feather blending (blend.rs) — modules/stitching/src/blenders.cpp,
+    modules/imgproc distanceTransform (DIST_L1)
+  - graph-cut seam finding (seam.rs) — modules/stitching/src/seam_finders.cpp,
+    opencv2/imgproc/detail/gcgraph.hpp
+  - multiband blending + pyramids (blend.rs) —
+    modules/stitching/src/blenders.cpp, modules/imgproc/src/pyramids.cpp

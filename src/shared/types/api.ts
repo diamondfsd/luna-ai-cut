@@ -222,6 +222,19 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
   downloadFiles(files: LunaFile[], targetDir?: string): Promise<DownloadSummary>
+  choosePanoramaPhotos(photoCount: 19 | 24 | 32): Promise<Array<{ path: string; name: string; capturedAt: string | null }> | null>
+  downloadPhonePanoramaRecord(endpoint: string, recordId: string): Promise<{
+    paths: string[]
+    mode: string | null
+    poses: Array<{ slot: number; yaw: number; pitch: number; roll: number }> | null
+  }>
+  stitchPanorama(request: {
+    paths: string[]
+    poses: number[][]
+    rows: 3 | 4
+    columns: 6 | 8
+    targetWidth: 16000 | 24000 | 32000
+  }): Promise<{ path: string; width: number; height: number } | null>
   cancelDownloads(): Promise<void>
   exportFiles(files: ExportFileInput[], exportDir: string, watermarkSettings: WatermarkSettings, videoExportSettings?: VideoExportSettings): Promise<ExportSummary>
   cancelExports(): Promise<void>

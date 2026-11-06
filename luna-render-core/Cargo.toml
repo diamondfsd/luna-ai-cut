@@ -53,6 +53,8 @@ pollster = "0.3"
 chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+panoloom-core = { path = "vendor/panoloom-core", default-features = true }
+jpeg-decoder = "0.3"
 swash = "0.2"
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "tls-native", "api-23"] }
 rustfft = "6.4"

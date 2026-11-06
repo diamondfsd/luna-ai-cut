@@ -1,0 +1,248 @@
+.panorama-lab-page {
+  min-height: calc(100vh - 44px);
+  padding: 18px 24px 28px;
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.panorama-lab-header {
+  display: flex;
+  width: min(1440px, 100%);
+  align-items: center;
+  gap: 14px;
+  margin: 0 auto 16px;
+}
+
+.panorama-lab-header h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.panorama-lab-connection {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panorama-lab-connection.is-connected {
+  color: #278b48;
+}
+
+.panorama-lab-layout {
+  display: grid;
+  width: min(1440px, 100%);
+  min-height: min(680px, calc(100vh - 120px));
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  gap: 14px;
+  margin: 0 auto;
+}
+
+.panorama-lab-controls,
+.panorama-lab-preview {
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--canvas);
+}
+
+.panorama-lab-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 18px;
+}
+
+.panorama-lab-field-label {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panorama-lab-summary {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 14px;
+}
+
+.panorama-lab-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.panorama-lab-summary span {
+  color: var(--muted);
+}
+
+.panorama-lab-summary strong {
+  font-weight: 600;
+  text-align: right;
+}
+
+.panorama-lab-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  margin: auto 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panorama-lab-status.is-error,
+.panorama-lab-notice {
+  color: #bd3b35;
+}
+
+.panorama-lab-notice {
+  margin: 0;
+  font-size: 13px;
+}
+
+.panorama-lab-path-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.panorama-lab-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panorama-lab-preview {
+  display: grid;
+  min-width: 0;
+  min-height: 360px;
+  place-items: center;
+  overflow: hidden;
+  background: #171819;
+  padding: 14px;
+}
+
+.panorama-lab-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.panorama-lab-record-grid {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+}
+
+.panorama-lab-record-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.panorama-lab-record-row .panorama-lab-photo {
+  flex: 0 1 calc((100% - 28px) / 8);
+}
+
+.panorama-lab-grid.is-6-columns {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.panorama-lab-grid.is-zenith-layout .panorama-lab-photo.is-zenith-photo {
+  grid-column: 1 / -1;
+  width: calc((100% - 20px) / 6);
+  justify-self: center;
+}
+
+.panorama-lab-photo {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border-radius: 3px;
+  background: #292b2e;
+}
+
+.panorama-lab-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.panorama-lab-photo span {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgb(0 0 0 / 65%);
+  color: white;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panorama-lab-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: #91959b;
+  font-size: 12px;
+}
+
+.panorama-lab-empty span {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  border-radius: 50%;
+  background: #25272a;
+}
+
+.panorama-lab-empty strong {
+  font-weight: 500;
+}
+
+.panorama-lab-result-preview {
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  gap: 10px;
+  color: #d5d7da;
+  font-size: 11px;
+}
+
+.panorama-lab-result-preview img {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 190px);
+  object-fit: contain;
+}
+
+.is-spinning {
+  animation: panorama-lab-spin 1s linear infinite;
+}
+
+@keyframes panorama-lab-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 820px) {
+  .panorama-lab-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .panorama-lab-preview {
+    min-height: 280px;
+  }
+}

@@ -138,6 +138,14 @@ interface LunaRenderCoreNative {
     cacheDir: string,
   ): { renderPath: string; normalized: boolean; width: number; height: number }
   exportCompositionImageAsync(input: unknown): Promise<void>
+  stitchPanoramaAsync(
+    paths: string[],
+    poses: number[][],
+    rows: number,
+    columns: number,
+    targetWidth: number,
+    outputPath: string,
+  ): Promise<string>
   cancelExportTask(taskId: string): void
   getExportTaskProgress(taskId: string): [number, number] | null
 }
@@ -220,6 +228,18 @@ export function getNative(): LunaRenderCoreNative {
   throw new Error(
     `LRC_NATIVE_LOAD_FAILED: 无法加载预览组件。\n${attempts.join('\n')}`,
   )
+}
+
+export async function stitchPanoramaAsync(
+  paths: string[],
+  poses: number[][],
+  rows: number,
+  columns: number,
+  targetWidth: number,
+  outputPath: string,
+): Promise<{ path: string; width: number; height: number }> {
+  const result = await getNative().stitchPanoramaAsync(paths, poses, rows, columns, targetWidth, outputPath)
+  return JSON.parse(result) as { path: string; width: number; height: number }
 }
 
 let initialized = false

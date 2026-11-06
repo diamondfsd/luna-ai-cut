@@ -1,0 +1,26 @@
+[package]
+name = "panoloom-core"
+description = "Panorama stitching engine: features, alignment, warping, seams, blending"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/PanoLoom/PanoLoom"
+authors = ["PanoLoom contributors"]
+
+[features]
+# Parallel hot loops via rayon. On by default so native builds and the
+# parity test suite exercise the same code paths as the mt wasm build;
+# the single-thread wasm build opts out with default-features = false.
+default = ["parallel"]
+parallel = ["dep:rayon"]
+
+[dependencies]
+jpeg-encoder = "0.7.1"
+nalgebra = "0.35.0"
+rayon = { version = "1.11", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+png = "0.18.1"
+serde = { version = "1", features = ["derive"] }
