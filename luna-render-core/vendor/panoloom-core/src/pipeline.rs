@@ -219,7 +219,11 @@ fn align_with_pairs(
         "orb-detect",
         crate::par::map(sources, |s| {
             let gray = rgb_to_gray_cv(&s.rgb.data, s.rgb.width, s.rgb.height);
-            let (kps, d) = orb_detect_and_compute(&gray, &OrbParams::default());
+            let params = OrbParams {
+                nfeatures: 2_000,
+                ..OrbParams::default()
+            };
+            let (kps, d) = orb_detect_and_compute(&gray, &params);
             let pts: Vec<[f32; 2]> = kps.iter().map(|k| [k.x, k.y]).collect();
             (pts, d, (s.rgb.width as u32, s.rgb.height as u32))
         })
@@ -236,10 +240,18 @@ fn align_with_pairs(
     let upper = stage_timed!(
         "match-pairs",
         crate::par::map(&pair_ids, |&(i, j)| {
-            (
-                (i, j),
-                match_pair(&pts[i], &descs[i], sizes[i], &pts[j], &descs[j], sizes[j]),
-            )
+            let mut matches =
+                match_pair(&pts[i], &descs[i], sizes[i], &pts[j], &descs[j], sizes[j]);
+            let zenith_pair = sources[i].pose_prior.is_some_and(|pose| pose[1] >= 85.0)
+                || sources[j].pose_prior.is_some_and(|pose| pose[1] >= 85.0);
+            // A zenith image often has a much smaller textured overlap than
+            // ring images. Keep it only when RANSAC still verifies at least
+            // 20 real feature inliers; the ordinary confidence formula
+            // otherwise rejects this geometrically valid cap connection.
+            if zenith_pair && matches.num_inliers >= 20 {
+                matches.confidence = matches.confidence.max(1.001);
+            }
+            ((i, j), matches)
         })
     );
     let graph = MatchGraph::from_upper_triangle(n, upper);
@@ -247,6 +259,13 @@ fn align_with_pairs(
     let kept = leave_biggest_component(&graph, 1.0);
     if kept.len() < 2 {
         return Err("images do not overlap enough to align".into());
+    }
+    if kept.len() != n {
+        return Err(format!(
+            "feature matching connected {} of {} photos",
+            kept.len(),
+            n
+        ));
     }
     let dropped: Vec<u32> = (0..n)
         .filter(|i| !kept.contains(i))
@@ -288,25 +307,10 @@ fn align_with_pairs(
 
     let mut cameras = stage_timed!("estimate", homography_based_estimate(&features, &graph));
 
-    // Seed the rotations from the shooting rig's own pose when every kept
-    // image carries one. The homography chain derives rotations by walking
-    // a spanning tree of pairwise estimates, so error accumulates along the
-    // walk; the gimbal reports each shot's pose absolutely and independently
-    // (the DJI priors fit solved cameras at 0.81 deg median). Focals still
-    // come from the estimate — priors say nothing about them — and bundle
-    // adjustment still refines everything against image content. This only
-    // moves the starting point.
-    if kept.iter().all(|&i| sources[i].pose_prior.is_some()) {
-        for (cam, &i) in cameras.iter_mut().zip(&kept) {
-            let r = prior_rotation(sources[i].pose_prior.expect("checked above"));
-            for a in 0..3 {
-                for b in 0..3 {
-                    cam.r[a][b] = r[a][b] as f32;
-                }
-            }
-        }
-    }
-
+    // Commanded gimbal positions are useful for selecting likely overlap
+    // pairs, but they are not measured poses. Keep the feature-derived
+    // rotations as the bundle-adjustment seed and use the poses only for
+    // global orientation/rescue after the image solve.
     if !stage_timed!(
         "bundle-adjust",
         bundle_adjust_ray(&features, &graph, &mut cameras)

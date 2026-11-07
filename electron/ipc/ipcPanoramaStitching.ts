@@ -10,7 +10,7 @@ import { lunaKaHttpClient } from '../network/lunaka_http_client'
 import { downloadToFileWithRetry } from '../media/fileDownloadService'
 
 const allowedWidths = new Set([16_000, 24_000, 32_000])
-const panoramaModes = new Set(['grid_666', 'rings_675', 'rings_585'])
+const panoramaModes = new Set(['grid_666', 'rings_675', 'rings_585', 'rings_675_plus3', 'rings_788_plus_zenith'])
 type PanoramaPose = { slot: number; yaw: number; pitch: number; roll: number }
 type PhonePanoramaRecord = {
   id: string
@@ -21,7 +21,14 @@ type PhonePanoramaRecord = {
 
 function readRecordPoses(record: PhonePanoramaRecord, count: number): { mode: string | null; poses: PanoramaPose[] | null } {
   if (record.mode == null && record.poses == null) return { mode: null, poses: null }
-  if (count !== 19 || typeof record.mode !== 'string' || !panoramaModes.has(record.mode) || !Array.isArray(record.poses) || record.poses.length !== count) {
+  const expectedCountByMode: Record<string, number> = {
+    grid_666: 19,
+    rings_675: 19,
+    rings_585: 19,
+    rings_675_plus3: 22,
+    rings_788_plus_zenith: 24,
+  }
+  if (typeof record.mode !== 'string' || !panoramaModes.has(record.mode) || count !== expectedCountByMode[record.mode] || !Array.isArray(record.poses) || record.poses.length !== count) {
     throw new Error('拍摄记录的机位信息不完整')
   }
   const poses = record.poses.map((value: unknown) => {
@@ -36,8 +43,8 @@ function readRecordPoses(record: PhonePanoramaRecord, count: number): { mode: st
   return { mode: record.mode, poses }
 }
 
-function validatePhotoCount(value: unknown): 19 | 24 | 32 {
-  if (value === 19 || value === 24 || value === 32) return value
+function validatePhotoCount(value: unknown): 19 | 22 | 24 | 32 {
+  if (value === 19 || value === 22 || value === 24 || value === 32) return value
   throw new Error('拍摄布局无效')
 }
 
@@ -49,10 +56,11 @@ export function register(ctx: IpcContext): void {
       ? payload.records.find((item) => item.id === recordId) : null
     if (!record || !Array.isArray(record.photos)) throw new Error('拍摄记录不存在')
     const slots = record.photos.map((photo) => photo.slot).sort((a, b) => a - b)
-    if (![19, 24, 32].includes(slots.length) || slots.some((slot, index) => slot !== index) || record.photos.some((photo) => !photo.available)) {
+    if (![19, 22, 24, 32].includes(slots.length) || slots.some((slot, index) => slot !== index) || record.photos.some((photo) => !photo.available)) {
       throw new Error('拍摄记录不完整或手机原片不可用')
     }
     const { mode, poses } = readRecordPoses(record, slots.length)
+    if (slots.length === 22 && (!mode || !poses)) throw new Error('22 张拍摄记录缺少机位信息')
     const directory = join(app.getPath('userData'), 'panorama-records', recordId)
     await mkdir(directory, { recursive: true })
     const paths: string[] = []
@@ -109,14 +117,16 @@ export function register(ctx: IpcContext): void {
     if (!request || typeof request !== 'object') throw new Error('全景参数无效')
     const input = request as { paths?: unknown; poses?: unknown; rows?: unknown; columns?: unknown; targetWidth?: unknown }
     const isNineteenPhotoLayout = input.rows === 3 && input.columns === 6
+    const isTwentyTwoPhotoLayout = input.rows === 3 && input.columns === 7
+    const isTwentyFourRingLayout = input.rows === 3 && input.columns === 8
     const isRectangularLayout = input.rows === 4 &&
       (input.columns === 6 || input.columns === 8)
-    if (!isNineteenPhotoLayout && !isRectangularLayout) {
+    if (!isNineteenPhotoLayout && !isTwentyTwoPhotoLayout && !isTwentyFourRingLayout && !isRectangularLayout) {
       throw new Error('拍摄布局无效')
     }
     const rows = input.rows as 3 | 4
-    const columns = input.columns as 6 | 8
-    const expectedPhotos = isNineteenPhotoLayout ? 19 : rows * columns
+    const columns = input.columns as 6 | 7 | 8
+    const expectedPhotos = isNineteenPhotoLayout ? 19 : isTwentyTwoPhotoLayout ? 22 : rows * columns
     if (!Array.isArray(input.paths) || input.paths.length !== expectedPhotos
       || input.paths.some((value) => typeof value !== 'string' || !value.trim())) {
       throw new Error(`请选择 ${expectedPhotos} 张照片`)

@@ -232,7 +232,7 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     paths: string[]
     poses: number[][]
     rows: 3 | 4
-    columns: 6 | 8
+    columns: 6 | 7 | 8
     targetWidth: 16000 | 24000 | 32000
   }) =>
     ipcRenderer.invoke('panorama:stitch', request),

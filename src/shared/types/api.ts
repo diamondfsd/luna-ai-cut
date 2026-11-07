@@ -222,7 +222,7 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
   downloadFiles(files: LunaFile[], targetDir?: string): Promise<DownloadSummary>
-  choosePanoramaPhotos(photoCount: 19 | 24 | 32): Promise<Array<{ path: string; name: string; capturedAt: string | null }> | null>
+  choosePanoramaPhotos(photoCount: 19 | 22 | 24 | 32): Promise<Array<{ path: string; name: string; capturedAt: string | null }> | null>
   downloadPhonePanoramaRecord(endpoint: string, recordId: string): Promise<{
     paths: string[]
     mode: string | null
@@ -232,7 +232,7 @@ export interface LunaApi {
     paths: string[]
     poses: number[][]
     rows: 3 | 4
-    columns: 6 | 8
+    columns: 6 | 7 | 8
     targetWidth: 16000 | 24000 | 32000
   }): Promise<{ path: string; width: number; height: number } | null>
   cancelDownloads(): Promise<void>

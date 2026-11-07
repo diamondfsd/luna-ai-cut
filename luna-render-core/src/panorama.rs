@@ -72,11 +72,22 @@ fn stitch_panorama(
     target_width: usize,
     output_path: &str,
 ) -> std::result::Result<String, String> {
-    let has_zenith = rows == 3 && columns == 6;
+    let has_zenith = rows == 3 && matches!(columns, 6 | 7 | 8);
     if !has_zenith && (rows != 4 || !matches!(columns, 6 | 8)) {
-        return Err("panorama grid must be 3x6 plus zenith, 4x6 or 4x8".into());
+        return Err(
+            "panorama layout must be 19/22/24-photo ring+zenith or legacy 24/32 rectangular".into(),
+        );
     }
-    let expected = rows * columns + if has_zenith { 1 } else { 0 };
+    let expected = if has_zenith {
+        match columns {
+            6 => 19,
+            7 => 22,
+            8 => 24,
+            _ => unreachable!("validated zenith column count"),
+        }
+    } else {
+        rows * columns
+    };
     if paths.len() != expected || poses.len() != expected {
         return Err(format!("expected {expected} ordered photos and poses"));
     }
@@ -106,6 +117,7 @@ fn stitch_panorama(
     }
 
     let regular_nineteen = has_zenith
+        && columns == 6
         && poses.iter().take(18).enumerate().all(|(i, pose)| {
             let yaw = -57.0 + 292.0 * (i % 6) as f64 / 5.0;
             let pitch = 45.0 - 45.0 * (i / 6) as f64;

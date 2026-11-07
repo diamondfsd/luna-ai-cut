@@ -36,7 +36,7 @@ export function LabPage({ pageActive }: LabPageProps) {
               <span className="lab-feature-icon"><Globe2 size={20} /></span>
               <span className="lab-feature-copy">
                 <strong>360 全景合成</strong>
-                <small>读取相机最近 32 张照片并生成全景图</small>
+                <small>读取手机拍摄记录并合成全景图</small>
               </span>
               <ChevronRight className="lab-feature-action" size={18} />
             </button>

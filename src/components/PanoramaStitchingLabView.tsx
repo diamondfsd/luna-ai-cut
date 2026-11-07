@@ -9,12 +9,14 @@ import '../styles/panorama-stitching-lab.css'
 
 type OutputWidth = 16000 | 24000 | 32000
 type ViewState = 'empty' | 'loading' | 'ready' | 'stitching' | 'complete' | 'error'
-type LayoutId = '19' | '24' | '32'
+type LayoutId = '19' | '22' | '24' | '24-rings' | '32'
 
 const PANORAMA_LAYOUTS = {
   '19': { rows: 3, columns: 6, photoCount: 19, pitchTop: 45, pitchStep: 45, zenith: true },
-  '24': { rows: 4, columns: 6, photoCount: 24, pitchTop: 63, pitchStep: 40 },
-  '32': { rows: 4, columns: 8, photoCount: 32, pitchTop: 72, pitchStep: 43 },
+  '22': { rows: 3, columns: 7, photoCount: 22, pitchTop: 45, pitchStep: 45, zenith: true },
+  '24': { rows: 4, columns: 6, photoCount: 24, pitchTop: 63, pitchStep: 40, zenith: false },
+  '24-rings': { rows: 3, columns: 8, photoCount: 24, pitchTop: 50, pitchStep: 50, zenith: true },
+  '32': { rows: 4, columns: 8, photoCount: 32, pitchTop: 72, pitchStep: 43, zenith: false },
 } as const
 const PAN_MIN = -57
 const PAN_MAX = 235
@@ -41,6 +43,8 @@ const MODE_ROWS: Record<string, number[]> = {
   grid_666: [6, 6, 6],
   rings_675: [6, 7, 5],
   rings_585: [5, 8, 5],
+  rings_675_plus3: [6, 7, 8],
+  rings_788_plus_zenith: [7, 8, 8],
 }
 
 function rowMajorFromCaptureOrder<T>(
@@ -91,7 +95,7 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   const { settings } = useApp()
   const { activeDevice, isConnected, sourceMode } = useDeviceConnection()
   const [state, setState] = useState<ViewState>('empty')
-  const [layoutId, setLayoutId] = useState<LayoutId>('19')
+  const [layoutId, setLayoutId] = useState<LayoutId>('24-rings')
   const [targetWidth, setTargetWidth] = useState<OutputWidth>(24000)
   const [gridPaths, setGridPaths] = useState<string[]>([])
   const [thumbnails, setThumbnails] = useState<Array<string | null>>([])
@@ -103,13 +107,13 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   const [recordMode, setRecordMode] = useState<string | null>(null)
   const [recordPoses, setRecordPoses] = useState<number[][] | null>(null)
   const busy = state === 'loading' || state === 'stitching'
-  const { rows, columns, photoCount, pitchTop, pitchStep } = PANORAMA_LAYOUTS[layoutId]
-  const zenith = layoutId === '19'
+  const { rows, columns, photoCount, pitchTop, pitchStep, zenith } = PANORAMA_LAYOUTS[layoutId]
+  const requiresPhoneRecord = layoutId === '22' || layoutId === '24-rings'
   const supportedCamera = activeDevice?.protocol === 'insta360'
   const statusMessage = messageForState(state, error, photoCount)
 
   const changeLayout = useCallback((value: string) => {
-    if (value !== '19' && value !== '24' && value !== '32') return
+    if (value !== '19' && value !== '22' && value !== '24' && value !== '24-rings' && value !== '32') return
     setLayoutId(value)
     setState('empty')
     setGridPaths([])
@@ -167,8 +171,8 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
     setError(null)
     try {
       const { paths, mode, poses } = await window.luna.downloadPhonePanoramaRecord(phoneEndpoint, record.id)
-      if (paths.length !== 19 && paths.length !== 24 && paths.length !== 32) throw new Error('拍摄记录不完整')
-      setLayoutId(String(paths.length) as LayoutId)
+      if (paths.length !== 19 && paths.length !== 22 && paths.length !== 24 && paths.length !== 32) throw new Error('拍摄记录不完整')
+      setLayoutId(mode === 'rings_788_plus_zenith' ? '24-rings' : String(paths.length) as LayoutId)
       setRecordMode(mode)
       setRecordPoses(poses?.map((pose) => [pose.yaw, pose.pitch, pose.roll]) ?? null)
       setGridPaths(paths)
@@ -261,6 +265,11 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
 
   const startStitching = useCallback(async () => {
     if (gridPaths.length !== photoCount) return
+    if (requiresPhoneRecord && !recordPoses) {
+      setError('该拍摄方案请通过手机拍摄记录导入')
+      setState('error')
+      return
+    }
     setState('stitching')
     setError(null)
     try {
@@ -284,7 +293,7 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
       setState('error')
       setError(cause instanceof Error && cause.message ? `合成失败：${cause.message}` : '合成失败，请检查照片后重试')
     }
-  }, [columns, gridPaths, photoCount, pitchStep, pitchTop, recordPoses, rows, targetWidth, zenith])
+  }, [columns, gridPaths, photoCount, pitchStep, pitchTop, recordPoses, requiresPhoneRecord, rows, targetWidth, zenith])
 
   const recordRows = recordMode ? MODE_ROWS[recordMode] : undefined
   const photoTile = (index: number) => (
@@ -317,8 +326,10 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
             value={layoutId}
             onValueChange={changeLayout}
             options={[
-              { value: '19', label: '19 张 · 3 × 6 + 天顶' },
+              { value: '19', label: '19 张 · 三层 + 天顶' },
+              { value: '22', label: '22 张 · 6 / 7 / 8 + 天顶' },
               { value: '24', label: '24 张 · 4 × 6' },
+              { value: '24-rings', label: '24 张 · 7 / 8 / 8 + 天顶' },
               { value: '32', label: '32 张 · 4 × 8' },
             ]}
           />
@@ -332,7 +343,9 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
             </Button>
           ))}
 
-          {!supportedCamera && isConnected ? (
+          {requiresPhoneRecord ? (
+            <p className="panorama-lab-path-note">该方案请从手机拍摄记录导入。</p>
+          ) : !supportedCamera && isConnected ? (
             <p className="panorama-lab-notice">请切换到 Luna 相机</p>
           ) : !isConnected ? (
             <Button variant="primary" icon={<RefreshCw size={15} />} onClick={() => navigate('/library')}>
@@ -348,15 +361,15 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
               读取相机最近 {photoCount} 张
             </Button>
           )}
-          <Button
+          {!requiresPhoneRecord && <Button
             variant="secondary"
             icon={state === 'loading' ? <LoaderCircle className="is-spinning" size={15} /> : <FolderOpen size={15} />}
             disabled={busy}
             onClick={() => void loadLocalPhotos()}
           >
             选择本地 {photoCount} 张照片
-          </Button>
-          {zenith && <p className="panorama-lab-path-note">6/7/5 和 5/8/5 方案请从手机拍摄记录导入。</p>}
+          </Button>}
+          {layoutId === '19' && <p className="panorama-lab-path-note">6/7/5 和 5/8/5 方案请从手机拍摄记录导入。</p>}
 
           <label className="panorama-lab-field-label">输出尺寸</label>
           <Select
@@ -421,12 +434,12 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
                 const offset = recordRows.slice(0, row).reduce((sum, value) => sum + value, 0)
                 return <div className="panorama-lab-record-row" key={row}>{Array.from({ length: count }, (_, index) => photoTile(offset + index))}</div>
               })}
-              <div className="panorama-lab-record-row">{photoTile(18)}</div>
+              <div className="panorama-lab-record-row">{photoTile(photoCount - 1)}</div>
             </div>
           ) : gridPaths.length > 0 ? (
             <div className={`panorama-lab-grid is-${columns}-columns${zenith ? ' is-zenith-layout' : ''}`}>
               {Array.from({ length: photoCount }, (_, index) => index + 1).map((label, index) => (
-                <div className={`panorama-lab-photo${zenith && index === 18 ? ' is-zenith-photo' : ''}`} key={gridPaths[index]}>
+                <div className={`panorama-lab-photo${zenith && index === photoCount - 1 ? ' is-zenith-photo' : ''}`} key={gridPaths[index]}>
                   {thumbnails[index] && <img src={thumbnails[index]!} alt={`第 ${label} 张`} />}
                   <span>{label}</span>
                 </div>
