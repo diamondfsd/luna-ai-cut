@@ -1,0 +1,65 @@
+.panorama-download-progress {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 11px;
+  background: var(--parchment);
+}
+
+.panorama-download-progress-heading,
+.panorama-download-progress-details,
+.panorama-download-progress-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panorama-download-progress-heading {
+  font-size: 12px;
+}
+
+.panorama-download-progress-heading strong {
+  font-weight: 600;
+}
+
+.panorama-download-progress-heading span,
+.panorama-download-progress-details {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panorama-download-progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--hairline);
+}
+
+.panorama-download-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 120ms linear;
+}
+
+.panorama-download-progress-details > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panorama-download-progress-error {
+  margin: 0;
+  color: #bd3b35;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.panorama-download-progress-actions {
+  justify-content: flex-end;
+}

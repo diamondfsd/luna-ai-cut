@@ -479,11 +479,38 @@ impl Exporter {
     /// Finish: meridian repair + edge equalization, then JPEG encode.
     /// Returns the cropped JPEG and its location in the full equirectangular canvas.
     pub fn finish(
+        self,
+        quality: u8,
+    ) -> Result<(Vec<u8>, usize, usize, usize, usize, usize, usize), String> {
+        self.finish_inner(quality, false)
+    }
+
+    /// Finish a panorama while softly extending an uncovered nadir to the
+    /// bottom of the equirectangular canvas. This is intended for spherical
+    /// capture rigs whose head cannot point straight down.
+    pub fn finish_with_bottom_blur(
+        self,
+        quality: u8,
+    ) -> Result<(Vec<u8>, usize, usize, usize, usize, usize, usize), String> {
+        self.finish_inner(quality, true)
+    }
+
+    fn finish_inner(
         mut self,
         quality: u8,
+        blur_bottom_blind_spot: bool,
     ) -> Result<(Vec<u8>, usize, usize, usize, usize, usize, usize), String> {
         if self.bands_done.iter().any(|d| !d) {
             return Err("not all bands composited".into());
+        }
+        if blur_bottom_blind_spot {
+            let bottom = self.canvas_h;
+            let (x, y, width, height) = self.crop;
+            let covered_end = y.saturating_add(height).min(bottom);
+            if covered_end < bottom {
+                self.blur_bottom_blind_spot(covered_end);
+                self.crop = (x, y, width, bottom.saturating_sub(y));
+            }
         }
         let (w, h) = (self.canvas_w, self.canvas_h);
         if w >= 3 {
@@ -536,6 +563,91 @@ impl Exporter {
             )
             .map_err(|e| format!("jpeg encode: {e}"))?;
         Ok((out, cw, ch, w, h, cx, cy))
+    }
+
+    fn blur_bottom_blind_spot(&mut self, start_y: usize) {
+        let (width, height) = (self.canvas_w, self.canvas_h);
+        if start_y >= height || width == 0 {
+            return;
+        }
+
+        // Carry the last real covered pixel in each longitude downward. Then
+        // blur that boundary row horizontally, so the blind cap fades into a
+        // soft, image-derived fill instead of a hard black edge.
+        let mut edge = vec![[0u8; 3]; width];
+        let mut known = vec![false; width];
+        let mut unresolved = width;
+        for y in (0..start_y).rev() {
+            for x in 0..width {
+                if known[x] {
+                    continue;
+                }
+                let index = y * width + x;
+                if self.covered[index] == 0 {
+                    continue;
+                }
+                edge[x].copy_from_slice(&self.canvas[index * 3..index * 3 + 3]);
+                known[x] = true;
+                unresolved -= 1;
+            }
+            if unresolved == 0 {
+                break;
+            }
+        }
+
+        let Some(first_known) = known.iter().position(|value| *value) else {
+            return;
+        };
+        let mut last_known = first_known;
+        for offset in 1..width {
+            let x = (first_known + offset) % width;
+            if known[x] {
+                last_known = x;
+            } else {
+                edge[x] = edge[last_known];
+                known[x] = true;
+            }
+        }
+
+        let gap_height = height - start_y;
+        let radius = (gap_height / 16).clamp(3, 48).min(width / 2);
+        let mut blurred = vec![[0u8; 3]; width];
+        let samples = (radius * 2 + 1) as u64;
+        for x in 0..width {
+            let mut sum = [0u64; 3];
+            for offset in -(radius as isize)..=radius as isize {
+                let sample_x = (x as isize + offset).rem_euclid(width as isize) as usize;
+                for channel in 0..3 {
+                    sum[channel] += edge[sample_x][channel] as u64;
+                }
+            }
+            for channel in 0..3 {
+                blurred[x][channel] = (sum[channel] / samples) as u8;
+            }
+        }
+
+        for y in start_y..height {
+            let progress = if gap_height <= 1 {
+                1.0
+            } else {
+                (y - start_y) as f32 / (gap_height - 1) as f32
+            };
+            let blur_strength = 0.35 + 0.65 * progress;
+            for x in 0..width {
+                let index = y * width + x;
+                if self.covered[index] != 0 {
+                    edge[x].copy_from_slice(&self.canvas[index * 3..index * 3 + 3]);
+                    continue;
+                }
+                for channel in 0..3 {
+                    let original = edge[x][channel] as f32;
+                    let soft = blurred[x][channel] as f32;
+                    self.canvas[index * 3 + channel] =
+                        (original * (1.0 - blur_strength) + soft * blur_strength).round() as u8;
+                }
+                self.covered[index] = 1;
+            }
+        }
     }
 }
 

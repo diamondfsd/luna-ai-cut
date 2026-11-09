@@ -1,0 +1,29 @@
+.panorama-phone-record-list {
+  display: grid;
+  gap: 6px;
+}
+
+.panorama-phone-record-button {
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  text-align: left;
+}
+
+.panorama-phone-record-date,
+.panorama-phone-record-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panorama-phone-record-date {
+  font-size: 12px;
+}
+
+.panorama-phone-record-meta {
+  color: var(--muted);
+  font-size: 11px;
+}

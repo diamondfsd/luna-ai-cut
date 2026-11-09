@@ -15,7 +15,7 @@ use crate::estimation::{
 };
 use crate::exposure::{BlocksGainCompensator, RgbImage};
 use crate::imgproc::{rgb_to_gray_cv, GrayImage};
-use crate::matcher::match_pair;
+use crate::matcher::{match_pair, PairMatches};
 use crate::orb::{orb_detect_and_compute, OrbParams};
 use crate::seam::find_seams_graph_cut_color;
 use crate::warp::{Border, Interp, PixelImage, SphericalWarper};
@@ -24,16 +24,25 @@ use crate::warp::{Border, Interp, PixelImage, SphericalWarper};
 /// uses absolute megapixels (0.6 / 0.1); inputs here are already at
 /// registration scale, so the seam scale is the ratio sqrt(0.1/0.6).
 const SEAM_FROM_WORK_SCALE: f64 = 0.408_248_290_463_863; // sqrt(1/6)
+const POSE_ORIENTATION_MAX_MEDIAN_RESIDUAL_DEGREES: f64 = 20.0;
+const POSE_RESCUE_MAX_MEDIAN_RESIDUAL_DEGREES: f64 = 8.0;
+const ZENITH_MIN_FEATURE_INLIERS: usize = 20;
+
+#[derive(Clone, Copy)]
+enum PoseUse {
+    PlacementAndOrientation,
+    OrientationOnly,
+    FeatureOnly { zenith_source_id: Option<u32> },
+}
 
 pub struct SourceImage {
     pub id: u32,
     /// Registration-scale RGB pixels.
     pub rgb: PixelImage,
     /// Optional shooting-rig pose prior (yaw, pitch, roll in degrees, e.g.
-    /// DJI `drone-dji:Gimbal*Degree` XMP). Used to RESCUE images that have
-    /// too few features to match (blank sky): after the feature-based
-    /// solve, unmatched images with a prior are placed via the best-fit
-    /// rotation between the prior frame and the solved frame.
+    /// DJI `drone-dji:Gimbal*Degree` XMP). Used to resolve global orientation
+    /// ambiguity and, in supported layouts, rescue images with too few
+    /// features to match. It does not refine matched-image rotations.
     pub pose_prior: Option<[f64; 3]>,
 }
 
@@ -60,6 +69,14 @@ pub struct Alignment {
     /// loading.
     #[serde(default)]
     pub lens: crate::lens::LensParams,
+}
+
+fn apply_zenith_inlier_threshold(matches: &mut PairMatches) {
+    if matches.num_inliers >= ZENITH_MIN_FEATURE_INLIERS {
+        matches.confidence = matches.confidence.max(1.001);
+    } else {
+        matches.confidence = 0.0;
+    }
 }
 
 /// Announces the stage to any installed [`crate::progress`] hook, then runs
@@ -110,7 +127,7 @@ pub fn align(sources: &[SourceImage]) -> Result<Alignment, String> {
             pairs.push((i, j));
         }
     }
-    align_with_pairs(sources, pairs)
+    align_with_pairs(sources, pairs, PoseUse::PlacementAndOrientation)
 }
 
 /// Aligns a row-major spherical grid using only the image pairs that can
@@ -124,7 +141,11 @@ pub fn align_grid_neighbors(
         return Err("grid dimensions do not match source images".into());
     }
     let pairs = grid_neighbor_pairs(rows, columns);
-    align_with_pairs(sources, pairs.into_iter().collect())
+    align_with_pairs(
+        sources,
+        pairs.into_iter().collect(),
+        PoseUse::PlacementAndOrientation,
+    )
 }
 
 /// Aligns a 3-by-6 spherical ring grid plus one zenith image. The final
@@ -143,7 +164,11 @@ pub fn align_grid_neighbors_with_zenith(
     for column in 0..columns {
         pairs.insert((column, zenith));
     }
-    align_with_pairs(sources, pairs.into_iter().collect())
+    align_with_pairs(
+        sources,
+        pairs.into_iter().collect(),
+        PoseUse::PlacementAndOrientation,
+    )
 }
 
 /// Match only potentially overlapping views using their capture poses.
@@ -179,7 +204,97 @@ pub fn align_pose_neighbors(sources: &[SourceImage]) -> Result<Alignment, String
             }
         }
     }
-    align_with_pairs(sources, pairs)
+    if sources.len() == 27 {
+        // The 27-photo capture records contain three manual left views,
+        // top/middle/bottom rows of 8/8/7, then a zenith view. Preserve
+        // their actual adjacency as candidate pairs even when visual motion
+        // differs from the nominal angle prior. Features still decide every
+        // accepted edge.
+        let rows = [(3usize, 8usize), (11, 8), (19, 7)];
+        for &(start, count) in &rows {
+            for column in 0..count - 1 {
+                pairs.push((start + column, start + column + 1));
+            }
+            pairs.push((start, start + count - 1));
+        }
+        for row in 0..2 {
+            let (a_start, a_count) = rows[row];
+            let (b_start, b_count) = rows[row + 1];
+            for a in 0..a_count {
+                for b in 0..b_count {
+                    let x_a = a as f64 / (a_count - 1) as f64;
+                    let x_b = b as f64 / (b_count - 1) as f64;
+                    if (x_a - x_b).abs() <= 1.05 / (b_count - 1) as f64 {
+                        pairs.push((a_start + a, b_start + b));
+                    }
+                }
+            }
+        }
+        for (manual, row) in [(0usize, 1usize), (1, 0), (2, 2)] {
+            let (start, count) = rows[row];
+            for column in [0, 1, count - 2, count - 1] {
+                pairs.push((manual, start + column));
+            }
+        }
+        pairs.extend([(0, 1), (0, 2), (1, 26)]);
+        for column in 0..rows[0].1 {
+            pairs.push((rows[0].0 + column, 26));
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+    }
+    // Poses select candidate pairs only. Never use commanded angles to place
+    // unmatched images or alter per-image relative rotations.
+    align_with_pairs(sources, pairs, PoseUse::OrientationOnly)
+}
+
+/// Match the 36-photo visual capture by its actual slot adjacency. This path
+/// uses image features for alignment and orientation; recorded angles do not
+/// participate in matching, placement, or panorama orientation.
+pub fn align_visual_36_neighbors(sources: &[SourceImage]) -> Result<Alignment, String> {
+    if sources.len() != 36 {
+        return Err("visual panorama needs 36 ordered photos".into());
+    }
+    align_with_pairs(
+        sources,
+        visual_36_neighbor_pairs(),
+        PoseUse::FeatureOnly {
+            zenith_source_id: Some(35),
+        },
+    )
+}
+
+fn visual_36_neighbor_pairs() -> Vec<(usize, usize)> {
+    let rows = [3usize, 11, 19, 27];
+    let mut pairs = Vec::new();
+    for &start in &rows {
+        for column in 0..7 {
+            pairs.push((start + column, start + column + 1));
+        }
+        pairs.push((start, start + 7));
+    }
+    for row in 0..3 {
+        for column in 0usize..8 {
+            for other in column.saturating_sub(1)..=(column + 1).min(7) {
+                pairs.push((rows[row] + column, rows[row + 1] + other));
+            }
+        }
+    }
+    for (manual, row) in [(0usize, 2usize), (1, 1), (2, 3)] {
+        for column in [0usize, 1, 6, 7] {
+            pairs.push((manual, rows[row] + column));
+        }
+    }
+    for column in [0usize, 1, 6, 7] {
+        pairs.push((1, rows[0] + column));
+    }
+    pairs.extend([(0, 1), (0, 2), (1, 35)]);
+    for column in 0..8 {
+        pairs.push((rows[0] + column, 35));
+    }
+    pairs.sort_unstable();
+    pairs.dedup();
+    pairs
 }
 
 fn grid_neighbor_pairs(rows: usize, columns: usize) -> std::collections::BTreeSet<(usize, usize)> {
@@ -209,6 +324,7 @@ fn grid_neighbor_pairs(rows: usize, columns: usize) -> std::collections::BTreeSe
 fn align_with_pairs(
     sources: &[SourceImage],
     pair_ids: Vec<(usize, usize)>,
+    pose_use: PoseUse,
 ) -> Result<Alignment, String> {
     if sources.len() < 2 {
         return Err("need at least two images".into());
@@ -242,14 +358,21 @@ fn align_with_pairs(
         crate::par::map(&pair_ids, |&(i, j)| {
             let mut matches =
                 match_pair(&pts[i], &descs[i], sizes[i], &pts[j], &descs[j], sizes[j]);
-            let zenith_pair = sources[i].pose_prior.is_some_and(|pose| pose[1] >= 85.0)
-                || sources[j].pose_prior.is_some_and(|pose| pose[1] >= 85.0);
+            let zenith_pair = match pose_use {
+                PoseUse::FeatureOnly { zenith_source_id } => {
+                    zenith_source_id.is_some_and(|id| sources[i].id == id || sources[j].id == id)
+                }
+                PoseUse::PlacementAndOrientation | PoseUse::OrientationOnly => {
+                    sources[i].pose_prior.is_some_and(|pose| pose[1] >= 85.0)
+                        || sources[j].pose_prior.is_some_and(|pose| pose[1] >= 85.0)
+                }
+            };
             // A zenith image often has a much smaller textured overlap than
             // ring images. Keep it only when RANSAC still verifies at least
             // 20 real feature inliers; the ordinary confidence formula
             // otherwise rejects this geometrically valid cap connection.
-            if zenith_pair && matches.num_inliers >= 20 {
-                matches.confidence = matches.confidence.max(1.001);
+            if zenith_pair {
+                apply_zenith_inlier_threshold(&mut matches);
             }
             ((i, j), matches)
         })
@@ -260,13 +383,9 @@ fn align_with_pairs(
     if kept.len() < 2 {
         return Err("images do not overlap enough to align".into());
     }
-    if kept.len() != n {
-        return Err(format!(
-            "feature matching connected {} of {} photos",
-            kept.len(),
-            n
-        ));
-    }
+    // Keep the largest feature-connected component and let the pose-prior
+    // rescue below place isolated views. Rejecting a partial component here
+    // made that rescue path unreachable for blank or low-texture photos.
     let dropped: Vec<u32> = (0..n)
         .filter(|i| !kept.contains(i))
         .map(|i| sources[i].id)
@@ -334,14 +453,32 @@ fn align_with_pairs(
         })
         .collect();
 
-    // Pose-prior rescue: place unmatched images that carry a shooting-rig
-    // pose (blank-sky shots in DJI sphere sets, etc.).
-    let offset = fit_prior_offset(sources, &images);
+    // Pose-prior rescue: place unmatched images only for layouts that allow
+    // it. Capture poses are estimates, so pose-driven panorama mode keeps
+    // every individual image rotation feature-derived.
+    let allow_pose_placement = matches!(pose_use, PoseUse::PlacementAndOrientation);
+    let placement_offset = if allow_pose_placement {
+        fit_prior_offset(sources, &images, POSE_RESCUE_MAX_MEDIAN_RESIDUAL_DEGREES)
+    } else {
+        None
+    };
+    // Feature registration has a global 180° up/down ambiguity. For pose
+    // driven captures, use a tolerant fit only to select that global
+    // orientation; never use it to place or alter an individual photo.
+    let orientation_offset = match pose_use {
+        PoseUse::PlacementAndOrientation => placement_offset,
+        PoseUse::OrientationOnly => fit_prior_offset(
+            sources,
+            &images,
+            POSE_ORIENTATION_MAX_MEDIAN_RESIDUAL_DEGREES,
+        ),
+        PoseUse::FeatureOnly { .. } => None,
+    };
     let mut still_dropped = Vec::new();
     let rescuable: Vec<&SourceImage> = sources.iter().filter(|s| dropped.contains(&s.id)).collect();
     if !rescuable.is_empty() {
         for s in rescuable {
-            match (s.pose_prior, offset) {
+            match (s.pose_prior, placement_offset) {
                 (Some(prior), Some(off)) => {
                     let r = mat3_mul_f64(&off, &prior_rotation(prior));
                     let mut cam = CameraParams {
@@ -370,7 +507,7 @@ fn align_with_pairs(
     // come out upside down). When pose priors exist, they define earth-up
     // authoritatively: if the fitted offset maps earth-up to pano-down,
     // roll the whole panorama 180° (Rz(pi), a pure rotation).
-    if let Some(off) = offset {
+    if let Some(off) = orientation_offset {
         // Earth up in the prior frame is -y (y points down); mapped up's y
         // component > 0 means it points DOWN in the pano frame.
         let mapped_up_y = -off[1][1];
@@ -412,9 +549,9 @@ fn mat3_mul_f64(a: &Mat3d, b: &Mat3d) -> Mat3d {
 
 /// Rig pose (yaw, pitch, roll degrees, earth-referenced like DJI gimbal
 /// values) to a pano<-camera rotation in our convention (y down, +pitch up):
-/// R = Ry(yaw) · Rx(-pitch) · Rz(roll).
+/// R = Ry(yaw) · Rx(pitch) · Rz(roll).
 fn prior_rotation(p: [f64; 3]) -> Mat3d {
-    let (y, pi, r) = (p[0].to_radians(), (-p[1]).to_radians(), p[2].to_radians());
+    let (y, pi, r) = (p[0].to_radians(), p[1].to_radians(), p[2].to_radians());
     let ry = [
         [y.cos(), 0.0, y.sin()],
         [0.0, 1.0, 0.0],
@@ -436,8 +573,12 @@ fn prior_rotation(p: [f64; 3]) -> Mat3d {
 /// Wahba/Kabsch fit of the single rotation `off` minimizing
 /// Σ angle(off · R_prior_i, R_solved_i) over the feature-solved cameras
 /// that carry priors. Returns None when fewer than 2 anchors exist or the
-/// fit is poor (median residual > 8°, i.e. the priors are untrustworthy).
-fn fit_prior_offset(sources: &[SourceImage], solved: &[AlignedImage]) -> Option<Mat3d> {
+/// fit is poor (median residual exceeds the caller's trust threshold).
+fn fit_prior_offset(
+    sources: &[SourceImage],
+    solved: &[AlignedImage],
+    max_median_residual_degrees: f64,
+) -> Option<Mat3d> {
     use nalgebra::Matrix3;
 
     let mut m = Matrix3::<f64>::zeros();
@@ -498,7 +639,7 @@ fn fit_prior_offset(sources: &[SourceImage], solved: &[AlignedImage]) -> Option<
         .collect();
     residuals.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = residuals[residuals.len() / 2];
-    if median > 8.0 {
+    if median > max_median_residual_degrees {
         return None;
     }
     Some(off)
@@ -1190,6 +1331,64 @@ pub(crate) fn dilate3(mask: &GrayImage) -> GrayImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn visual_36_topology_links_manual_rows_and_cap() {
+        let pairs = visual_36_neighbor_pairs();
+        assert!(pairs.iter().all(|&(a, b)| a < b && b < 36));
+        assert!(pairs.contains(&(0, 19))); // manual middle to middle left
+        assert!(pairs.contains(&(1, 11))); // manual upper to upper left
+        assert!(pairs.contains(&(2, 27))); // manual lower to lower left
+        assert!(pairs.contains(&(3, 35))); // uppermost ring to cap
+        assert!(pairs.contains(&(3, 11))); // adjacent vertical bands
+        assert!(!pairs.contains(&(3, 27))); // non-adjacent bands
+        let mut visited = std::collections::BTreeSet::from([0]);
+        loop {
+            let previous = visited.len();
+            for &(a, b) in &pairs {
+                if visited.contains(&a) || visited.contains(&b) {
+                    visited.insert(a);
+                    visited.insert(b);
+                }
+            }
+            if visited.len() == previous {
+                break;
+            }
+        }
+        assert_eq!(visited.len(), 36);
+    }
+
+    #[test]
+    fn visual_36_alignment_uses_slots_without_pose_angles() {
+        let sources: Vec<_> = (0..36)
+            .map(|id| SourceImage {
+                id,
+                rgb: PixelImage::new(96, 72, 3, vec![0; 96 * 72 * 3]),
+                pose_prior: None,
+            })
+            .collect();
+        let error = align_visual_36_neighbors(&sources).unwrap_err();
+        assert_eq!(error, "images do not overlap enough to align");
+    }
+
+    #[test]
+    fn zenith_edges_require_twenty_feature_inliers() {
+        let mut weak = PairMatches {
+            num_inliers: 19,
+            confidence: 1.5,
+            ..Default::default()
+        };
+        apply_zenith_inlier_threshold(&mut weak);
+        assert_eq!(weak.confidence, 0.0);
+
+        let mut strong = PairMatches {
+            num_inliers: ZENITH_MIN_FEATURE_INLIERS,
+            confidence: 0.5,
+            ..Default::default()
+        };
+        apply_zenith_inlier_threshold(&mut strong);
+        assert_eq!(strong.confidence, 1.001);
+    }
 
     #[test]
     fn orient_left_multiplies_and_round_trips() {

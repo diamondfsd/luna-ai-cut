@@ -41,6 +41,8 @@ import type {
   NasSyncProbeResult,
   NasSyncSettings,
   NasSyncStatus,
+  PanoramaDownloadProgress,
+  PanoramaLocalDownloadStatus,
 } from '../src/shared/types'
 
 interface ExportItemInput {
@@ -224,10 +226,21 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
     ipcRenderer.invoke('luna:requestVideoFrameRate', file, cachedPath),
   detectILog: (filePath: string) => ipcRenderer.invoke('luna:detectILog', filePath),
   downloadFiles: (files: LunaFile[], targetDir?: string) => ipcRenderer.invoke('luna:downloadFiles', files, targetDir),
-  choosePanoramaPhotos: (photoCount: 19 | 24 | 32) =>
+  choosePanoramaPhotos: (photoCount: 19 | 22 | 24 | 25 | 27 | 32 | 35 | 36) =>
     ipcRenderer.invoke('panorama:choose-local-photos', photoCount),
   downloadPhonePanoramaRecord: (endpoint: string, recordId: string) =>
     ipcRenderer.invoke('panorama:download-phone-record', endpoint, recordId),
+  loadLocalPanoramaRecord: (recordId: string, photoCount: number) =>
+    ipcRenderer.invoke('panorama:load-local-record', recordId, photoCount),
+  getPanoramaDownloadStatuses: (records: Array<{ recordId: string; photoCount: number }>) =>
+    ipcRenderer.invoke('panorama:list-local-download-statuses', records) as Promise<PanoramaLocalDownloadStatus[]>,
+  cancelPanoramaDownload: (recordId: string) =>
+    ipcRenderer.invoke('panorama:cancel-phone-record-download', recordId),
+  onPanoramaDownloadProgress: (callback: (progress: PanoramaDownloadProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: PanoramaDownloadProgress): void => callback(progress)
+    ipcRenderer.on('panorama:phone-record-download-progress', listener)
+    return () => ipcRenderer.off('panorama:phone-record-download-progress', listener)
+  },
   stitchPanorama: (request: {
     paths: string[]
     poses: number[][]

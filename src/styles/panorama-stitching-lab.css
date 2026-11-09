@@ -52,6 +52,8 @@
   align-items: stretch;
   gap: 12px;
   padding: 18px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
 }
 
 .panorama-lab-field-label {
@@ -113,11 +115,55 @@
 
 .panorama-lab-result-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.panorama-lab-stitch-progress {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 11px;
+}
+
+.panorama-lab-stitch-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.panorama-lab-stitch-progress-heading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.panorama-lab-stitch-progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--hairline);
+}
+
+.panorama-lab-stitch-progress-track span {
+  display: block;
+  width: 28%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  animation: panorama-lab-stitching 1.4s ease-in-out infinite;
+}
+
+@keyframes panorama-lab-stitching {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(390%); }
 }
 
 .panorama-lab-preview {

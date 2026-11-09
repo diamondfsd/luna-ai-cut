@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain, nativeImage, type OpenDialogOptions } from 'electron'
+import { createHash } from 'node:crypto'
 import { access, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -390,7 +391,10 @@ export function register(ctx: IpcContext): void {
   ipcMain.handle('luna:resolveThumbnail', async (_event, filePath: string, kind?: string) => {
     const cacheDir = await previewCacheDir()
     const thumbDir = thumbnailDir(cacheDir)
-    const fileId = path.basename(filePath).replace(path.extname(filePath), '')
+    // Local panorama records all use names such as photo-00.jpg. Key the
+    // thumbnail by its full resolved path so separate records cannot reuse
+    // one another's preview image.
+    const fileId = createHash('sha256').update(path.resolve(filePath)).digest('hex')
     const thumbPath = await enqueueThumbnailGeneration(filePath, thumbDir, fileId, kind, path.basename(filePath))
     return thumbPath ? pathToFileURL(thumbPath).toString() : null
   })

@@ -8,9 +8,7 @@ use napi::bindgen_prelude::AsyncTask;
 use napi::{Env, Error, Result, Task};
 use napi_derive::napi;
 use panoloom_core::export::Exporter;
-use panoloom_core::pipeline::{
-    align_grid_neighbors, align_grid_neighbors_with_zenith, align_pose_neighbors, SourceImage,
-};
+use panoloom_core::pipeline::{align_pose_neighbors, align_visual_36_neighbors, SourceImage};
 use panoloom_core::warp::PixelImage;
 
 const REGISTRATION_WIDTH: usize = 1200;
@@ -72,17 +70,23 @@ fn stitch_panorama(
     target_width: usize,
     output_path: &str,
 ) -> std::result::Result<String, String> {
-    let has_zenith = rows == 3 && matches!(columns, 6 | 7 | 8);
+    let visual_36 = rows == 4 && columns == 8 && paths.len() == 36;
+    let has_zenith = visual_36 || (rows == 3 && matches!(columns, 6 | 7 | 8 | 9));
     if !has_zenith && (rows != 4 || !matches!(columns, 6 | 8)) {
         return Err(
-            "panorama layout must be 19/22/24-photo ring+zenith or legacy 24/32 rectangular".into(),
+            "panorama layout must be a supported ring+zenith layout or legacy 24/32 rectangular"
+                .into(),
         );
     }
-    let expected = if has_zenith {
+    let expected = if visual_36 {
+        36
+    } else if has_zenith {
         match columns {
             6 => 19,
             7 => 22,
-            8 => 24,
+            8 if matches!(paths.len(), 24 | 27 | 32 | 35) => paths.len(),
+            8 => return Err("expected 24, 27, 32 or 35 ordered photos and poses".into()),
+            9 => 25,
             _ => unreachable!("validated zenith column count"),
         }
     } else {
@@ -111,29 +115,32 @@ fn stitch_panorama(
         sources.push(SourceImage {
             id: id as u32,
             rgb: PixelImage::new(reg_width, reg_height, 3, registration),
-            pose_prior: Some([pose[0], pose[1], pose[2]]),
+            pose_prior: (!visual_36).then_some([pose[0], pose[1], pose[2]]),
         });
         full_sizes.push((id as u32, width as u32, height as u32));
     }
 
-    let regular_nineteen = has_zenith
-        && columns == 6
-        && poses.iter().take(18).enumerate().all(|(i, pose)| {
-            let yaw = -57.0 + 292.0 * (i % 6) as f64 / 5.0;
-            let pitch = 45.0 - 45.0 * (i / 6) as f64;
-            (pose[0] - yaw).abs() < 0.001 && (pose[1] - pitch).abs() < 0.001
-        });
-    let alignment = if regular_nineteen {
-        align_grid_neighbors_with_zenith(&sources, rows, columns)?
-    } else if has_zenith {
-        align_pose_neighbors(&sources)?
+    // Recorded angles select potential neighbors only. The alignment itself
+    // must be solved from real image features for every layout.
+    let alignment = if visual_36 {
+        align_visual_36_neighbors(&sources)?
     } else {
-        align_grid_neighbors(&sources, rows, columns)?
+        align_pose_neighbors(&sources)?
     };
     if alignment.images.len() != expected || !alignment.dropped.is_empty() {
+        let unconnected = alignment
+            .dropped
+            .iter()
+            .map(|id| (id + 1).to_string())
+            .collect::<Vec<_>>();
+        let detail = if unconnected.is_empty() {
+            "请检查拍摄记录".to_string()
+        } else {
+            format!("照片 {}", unconnected.join("、"))
+        };
         return Err(format!(
-            "feature matching connected {} of {expected} photos",
-            alignment.images.len()
+            "有 {} 张照片无法与其余照片可靠拼接（{detail}）",
+            expected.saturating_sub(alignment.images.len()),
         ));
     }
     let rescued: Vec<_> = alignment
@@ -173,8 +180,11 @@ fn stitch_panorama(
         }
     }
 
-    let (jpeg, width, height, full_width, full_height, crop_left, crop_top) =
-        exporter.finish(95)?;
+    let (jpeg, width, height, full_width, full_height, crop_left, crop_top) = if has_zenith {
+        exporter.finish_with_bottom_blur(95)?
+    } else {
+        exporter.finish(95)?
+    };
     let jpeg = inject_gpano_xmp(
         jpeg,
         width,

@@ -1,25 +1,18 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, FolderOpen, LoaderCircle, RefreshCw, ScanLine } from 'lucide-react'
+import { ArrowLeft, Check, Clock3, FolderOpen, LoaderCircle, RefreshCw, ScanLine } from 'lucide-react'
 
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
+import { MODE_ROWS, PANORAMA_LAYOUTS, poseForGridIndex, rowMajorFromCaptureOrder, type LayoutId } from '../lib/panoramaStitchingLayout'
+import type { PanoramaDownloadProgress as DownloadProgress, PanoramaLocalDownloadStatus } from '../shared/types'
+import { PanoramaDownloadProgress as PanoramaDownloadProgressView } from './PanoramaDownloadProgress'
+import { PanoramaPhoneRecordList, type PhonePanoramaRecord } from './PanoramaPhoneRecordList'
 import { Button, Select } from '../ui'
 import '../styles/panorama-stitching-lab.css'
 
 type OutputWidth = 16000 | 24000 | 32000
 type ViewState = 'empty' | 'loading' | 'ready' | 'stitching' | 'complete' | 'error'
-type LayoutId = '19' | '22' | '24' | '24-rings' | '32'
-
-const PANORAMA_LAYOUTS = {
-  '19': { rows: 3, columns: 6, photoCount: 19, pitchTop: 45, pitchStep: 45, zenith: true },
-  '22': { rows: 3, columns: 7, photoCount: 22, pitchTop: 45, pitchStep: 45, zenith: true },
-  '24': { rows: 4, columns: 6, photoCount: 24, pitchTop: 63, pitchStep: 40, zenith: false },
-  '24-rings': { rows: 3, columns: 8, photoCount: 24, pitchTop: 50, pitchStep: 50, zenith: true },
-  '32': { rows: 4, columns: 8, photoCount: 32, pitchTop: 72, pitchStep: 43, zenith: false },
-} as const
-const PAN_MIN = -57
-const PAN_MAX = 235
 
 interface PanoramaStitchingLabViewProps {
   active: boolean
@@ -32,59 +25,9 @@ interface PanoramaResult {
   height: number
 }
 
-interface PhonePanoramaRecord {
-  id: string
-  started_at: string
-  photos: Array<{ slot: number; name: string; available: boolean }>
-  mode?: string | null
-}
-
-const MODE_ROWS: Record<string, number[]> = {
-  grid_666: [6, 6, 6],
-  rings_675: [6, 7, 5],
-  rings_585: [5, 8, 5],
-  rings_675_plus3: [6, 7, 8],
-  rings_788_plus_zenith: [7, 8, 8],
-}
-
-function rowMajorFromCaptureOrder<T>(
-  captureOrder: T[],
-  rows: number,
-  columns: number,
-  zenith: boolean,
-): T[] {
-  const rowMajor = Array<T>(rows * columns)
-  const gridCaptureOrder = zenith ? captureOrder.slice(0, rows * columns) : captureOrder
-  gridCaptureOrder.forEach((item, index) => {
-    const column = Math.floor(index / rows)
-    const step = index % rows
-    const row = column % 2 === 0 ? step : rows - 1 - step
-    rowMajor[row * columns + column] = item
-  })
-  return zenith ? [...rowMajor, ...captureOrder.slice(rows * columns)] : rowMajor
-}
-
-function poseForGridIndex(
-  index: number,
-  rows: number,
-  columns: number,
-  pitchTop: number,
-  pitchStep: number,
-  zenith: boolean,
-): number[] {
-  if (zenith && index === rows * columns) {
-    return [PAN_MAX, 90, 0]
-  }
-  const row = Math.floor(index / columns)
-  const column = index % columns
-  const yaw = PAN_MIN + ((PAN_MAX - PAN_MIN) * column) / (columns - 1)
-  const pitch = pitchTop - row * pitchStep
-  return [yaw, pitch, 0]
-}
-
-function messageForState(state: ViewState, error: string | null, photoCount: number): string {
+function messageForState(state: ViewState, error: string | null, loadingMessage: string): string {
   if (error) return error
-  if (state === 'loading') return `正在读取 ${photoCount} 张照片`
+  if (state === 'loading') return loadingMessage
   if (state === 'stitching') return '正在合成全景图'
   if (state === 'complete') return '合成完成'
   return ''
@@ -95,7 +38,7 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   const { settings } = useApp()
   const { activeDevice, isConnected, sourceMode } = useDeviceConnection()
   const [state, setState] = useState<ViewState>('empty')
-  const [layoutId, setLayoutId] = useState<LayoutId>('24-rings')
+  const [layoutId, setLayoutId] = useState<LayoutId>('36-visual')
   const [targetWidth, setTargetWidth] = useState<OutputWidth>(24000)
   const [gridPaths, setGridPaths] = useState<string[]>([])
   const [thumbnails, setThumbnails] = useState<Array<string | null>>([])
@@ -104,17 +47,43 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   const [error, setError] = useState<string | null>(null)
   const [phoneEndpoint, setPhoneEndpoint] = useState<string | null>(null)
   const [phoneRecords, setPhoneRecords] = useState<PhonePanoramaRecord[]>([])
+  const [selectedPhoneRecord, setSelectedPhoneRecord] = useState<PhonePanoramaRecord | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [recordMode, setRecordMode] = useState<string | null>(null)
   const [recordPoses, setRecordPoses] = useState<number[][] | null>(null)
+  const [loadingMessage, setLoadingMessage] = useState('正在读取照片')
+  const [stitchElapsedSeconds, setStitchElapsedSeconds] = useState(0)
   const busy = state === 'loading' || state === 'stitching'
-  const { rows, columns, photoCount, pitchTop, pitchStep, zenith } = PANORAMA_LAYOUTS[layoutId]
-  const requiresPhoneRecord = layoutId === '22' || layoutId === '24-rings'
+  const { rows, columns, photoCount, pitchTop, pitchStep, pitchBottom, zenith } = PANORAMA_LAYOUTS[layoutId]
+  const requiresPhoneRecord = layoutId === '22'
+    || layoutId === '24-rings'
+    || layoutId === '25'
+    || layoutId === '27-rings'
+    || layoutId === '32-rings'
+    || layoutId === '35-rings'
+    || layoutId === '36-visual'
   const supportedCamera = activeDevice?.protocol === 'insta360'
-  const statusMessage = messageForState(state, error, photoCount)
+  const statusMessage = state === 'loading' && downloadProgress
+    ? ''
+    : messageForState(state, error, loadingMessage)
+
+  useEffect(() => window.luna.onPanoramaDownloadProgress((progress) => {
+    setDownloadProgress((current) => current?.recordId === progress.recordId ? progress : current)
+  }), [])
+
+  useEffect(() => {
+    if (state !== 'stitching') return
+    const startedAt = Date.now()
+    setStitchElapsedSeconds(0)
+    const timer = window.setInterval(() => {
+      setStitchElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [state])
 
   const changeLayout = useCallback((value: string) => {
-    if (value !== '19' && value !== '22' && value !== '24' && value !== '24-rings' && value !== '32') return
-    setLayoutId(value)
+    if (!Object.keys(PANORAMA_LAYOUTS).includes(value)) return
+    setLayoutId(value as LayoutId)
     setState('empty')
     setGridPaths([])
     setRecordMode(null)
@@ -123,6 +92,8 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
     setResult(null)
     setResultThumbnail(null)
     setError(null)
+    setSelectedPhoneRecord(null)
+    setDownloadProgress(null)
   }, [])
 
   const showPhotoGrid = useCallback(async (captureOrder: string[]) => {
@@ -141,23 +112,52 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   }, [columns, photoCount, rows, zenith])
 
   const loadPhoneRecords = useCallback(async () => {
+    setLoadingMessage('正在读取手机记录')
     setState('loading')
     setError(null)
+    setDownloadProgress(null)
+    setPhoneEndpoint(null)
+    setPhoneRecords([])
+    setSelectedPhoneRecord(null)
     try {
       const saved = localStorage.getItem('luna.director-lab.endpoint')
       const discovered = await window.luna.directorLab.discover()
       const endpoints = [...new Set([saved, ...discovered.services.map((service) => service.baseUrl)].filter((item): item is string => Boolean(item)))]
+      let lastError: unknown
       for (const endpoint of endpoints) {
         try {
           const result = await window.luna.lunaKaHttpClient.request<{ service: string; records: PhonePanoramaRecord[] }>(endpoint, '/api/v1/panorama/records')
-          if (result.service !== 'luna-ka-panorama' || !Array.isArray(result.records)) continue
+          if (result.service !== 'luna-ka-panorama' || !Array.isArray(result.records)) {
+            lastError = new Error('该手机版本暂不支持全景记录')
+            continue
+          }
+          const supportedRecords = result.records.filter((record) =>
+            record.photos.length === 19 || record.photos.length === 22 || record.photos.length === 24 || record.photos.length === 25 || record.photos.length === 27 || record.photos.length === 32 || record.photos.length === 35 || record.photos.length === 36,
+          )
+          const localStatuses = await window.luna.getPanoramaDownloadStatuses(
+            supportedRecords.map((record) => ({ recordId: record.id, photoCount: record.photos.length })),
+          ).catch((): PanoramaLocalDownloadStatus[] => [])
+          const statusByRecordId = new Map(localStatuses.map((status) => [status.recordId, status]))
+          const records = [...supportedRecords]
+            .sort((left, right) => Date.parse(right.started_at) - Date.parse(left.started_at))
+            .map((record) => {
+              const local = statusByRecordId.get(record.id)
+              return {
+                ...record,
+                localDownloadState: local?.state ?? 'not-downloaded',
+                localDownloadedPhotos: local?.downloadedPhotos ?? 0,
+              }
+            })
           setPhoneEndpoint(endpoint)
-          setPhoneRecords(result.records)
+          setPhoneRecords(records)
           setState('empty')
-          if (result.records.length === 0) setError('手机上没有全景拍摄记录')
+          if (records.length === 0) setError('手机上没有可合成的全景记录')
           return
-        } catch { /* Try the next discovered phone. */ }
+        } catch (cause) {
+          lastError = cause
+        }
       }
+      if (lastError instanceof Error) throw lastError
       throw new Error('未找到已连接的手机，请确认手机与电脑在同一局域网')
     } catch (cause) {
       setState('error')
@@ -165,14 +165,79 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
     }
   }, [])
 
+  useEffect(() => {
+    if (active) void loadPhoneRecords()
+  }, [active, loadPhoneRecords])
+
   const loadPhoneRecord = useCallback(async (record: PhonePanoramaRecord) => {
     if (!phoneEndpoint) return
+    setSelectedPhoneRecord(record)
+    const alreadyDownloaded = record.localDownloadState === 'downloaded'
+    setLoadingMessage(alreadyDownloaded ? '正在打开已下载记录' : '正在下载拍摄照片')
     setState('loading')
     setError(null)
+    setGridPaths([])
+    setThumbnails([])
+    setRecordMode(null)
+    setRecordPoses(null)
+    setResult(null)
+    setResultThumbnail(null)
+    setDownloadProgress(alreadyDownloaded ? null : {
+      recordId: record.id,
+      slot: 0,
+      totalPhotos: record.photos.length,
+      completedPhotos: 0,
+      downloaded: 0,
+      total: null,
+      percent: null,
+      status: 'starting',
+    })
     try {
-      const { paths, mode, poses } = await window.luna.downloadPhonePanoramaRecord(phoneEndpoint, record.id)
-      if (paths.length !== 19 && paths.length !== 22 && paths.length !== 24 && paths.length !== 32) throw new Error('拍摄记录不完整')
-      setLayoutId(mode === 'rings_788_plus_zenith' ? '24-rings' : String(paths.length) as LayoutId)
+      let localRecord: Awaited<ReturnType<typeof window.luna.loadLocalPanoramaRecord>>
+      if (alreadyDownloaded) {
+        try {
+          localRecord = await window.luna.loadLocalPanoramaRecord(record.id, record.photos.length)
+        } catch {
+          setLoadingMessage('本地照片不完整，正在重新下载')
+          setDownloadProgress({
+            recordId: record.id,
+            slot: 0,
+            totalPhotos: record.photos.length,
+            completedPhotos: 0,
+            downloaded: 0,
+            total: null,
+            percent: null,
+            status: 'starting',
+          })
+          localRecord = await window.luna.downloadPhonePanoramaRecord(phoneEndpoint, record.id)
+        }
+      } else {
+        localRecord = await window.luna.downloadPhonePanoramaRecord(phoneEndpoint, record.id)
+      }
+      const { paths, mode, poses } = localRecord
+      if (paths.length !== 19 && paths.length !== 22 && paths.length !== 24 && paths.length !== 25 && paths.length !== 27 && paths.length !== 32 && paths.length !== 35 && paths.length !== 36) throw new Error('拍摄记录不完整')
+      const [localStatus] = await window.luna.getPanoramaDownloadStatuses([
+        { recordId: record.id, photoCount: paths.length },
+      ])
+      if (localStatus) {
+        setPhoneRecords((records) => records.map((item) => item.id === record.id
+          ? { ...item, localDownloadState: localStatus.state, localDownloadedPhotos: localStatus.downloadedPhotos }
+          : item))
+        setSelectedPhoneRecord({
+          ...record,
+          localDownloadState: localStatus.state,
+          localDownloadedPhotos: localStatus.downloadedPhotos,
+        })
+      }
+      const modeLayout: Partial<Record<string, LayoutId>> = {
+        rings_788_plus_zenith: '24-rings',
+        rings_887_plus_zenith: '24-rings',
+        sphere_887_manual3_zenith_v2: '27-rings',
+        sphere_visual_8888_manual3_top_v1: '36-visual',
+        sphere_9x10x9_manual3_zenith_v1: '32-rings',
+        sphere_10x11x10_manual3_zenith_v1: '35-rings',
+      }
+      setLayoutId(modeLayout[mode ?? ''] ?? String(paths.length) as LayoutId)
       setRecordMode(mode)
       setRecordPoses(poses?.map((pose) => [pose.yaw, pose.pitch, pose.roll]) ?? null)
       setGridPaths(paths)
@@ -181,15 +246,46 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
       setResultThumbnail(null)
       setState('ready')
     } catch (cause) {
-      setState('error')
-      setError(cause instanceof Error ? cause.message : '下载拍摄记录失败')
+      const cancelled = cause instanceof Error && cause.message.includes('取消')
+      const failure = cause instanceof Error ? cause.message : '下载拍摄记录失败'
+      const [localStatus] = await window.luna.getPanoramaDownloadStatuses([
+        { recordId: record.id, photoCount: record.photos.length },
+      ]).catch((): PanoramaLocalDownloadStatus[] => [])
+      if (localStatus) {
+        setPhoneRecords((records) => records.map((item) => item.id === record.id
+          ? { ...item, localDownloadState: localStatus.state, localDownloadedPhotos: localStatus.downloadedPhotos }
+          : item))
+        setSelectedPhoneRecord({
+          ...record,
+          localDownloadState: localStatus.state,
+          localDownloadedPhotos: localStatus.downloadedPhotos,
+        })
+      }
+      setState(cancelled ? 'empty' : 'error')
+      setError(null)
+      setDownloadProgress((current) => {
+        if (current?.recordId !== record.id) return current
+        if (cancelled && current.status === 'cancelled') return current
+        return {
+          ...current,
+          status: cancelled ? 'cancelled' : 'failed',
+          error: cancelled ? undefined : failure.replace(/^第 \d+ 张下载失败：/, ''),
+        }
+      })
     }
   }, [phoneEndpoint])
 
+  const cancelPhoneRecordDownload = useCallback(async () => {
+    if (selectedPhoneRecord) await window.luna.cancelPanoramaDownload(selectedPhoneRecord.id)
+  }, [selectedPhoneRecord])
+
   const loadRecentCameraPhotos = useCallback(async () => {
     if (!isConnected || !settings || !supportedCamera) return
+    setLoadingMessage('正在读取相机照片')
     setState('loading')
     setError(null)
+    setDownloadProgress(null)
+    setSelectedPhoneRecord(null)
     setGridPaths([])
     setRecordMode(null)
     setRecordPoses(null)
@@ -241,8 +337,11 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
   }, [activeDevice?.defaultHost, activeDevice?.id, isConnected, photoCount, settings, showPhotoGrid, sourceMode, supportedCamera])
 
   const loadLocalPhotos = useCallback(async () => {
+    setLoadingMessage('正在读取本地照片')
     setState('loading')
     setError(null)
+    setDownloadProgress(null)
+    setSelectedPhoneRecord(null)
     setGridPaths([])
     setRecordMode(null)
     setRecordPoses(null)
@@ -265,18 +364,19 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
 
   const startStitching = useCallback(async () => {
     if (gridPaths.length !== photoCount) return
-    if (requiresPhoneRecord && !recordPoses) {
+    if (requiresPhoneRecord && !recordMode) {
       setError('该拍摄方案请通过手机拍摄记录导入')
       setState('error')
       return
     }
+    setStitchElapsedSeconds(0)
     setState('stitching')
     setError(null)
     try {
       const panorama = await window.luna.stitchPanorama({
         paths: gridPaths,
         poses: recordPoses ?? gridPaths.map((_, index) =>
-          poseForGridIndex(index, rows, columns, pitchTop, pitchStep, zenith),
+          poseForGridIndex(index, rows, columns, pitchTop, pitchStep, pitchBottom, zenith),
         ),
         rows,
         columns,
@@ -290,12 +390,13 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
       setResultThumbnail(await window.luna.resolveThumbnail(panorama.path, 'image'))
       setState('complete')
     } catch (cause) {
-      setState('error')
+      setState('ready')
       setError(cause instanceof Error && cause.message ? `合成失败：${cause.message}` : '合成失败，请检查照片后重试')
     }
-  }, [columns, gridPaths, photoCount, pitchStep, pitchTop, recordPoses, requiresPhoneRecord, rows, targetWidth, zenith])
+  }, [columns, gridPaths, photoCount, pitchBottom, pitchStep, pitchTop, recordMode, recordPoses, requiresPhoneRecord, rows, targetWidth, zenith])
 
   const recordRows = recordMode ? MODE_ROWS[recordMode] : undefined
+  const formattedStitchTime = `${Math.floor(stitchElapsedSeconds / 60)}:${String(stitchElapsedSeconds % 60).padStart(2, '0')}`
   const photoTile = (index: number) => (
     <div className="panorama-lab-photo" key={gridPaths[index]}>
       {thumbnails[index] && <img src={thumbnails[index]!} alt={`第 ${index + 1} 张`} />}
@@ -329,19 +430,32 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
               { value: '19', label: '19 张 · 三层 + 天顶' },
               { value: '22', label: '22 张 · 6 / 7 / 8 + 天顶' },
               { value: '24', label: '24 张 · 4 × 6' },
-              { value: '24-rings', label: '24 张 · 7 / 8 / 8 + 天顶' },
+              { value: '24-rings', label: '24 张 · 8 / 8 / 7 + 天顶' },
+              { value: '25', label: '25 张 · 补拍 3 张 + 7 列 + 天顶' },
+              { value: '27-rings', label: '27 张 · 手动 3 + 8 / 8 / 7 + 天顶' },
               { value: '32', label: '32 张 · 4 × 8' },
+              { value: '32-rings', label: '32 张 · 手动 3 + 9 / 10 / 9 + 天顶' },
+              { value: '35-rings', label: '35 张 · 手动 3 + 10 / 11 / 10 + 天顶' },
+              { value: '36-visual', label: '36 张 · 视觉控制 + 顶部' },
             ]}
           />
 
           <Button variant="secondary" icon={<RefreshCw size={15} />} disabled={busy} onClick={() => void loadPhoneRecords()}>
             读取手机拍摄记录
           </Button>
-          {phoneRecords.map((record) => (
-            <Button key={record.id} variant="secondary" disabled={busy} onClick={() => void loadPhoneRecord(record)}>
-              {new Date(record.started_at).toLocaleString()} · {record.mode && MODE_ROWS[record.mode] ? `${MODE_ROWS[record.mode].join('/')} · ` : ''}{record.photos.filter((photo) => photo.available).length}/{record.photos.length} 张
-            </Button>
-          ))}
+          <PanoramaPhoneRecordList
+            records={phoneRecords}
+            selectedRecordId={selectedPhoneRecord?.id ?? null}
+            disabled={busy}
+            onSelect={(record) => void loadPhoneRecord(record)}
+          />
+          {downloadProgress && (
+            <PanoramaDownloadProgressView
+              progress={downloadProgress}
+              onCancel={cancelPhoneRecordDownload}
+              onRetry={selectedPhoneRecord ? () => void loadPhoneRecord(selectedPhoneRecord) : undefined}
+            />
+          )}
 
           {requiresPhoneRecord ? (
             <p className="panorama-lab-path-note">该方案请从手机拍摄记录导入。</p>
@@ -401,17 +515,31 @@ export function PanoramaStitchingLabView({ active, onBack }: PanoramaStitchingLa
 
           {state === 'ready' && (
             <Button variant="primary" icon={<ScanLine size={15} />} onClick={() => void startStitching()}>
-              开始合成
+              {error ? '重试合成' : '开始合成'}
             </Button>
           )}
           {state === 'stitching' && (
-            <Button variant="primary" disabled icon={<LoaderCircle className="is-spinning" size={15} />}>
-              正在合成
-            </Button>
+            <>
+              <Button variant="primary" disabled icon={<LoaderCircle className="is-spinning" size={15} />}>
+                正在合成
+              </Button>
+              <div className="panorama-lab-stitch-progress" aria-live="polite">
+                <div className="panorama-lab-stitch-progress-heading">
+                  <span><LoaderCircle className="is-spinning" size={14} /> 合成中</span>
+                  <span><Clock3 size={14} /> {formattedStitchTime}</span>
+                </div>
+                <div className="panorama-lab-stitch-progress-track" role="progressbar" aria-label="全景合成进度">
+                  <span />
+                </div>
+              </div>
+            </>
           )}
           {state === 'complete' && result && (
             <div className="panorama-lab-result-actions">
               <span>{result.width.toLocaleString()} × {result.height.toLocaleString()}</span>
+              <Button variant="secondary" icon={<ScanLine size={15} />} onClick={() => void startStitching()}>
+                重新合成
+              </Button>
               <Button variant="secondary" icon={<FolderOpen size={15} />} onClick={() => void window.luna.revealFile(result.path)}>
                 显示文件
               </Button>

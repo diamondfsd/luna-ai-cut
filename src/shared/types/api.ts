@@ -78,6 +78,25 @@ export interface WorkspaceSegmentationProgress {
   percent: number | null
 }
 
+export interface PanoramaDownloadProgress {
+  recordId: string
+  slot: number
+  totalPhotos: number
+  completedPhotos: number
+  downloaded: number
+  total: number | null
+  percent: number | null
+  status: 'starting' | 'downloading' | 'photo-complete' | 'complete' | 'cancelled' | 'failed'
+  error?: string
+}
+
+export interface PanoramaLocalDownloadStatus {
+  recordId: string
+  totalPhotos: number
+  downloadedPhotos: number
+  state: 'downloaded' | 'partial' | 'not-downloaded'
+}
+
 export interface WorkspaceCompositionAnalysisRequest {
   requestId: string
   filePath: string
@@ -222,17 +241,25 @@ export interface LunaApi {
   requestVideoFrameRate(file: LunaFile, cachedPath?: string | null): Promise<number | null>
   detectILog(filePath: string): Promise<boolean>
   downloadFiles(files: LunaFile[], targetDir?: string): Promise<DownloadSummary>
-  choosePanoramaPhotos(photoCount: 19 | 22 | 24 | 32): Promise<Array<{ path: string; name: string; capturedAt: string | null }> | null>
+  choosePanoramaPhotos(photoCount: 19 | 22 | 24 | 25 | 27 | 32 | 35 | 36): Promise<Array<{ path: string; name: string; capturedAt: string | null }> | null>
   downloadPhonePanoramaRecord(endpoint: string, recordId: string): Promise<{
     paths: string[]
     mode: string | null
     poses: Array<{ slot: number; yaw: number; pitch: number; roll: number }> | null
   }>
+  loadLocalPanoramaRecord(recordId: string, photoCount: number): Promise<{
+    paths: string[]
+    mode: string | null
+    poses: Array<{ slot: number; yaw: number; pitch: number; roll: number }> | null
+  }>
+  getPanoramaDownloadStatuses(records: Array<{ recordId: string; photoCount: number }>): Promise<PanoramaLocalDownloadStatus[]>
+  cancelPanoramaDownload(recordId: string): Promise<void>
+  onPanoramaDownloadProgress(callback: (progress: PanoramaDownloadProgress) => void): () => void
   stitchPanorama(request: {
     paths: string[]
     poses: number[][]
     rows: 3 | 4
-    columns: 6 | 7 | 8
+    columns: 6 | 7 | 8 | 9
     targetWidth: 16000 | 24000 | 32000
   }): Promise<{ path: string; width: number; height: number } | null>
   cancelDownloads(): Promise<void>
