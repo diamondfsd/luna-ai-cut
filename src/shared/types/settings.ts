@@ -1,6 +1,22 @@
 import type { CustomWatermarkAsset, WatermarkPlacement, WatermarkPosition, WatermarkSettings } from './watermark'
 import type { CameraConnectionMode } from './cameraMediaSource'
 import type { MockServerConfig } from './mock'
+import type { VideoExportSettings } from './video'
+
+export interface NamedExportPreset {
+  id: string
+  name: string
+}
+
+export interface LocalMediaExportPreset extends NamedExportPreset {
+  exportConfig: VideoExportSettings
+  watermarkSettings: WatermarkSettings | null
+  appleLivePhoto: boolean
+}
+
+export interface WorkspaceExportPreset extends NamedExportPreset {
+  exportConfig: VideoExportSettings
+}
 
 export type WorkspacePreviewQuality = 'smooth' | 'balanced' | 'high' | 'original'
 export type CameraPreviewQuality = 'proxy' | 'original'
@@ -58,6 +74,10 @@ export interface AppSettings {
   defaultWatermarkPlacement?: WatermarkPlacement
   /** 批量导出最近一次有效的水印设置。 */
   recentWatermarkSettings?: WatermarkSettings
+  /** 本地媒体导出方案；包含视频选项与水印设置。 */
+  localMediaExportPresets?: LocalMediaExportPreset[]
+  /** 工作台导出方案；编辑效果仍随项目保存。 */
+  workspaceExportPresets?: WorkspaceExportPreset[]
   /** 用户已导入的自定义水印库，按最近导入顺序排列。 */
   customWatermarkAssets?: CustomWatermarkAsset[]
   /** 工作台最近一次导入本地文件时使用的目录 */

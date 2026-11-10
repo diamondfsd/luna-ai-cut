@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { usePreviewSourceResolver } from './usePreviewSourceResolver'
-import { AppleLivePhotoExportOption } from './AppleLivePhotoExportOption'
-import { buildExportLayers, exportBatchFiles, type BatchExportSource } from './previewStageExport'
-import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
+import { buildExportLayers } from './previewStageExport'
+import { exportBatchFiles, type BatchExportSource } from './localMediaExportQueue'
+import { type VideoExportSettings } from './ExportSettingsPanel'
+import { PreviewModalExportSidebar } from './PreviewModalExportSidebar'
 import { HtmlPreview } from './HtmlPreview'
 import { MediaInspector } from './MediaInspector'
 import { PreviewModalHeader, type PreviewQuality } from './PreviewModalHeader'
@@ -18,7 +19,7 @@ import { getIsLivePhoto } from '../shared/livePhoto'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS, lockDolbyVisionExportSettings } from '../shared/types'
 import type { DolbyVisionProbeResult, LunaFile, PreviewLayer, WatermarkSettings as WatermarkSettingsType } from '../shared/types'
 import { usesCustomWatermark } from '../shared/watermarkGeometry'
-import { Button, Dialog, IconButton, toast } from '../ui'
+import { Dialog, IconButton, toast } from '../ui'
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
 import type { DeviceDefinition } from '../shared/types/device'
 import { findDeviceRestoreLut } from '../workspace/lut/restoreLuts'
@@ -117,6 +118,7 @@ export function PreviewModal({
   const [batchEnqueuing, setBatchEnqueuing] = useState(false)
   const [exportAppleLivePhoto, setExportAppleLivePhoto] = useState(false)
   const [livePhotoCount, setLivePhotoCount] = useState(0)
+  const [livePhotoFlags, setLivePhotoFlags] = useState<Record<string, boolean>>({})
   const [exportConfig, setExportConfig] = useState<VideoExportSettings>(() => ({
     ...DEFAULT_VIDEO_EXPORT_SETTINGS,
     autoRestoreILog: false,
@@ -304,14 +306,19 @@ export function PreviewModal({
   useEffect(() => {
     if (previewOnly || !window.navigator.platform.includes('Mac')) {
       setLivePhotoCount(0)
+      setLivePhotoFlags({})
       setExportAppleLivePhoto(false)
       return
     }
 
     let cancelled = false
+    setLivePhotoCount(0)
+    setLivePhotoFlags({})
+    setExportAppleLivePhoto(false)
     void Promise.all(exportList.map((path) => getIsLivePhoto(path))).then((results) => {
       if (cancelled) return
       const count = results.filter(Boolean).length
+      setLivePhotoFlags(Object.fromEntries(exportList.map((path, index) => [path, results[index]])))
       setLivePhotoCount(count)
       if (count === 0) setExportAppleLivePhoto(false)
     })
@@ -419,6 +426,7 @@ export function PreviewModal({
           sourcePath,
           layers,
           passthrough: layers.length === 1 && !restoreILog,
+          isLivePhoto: livePhotoFlags[sourcePath],
         }
       }))
 
@@ -439,7 +447,7 @@ export function PreviewModal({
     } finally {
       setBatchEnqueuing(false)
     }
-  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, mediaFileForPath, watermarkSettings])
+  }, [batchEnqueuing, exportAppleLivePhoto, exportConfig, exportList, hasVideoInBatch, livePhotoFlags, mediaFileForPath, watermarkSettings])
 
   // Escape 关闭
   useEffect(() => {
@@ -559,32 +567,25 @@ export function PreviewModal({
               />}
               {!previewOnly && (
                 <>
-                  {hasVideoInBatch && (
-                    <ExportSettingsPanel
-                      value={exportConfig}
-                      onChange={setExportConfig}
-                      dolbyVisionAvailable={dolbyVisionProbe?.eligible}
-                      dolbyVisionChecking={dolbyVisionChecking}
-                      showILogRestore={hasILogInExport}
-                    />
-                  )}
-                  <div className="batch-export-actions">
-                    <AppleLivePhotoExportOption
-                      checked={exportAppleLivePhoto}
-                      livePhotoCount={livePhotoCount}
-                      batch={Boolean(batchExportMode)}
-                      onCheckedChange={setExportAppleLivePhoto}
-                    />
-                    <Button
-                      variant="primary"
-                      disabled={batchEnqueuing}
-                      onClick={handleExport}
-                      type="button"
-                      style={{ width: '100%' }}
-                    >
-                      {batchEnqueuing ? '任务创建中...' : batchExportMode ? `确认导出 (${filePathList?.length ?? 0} 个文件)` : '导出'}
-                    </Button>
-                  </div>
+                  <PreviewModalExportSidebar
+                    hasVideoInBatch={hasVideoInBatch}
+                    exportConfig={exportConfig}
+                    onExportConfigChange={setExportConfig}
+                    onWatermarkSettingsChange={setWatermarkSettings}
+                    sourcePath={stageSource}
+                    onWatermarkLayersChange={setWatermarkLayers}
+                    dolbyVisionAvailable={dolbyVisionProbe?.eligible}
+                    dolbyVisionChecking={dolbyVisionChecking}
+                    showILogRestore={hasILogInExport}
+                    watermarkSettings={watermarkSettings}
+                    appleLivePhoto={exportAppleLivePhoto}
+                    livePhotoCount={livePhotoCount}
+                    batch={Boolean(batchExportMode)}
+                    onAppleLivePhotoChange={setExportAppleLivePhoto}
+                    batchEnqueuing={batchEnqueuing}
+                    fileCount={filePathList?.length ?? 0}
+                    onExport={handleExport}
+                  />
                 </>
               )}
             </div>

@@ -8,6 +8,7 @@ import {
   type WorkspaceProject,
 } from '../shared/types'
 import type { WorkspacePreviewQuality } from '../shared/types/settings'
+import { useWorkspaceExportPresets } from '../hooks/useWorkspaceExportPresets'
 import { useApp } from '../context/AppContext'
 import { useDeviceConnection } from '../context/DeviceConnectionContext'
 import { ErrorBoundary, toast } from '../ui'
@@ -148,6 +149,7 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
   const canvas = useWorkspaceCanvas()
   const mask = useWorkspaceMask()
   const { settings, setSettings } = useApp()
+  const workspaceExportPresets = useWorkspaceExportPresets()
   const { activeDevice, devices, isConnected } = useDeviceConnection()
   const mediaDevice = media.activeMedia?.sourceDeviceId
     ? devices.find((device) => device.id === media.activeMedia?.sourceDeviceId)
@@ -1415,6 +1417,9 @@ function WorkspacePageInner({ creativeModeId, onCreativeModeChange, pageActive }
         description={exportDialogSummary.text ? `本次包含${exportDialogSummary.text}。` : undefined}
         onOpenChange={setExportDialogOpen}
         initialConfig={exportDialogInitialConfig}
+        exportPresets={workspaceExportPresets.presets}
+        onSaveExportPreset={workspaceExportPresets.save}
+        onDeleteExportPreset={workspaceExportPresets.remove}
         previewSource={exportDialogPreviewSource}
         outputAvailability={{
           video: exportDialogSummary.video > 0,

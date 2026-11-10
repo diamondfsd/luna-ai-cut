@@ -34,6 +34,7 @@ import type {
   WifiHttpRequestOptions,
   WifiPortCheckOptions,
   ExportTaskRecord,
+  ExportTaskPayload,
   OriginalFileExportRequest,
   NasSyncEnqueueResult,
   NasRemoteFile,
@@ -50,9 +51,10 @@ interface ExportItemInput {
 
 interface ExportItemUpdate {
   progress?: number
-  status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  status?: 'queued' | 'exporting' | 'interrupted' | 'done' | 'failed' | 'canceled'
   error?: string
   destinationPath?: string
+  label?: string
 }
 
 interface WebGpuVideoProbeResult {
@@ -63,10 +65,11 @@ interface WebGpuVideoProbeResult {
 }
 
 interface LunaExportTaskApi {
-  create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
+  create(name: string, items?: ExportItemInput[], taskId?: string, payload?: ExportTaskPayload): Promise<ExportTaskRecord>
   addItems(taskId: string, items: ExportItemInput[]): Promise<void>
   updateItem(taskId: string, itemId: string, data: ExportItemUpdate): Promise<void>
   cancel(taskId: string): Promise<void>
+  beginResume(taskId: string): Promise<{ task: ExportTaskRecord; payload: ExportTaskPayload } | undefined>
   get(taskId: string): Promise<ExportTaskRecord | undefined>
   list(): Promise<ExportTaskRecord[]>
   clear(): Promise<void>
@@ -404,10 +407,11 @@ const lunaApi: LunaApi & { exportTask: LunaExportTaskApi } = {
 
   // ── 导出任务记录（统一 API） ──
   exportTask: {
-    create: (name: string, items?: ExportItemInput[], taskId?: string) => ipcRenderer.invoke('export-task:create', name, items, taskId),
+    create: (name: string, items?: ExportItemInput[], taskId?: string, payload?: ExportTaskPayload) => ipcRenderer.invoke('export-task:create', name, items, taskId, payload),
     addItems: (taskId: string, items: ExportItemInput[]) => ipcRenderer.invoke('export-task:add-items', taskId, items),
     updateItem: (taskId: string, itemId: string, data: ExportItemUpdate) => ipcRenderer.invoke('export-task:update-item', taskId, itemId, data),
     cancel: (taskId: string) => ipcRenderer.invoke('export-task:cancel', taskId),
+    beginResume: (taskId: string) => ipcRenderer.invoke('export-task:begin-resume', taskId),
     get: (taskId: string) => ipcRenderer.invoke('export-task:get', taskId),
     list: () => ipcRenderer.invoke('export-task:list'),
     clear: () => ipcRenderer.invoke('export-task:clear'),

@@ -6,6 +6,7 @@ import type { CustomWatermarkAsset, WatermarkSettings } from './watermark'
 import type { DolbyVisionProbeResult, DolbyVisionWatermarkExportRequest, VideoExportSettings } from './video'
 import type { DownloadOrganizationResult, DownloadProgress, DownloadRecord, DownloadSummary } from './download'
 import type { ExportFileInput, ExportItemInput, ExportProgress, ExportSummary, ExportTaskRecord, OriginalFileExportRequest } from './export'
+import type { ExportTaskPayload } from './exportTaskPayload'
 import type { MockServerStatus } from './mock'
 import type {
   DeviceDebugTestResult,
@@ -274,10 +275,11 @@ export interface LunaApi {
   disconnectWifi: () => Promise<WifiDebugResult<WifiDebugStatus>>
   /** 导出任务记录服务 */
   exportTask: {
-    create(name: string, items?: ExportItemInput[], taskId?: string): Promise<ExportTaskRecord>
+    create(name: string, items?: ExportItemInput[], taskId?: string, payload?: ExportTaskPayload): Promise<ExportTaskRecord>
     addItems(taskId: string, items: ExportItemInput[]): Promise<void>
-    updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string; label?: string }): Promise<void>
+    updateItem(taskId: string, itemId: string, data: { progress?: number; status?: 'queued' | 'exporting' | 'interrupted' | 'done' | 'failed' | 'canceled'; error?: string; destinationPath?: string; label?: string }): Promise<void>
     cancel(taskId: string): Promise<void>
+    beginResume(taskId: string): Promise<{ task: ExportTaskRecord; payload: ExportTaskPayload } | undefined>
     get(taskId: string): Promise<ExportTaskRecord | undefined>
     list(): Promise<ExportTaskRecord[]>
     clear(): Promise<void>

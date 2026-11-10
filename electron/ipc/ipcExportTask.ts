@@ -8,6 +8,7 @@
 import { ipcMain } from 'electron'
 import * as exportTaskService from '../export/exportTaskService'
 import type { ExportItemInput, ExportItemUpdate } from '../../src/shared/types/export'
+import type { ExportTaskPayload } from '../../src/shared/types/exportTaskPayload'
 import type { IpcContext } from './context'
 
 export function register(ctx: IpcContext): void {
@@ -17,10 +18,14 @@ export function register(ctx: IpcContext): void {
   // ── 创建任务 ──
   ipcMain.handle(
     'export-task:create',
-    async (_event, name: string, items?: ExportItemInput[], taskId?: string) => {
-      return exportTaskService.createTask(name, items, taskId)
+    async (_event, name: string, items?: ExportItemInput[], taskId?: string, payload?: ExportTaskPayload) => {
+      return exportTaskService.createTask(name, items, taskId, payload)
     },
   )
+
+  ipcMain.handle('export-task:begin-resume', async (_event, taskId: string) => {
+    return exportTaskService.beginResumeTask(taskId)
+  })
 
   // ── 追加子任务 ──
   ipcMain.handle(

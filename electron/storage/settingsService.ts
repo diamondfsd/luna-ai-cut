@@ -5,7 +5,8 @@ import * as path from 'node:path'
 import { DEFAULT_DEVICE } from '../devices/definitions/deviceDefaults'
 import { migrateBaseDirectory } from './settingsMigration'
 import { legacySettingsPath, readStoredSettings, readStoredSettingsSync, stableSettingsPath } from './settingsStorage'
-import type { AppSettings, NasSyncSettings, WatermarkPlacement, WatermarkPosition } from '../../src/shared/types'
+import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../../src/shared/types/video'
+import type { AppSettings, LocalMediaExportPreset, NasSyncSettings, VideoExportSettings, WatermarkPlacement, WatermarkPosition, WatermarkSettings, WorkspaceExportPreset } from '../../src/shared/types'
 
 function settingsPath(): string {
   if (process.env.LUNA_E2E_USER_DATA_DIR) return legacySettingsPath(app.getPath('userData'))
@@ -89,6 +90,8 @@ function defaultSettings(): AppSettings {
     exportDirectories: [],
     localMediaShareDirectories: [],
     localMediaShareFiles: [],
+    localMediaExportPresets: [],
+    workspaceExportPresets: [],
     windowCloseBehavior: 'hide',
     nasSync: {
       enabled: false,
@@ -120,6 +123,80 @@ const WATERMARK_POSITIONS = new Set<WatermarkPosition>([
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+function normalizeExportConfig(value: unknown): VideoExportSettings | null {
+  if (!value || typeof value !== 'object') return null
+  const source = value as Partial<VideoExportSettings>
+  const resolutions = new Set(['original', '1080p', '2k', '4k'])
+  const frameRates = new Set(['original', '24', '25', '29.97', '30', '50', '60', '120'])
+  const qualities = new Set(['original', 'low', 'medium', 'high', 'custom'])
+  const formats = new Set(['video', 'google-live', 'apple-live'])
+  const exportFormats = Array.isArray(source.exportFormats)
+    ? source.exportFormats.filter((format): format is VideoExportSettings['exportFormats'][number] => formats.has(format))
+    : [...DEFAULT_VIDEO_EXPORT_SETTINGS.exportFormats]
+  return {
+    ...DEFAULT_VIDEO_EXPORT_SETTINGS,
+    resolution: resolutions.has(String(source.resolution)) ? source.resolution! : DEFAULT_VIDEO_EXPORT_SETTINGS.resolution,
+    frameRate: frameRates.has(String(source.frameRate)) ? source.frameRate! : DEFAULT_VIDEO_EXPORT_SETTINGS.frameRate,
+    quality: qualities.has(String(source.quality)) ? source.quality! : DEFAULT_VIDEO_EXPORT_SETTINGS.quality,
+    includeAudio: typeof source.includeAudio === 'boolean' ? source.includeAudio : DEFAULT_VIDEO_EXPORT_SETTINGS.includeAudio,
+    exportFormats: exportFormats.length > 0 ? exportFormats : [...DEFAULT_VIDEO_EXPORT_SETTINGS.exportFormats],
+    exportPhotos: typeof source.exportPhotos === 'boolean' ? source.exportPhotos : DEFAULT_VIDEO_EXPORT_SETTINGS.exportPhotos,
+    exportLiveVideo: typeof source.exportLiveVideo === 'boolean' ? source.exportLiveVideo : DEFAULT_VIDEO_EXPORT_SETTINGS.exportLiveVideo,
+    liveStartTime: finiteNumber(source.liveStartTime) ? Math.max(0, source.liveStartTime) : DEFAULT_VIDEO_EXPORT_SETTINGS.liveStartTime,
+    liveCoverTime: finiteNumber(source.liveCoverTime) ? Math.max(0, source.liveCoverTime) : DEFAULT_VIDEO_EXPORT_SETTINGS.liveCoverTime,
+    trimStartTime: finiteNumber(source.trimStartTime) ? Math.max(0, source.trimStartTime) : DEFAULT_VIDEO_EXPORT_SETTINGS.trimStartTime,
+    trimEndTime: finiteNumber(source.trimEndTime) ? Math.max(0, source.trimEndTime) : undefined,
+    customBitrate: finiteNumber(source.customBitrate) && source.customBitrate > 0 ? source.customBitrate : undefined,
+    dolbyVision: typeof source.dolbyVision === 'boolean' ? source.dolbyVision : undefined,
+    autoRestoreILog: typeof source.autoRestoreILog === 'boolean' ? source.autoRestoreILog : undefined,
+  }
+}
+
+function normalizeWatermarkSettings(value: unknown): WatermarkSettings | null | undefined {
+  if (value === null) return null
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Partial<WatermarkSettings>
+  if (typeof source.enabled !== 'boolean' || typeof source.style !== 'string' || !WATERMARK_POSITIONS.has(source.position as WatermarkPosition)) {
+    return undefined
+  }
+  return source as WatermarkSettings
+}
+
+function normalizePresetIdentity(value: unknown): { id: string; name: string } | null {
+  if (!value || typeof value !== 'object') return null
+  const source = value as { id?: unknown; name?: unknown }
+  if (typeof source.id !== 'string' || !source.id.trim() || typeof source.name !== 'string' || !source.name.trim()) return null
+  return { id: source.id.trim().slice(0, 100), name: source.name.trim().slice(0, 60) }
+}
+
+function normalizeLocalExportPresets(value: unknown): LocalMediaExportPreset[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.slice(0, 100).flatMap((item) => {
+    const identity = normalizePresetIdentity(item)
+    if (!identity || seen.has(identity.id) || !item || typeof item !== 'object') return []
+    const source = item as Partial<LocalMediaExportPreset>
+    const exportConfig = normalizeExportConfig(source.exportConfig)
+    const watermarkSettings = normalizeWatermarkSettings(source.watermarkSettings)
+    if (!exportConfig || watermarkSettings === undefined || typeof source.appleLivePhoto !== 'boolean') return []
+    seen.add(identity.id)
+    return [{ ...identity, exportConfig, watermarkSettings, appleLivePhoto: source.appleLivePhoto }]
+  })
+}
+
+function normalizeWorkspaceExportPresets(value: unknown): WorkspaceExportPreset[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.slice(0, 100).flatMap((item) => {
+    const identity = normalizePresetIdentity(item)
+    if (!identity || seen.has(identity.id) || !item || typeof item !== 'object') return []
+    const exportConfig = normalizeExportConfig((item as Partial<WorkspaceExportPreset>).exportConfig)
+    if (!exportConfig) return []
+    seen.add(identity.id)
+    return [{ ...identity, exportConfig }]
+  })
 }
 
 function validNasPort(value: unknown): value is number {
@@ -212,6 +289,8 @@ function mergeSettings(saved: StoredSettings | null): AppSettings {
   }
   merged.downloadDirectories = normalizeDirectoryList(saved?.downloadDirectories, defaults.downloadDirectories ?? [])
   merged.exportDirectories = normalizeDirectoryList(saved?.exportDirectories, defaults.exportDirectories ?? [])
+  merged.localMediaExportPresets = normalizeLocalExportPresets(saved?.localMediaExportPresets)
+  merged.workspaceExportPresets = normalizeWorkspaceExportPresets(saved?.workspaceExportPresets)
   const savedShareDirectories = saved?.localMediaShareDirectories
   merged.localMediaShareDirectories = Array.isArray(savedShareDirectories)
     ? savedShareDirectories.filter((directory): directory is string => typeof directory === 'string' && directory.trim().length > 0)

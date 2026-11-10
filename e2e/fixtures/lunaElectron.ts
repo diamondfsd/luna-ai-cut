@@ -13,6 +13,7 @@ export interface LunaElectronApp {
   page: Page
   runtimeErrors: string[]
   temporaryRoot: string
+  restart(launchEnv?: Record<string, string>): Promise<void>
 }
 
 export interface LunaElectronOptions {
@@ -52,39 +53,62 @@ export const test = base.extend<{ lunaApp: LunaElectronApp; lunaElectronOptions:
     }, null, 2)}\n`, 'utf8')
 
     let app: ElectronApplication | undefined
-    try {
+    let page: Page | undefined
+    const runtimeErrors: string[] = []
+    const log = createWriteStream(path.join(artifactDir, 'app.log'), { flags: 'a' })
+
+    const launchApp = async (restartEnv: Record<string, string> = {}): Promise<void> => {
       app = await electron.launch({
         args: ['.'],
         cwd: projectRoot,
         env: {
           ...process.env,
           ...lunaElectronOptions.launchEnv,
+          ...restartEnv,
           LUNA_E2E_USER_DATA_DIR: userDataDir,
         },
       })
-      const log = createWriteStream(path.join(artifactDir, 'app.log'), { flags: 'a' })
       app.process().stdout?.pipe(log, { end: false })
       app.process().stderr?.pipe(log, { end: false })
-      app.process().once('exit', () => log.end())
-
-      const page = await waitForMainWindow(app)
-      const runtimeErrors: string[] = []
+      page = await waitForMainWindow(app)
       page.on('pageerror', (error) => runtimeErrors.push(error.message))
       page.on('console', (message) => {
         if (message.type() === 'error') runtimeErrors.push(message.text())
       })
       await page.waitForLoadState('domcontentloaded')
-      await use({ app, page, runtimeErrors, temporaryRoot })
+    }
+
+    try {
+      await launchApp()
+      await use({
+        get app() {
+          if (!app) throw new Error('Electron app is not running')
+          return app
+        },
+        get page() {
+          if (!page) throw new Error('Electron page is not available')
+          return page
+        },
+        runtimeErrors,
+        temporaryRoot,
+        restart: async (restartEnv) => {
+          await app?.close()
+          app = undefined
+          page = undefined
+          await launchApp(restartEnv)
+        },
+      })
     } finally {
       const failed = testInfo.status !== testInfo.expectedStatus
-      const page = app?.windows().find((candidate) => !candidate.isClosed())
-      if (failed && page) {
-        const screenshot = await page.screenshot().catch(() => null)
+      const activePage = app?.windows().find((candidate) => !candidate.isClosed())
+      if (failed && activePage) {
+        const screenshot = await activePage.screenshot().catch(() => null)
         if (screenshot) {
           await testInfo.attach('electron-failure.png', { body: screenshot, contentType: 'image/png' })
         }
       }
       await app?.close().catch(() => undefined)
+      log.end()
       if (!failed && !keepArtifacts) {
         await rm(temporaryRoot, { recursive: true, force: true })
       } else {

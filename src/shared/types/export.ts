@@ -20,12 +20,13 @@ export interface ExportTaskItem {
   openTarget?: 'file' | 'photos'
   previewable?: boolean
   kind: 'image' | 'video' | 'lrv'
-  status: 'queued' | 'exporting' | 'done' | 'failed' | 'canceled'
+  status: 'queued' | 'exporting' | 'interrupted' | 'done' | 'failed' | 'canceled'
   progress: number
   startTime: number
   endTime: number | null
   duration: number | null
   destinationPath?: string
+  sourcePath?: string
   error?: string
 }
 
@@ -34,12 +35,14 @@ export interface ExportTaskRecord {
   id: string
   name: string
   totalCount: number
-  status: 'pending' | 'exporting' | 'completed' | 'failed' | 'canceled'
+  status: 'pending' | 'exporting' | 'interrupted' | 'completed' | 'failed' | 'canceled'
   progress: number
   startTime: number
   endTime: number | null
   duration: number | null
   items: ExportTaskItem[]
+  /** 有冻结的执行快照，才支持继续导出。 */
+  resumable?: boolean
 }
 
 /** 子项更新参数 */
@@ -48,6 +51,7 @@ export interface ExportItemUpdate {
   status?: ExportTaskItem['status']
   error?: string
   destinationPath?: string
+  label?: string
 }
 
 export interface OriginalFileExportRequest {

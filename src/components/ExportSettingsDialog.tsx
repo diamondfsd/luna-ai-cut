@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ExportSettingsPanel, type VideoExportSettings } from './ExportSettingsPanel'
 import { DEFAULT_VIDEO_EXPORT_SETTINGS } from '../shared/types'
 import type { PreviewLayer, VideoExportFormat } from '../shared/types'
+import type { WorkspaceExportPreset } from '../shared/types/settings'
 import { Button, Dialog } from '../ui'
+import { ExportPresetControl } from './ExportPresetControl'
 import { ExportPreviewPane, type ExportPreviewSource } from './ExportPreviewPane'
 import './ExportSettingsDialog.css'
 
@@ -25,6 +27,9 @@ interface ExportSettingsDialogProps {
     outputSize: { width: number; height: number }
   }
   initialConfig?: VideoExportSettings
+  exportPresets?: WorkspaceExportPreset[]
+  onSaveExportPreset?: (name: string, config: VideoExportSettings) => Promise<WorkspaceExportPreset>
+  onDeleteExportPreset?: (presetId: string) => Promise<void>
   allowedFormats?: VideoExportFormat[]
   outputAvailability?: { video: boolean; photo: boolean; live: boolean; livePhotoVideo?: boolean }
   onConfirm: (config: VideoExportSettings) => void | boolean | Promise<void | boolean>
@@ -57,6 +62,9 @@ export function ExportSettingsDialog({
   previewSource,
   livePhotoSource,
   initialConfig,
+  exportPresets,
+  onSaveExportPreset,
+  onDeleteExportPreset,
   allowedFormats,
   outputAvailability,
   onConfirm,
@@ -146,6 +154,15 @@ export function ExportSettingsDialog({
         />
       ) : null}
       <div className="workspace-export-settings-column">
+        {exportPresets && onSaveExportPreset && onDeleteExportPreset && (
+          <ExportPresetControl
+            key={open ? 'open' : 'closed'}
+            presets={exportPresets}
+            onApply={(preset) => setExportConfig(structuredClone(preset.exportConfig))}
+            onSave={(name) => onSaveExportPreset(name, exportConfig)}
+            onDelete={onDeleteExportPreset}
+          />
+        )}
         <ExportSettingsPanel
           value={exportConfig}
           onChange={handleConfigChange}

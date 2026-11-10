@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Eye, FileDown, Film, ImageIcon, Loader2, Trash2, X, XCircle } from 'lucide-react'
+import { AlertCircle, Ban, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Eye, FileDown, Film, ImageIcon, Loader2, RotateCcw, Trash2, X, XCircle } from 'lucide-react'
 
 import type { ExportTaskItemRecord, ExportTaskRecord } from '../shared/types'
 import { showPreviewModal } from './previewModalService'
 import { useExportProgress } from '../context/ExportProgressContext'
+import { resumeExportTask } from '../lib/exportTaskRecovery'
 import { Button, Dialog, IconButton, toast } from '../ui'
 import { Table, type Column } from '../ui/Table'
 import '../styles/export-tasks.css'
@@ -63,6 +64,7 @@ function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
         {item.status === 'failed' && <XCircle size={12} style={{ color: '#ff3b30' }} />}
         {item.status === 'queued' && <Clock size={12} style={{ color: 'var(--muted)' }} />}
         {item.status === 'canceled' && <Ban size={12} style={{ color: 'var(--muted)' }} />}
+        {item.status === 'interrupted' && <AlertCircle size={12} style={{ color: 'var(--muted)' }} />}
       </span>
       <span className="et-ti-kind">{isVideo ? <Film size={12} /> : <ImageIcon size={12} />}{isAppleLive ? ' Live 图' : isVideo ? ' 视频' : ' 图片'}</span>
       {item.label && <span className="et-ti-label">{item.label}</span>}
@@ -81,6 +83,7 @@ function TaskItemRow({ item, onPreview, onRevealFile, isAppleLive }: {
             失败
           </button>
         )}
+        {item.status === 'interrupted' && <span className="et-badge et-badge-interrupted">已中断</span>}
         {item.status === 'done' && item.destinationPath && (
           <>
             <IconButton
@@ -139,6 +142,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
   const [taskErrorDialog, setTaskErrorDialog] = useState<{ task: ExportTaskRecord; errorText: string } | null>(null)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [clearing, setClearing] = useState(false)
+  const [resumingTaskId, setResumingTaskId] = useState<string | null>(null)
 
   const loadTasks = async () => {
     setLoading(true)
@@ -151,6 +155,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
       setLoading(false)
     }
   }
+  const hasActiveTasks = tasks.some((task) => task.status === 'exporting')
 
   useEffect(() => { void loadTasks() }, [])
   useEffect(() => {
@@ -171,13 +176,19 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     }
     prevExportingRef.current = exporting
   }, [exporting])
+  useEffect(() => {
+    if (!hasActiveTasks) return
+    const interval = setInterval(() => { void loadTasks() }, 1500)
+    return () => clearInterval(interval)
+  }, [hasActiveTasks])
 
   // 默认展开最近的一个导出任务
+  const firstTaskId = tasks[0]?.id
   useEffect(() => {
-    if (tasks.length > 0 && expandedTasks.size === 0) {
-      setExpandedTasks(new Set([tasks[0].id]))
+    if (firstTaskId && expandedTasks.size === 0) {
+      setExpandedTasks(new Set([firstTaskId]))
     }
-  }, [tasks.length])
+  }, [expandedTasks.size, firstTaskId])
 
   const totalPages = Math.max(1, Math.ceil(tasks.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -242,6 +253,7 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
     if (task.status === 'completed') return <CheckCircle2 size={14} style={{ flexShrink: 0, color: '#34c759' }} />
     if (task.status === 'failed') return <XCircle size={14} style={{ flexShrink: 0, color: '#ff3b30' }} />
     if (task.status === 'canceled') return <Ban size={14} style={{ flexShrink: 0, color: 'var(--muted)' }} />
+    if (task.status === 'interrupted') return <AlertCircle size={14} style={{ flexShrink: 0, color: 'var(--muted)' }} />
     return <Clock size={14} style={{ flexShrink: 0, color: 'var(--blue)' }} />
   }
 
@@ -264,8 +276,9 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
       render: (task) => {
         const done = task.items.filter((i) => i.status === 'done').length
         const failed = task.items.filter((i) => i.status === 'failed').length
+        const interrupted = task.items.filter((i) => i.status === 'interrupted').length
         return (
-          <>{done}/{task.totalCount}{failed > 0 && <span style={{ color: '#ff3b30', marginLeft: 4, fontSize: 12 }}>({failed})</span>}</>
+          <>{done}/{task.totalCount}{failed > 0 && <span style={{ color: '#ff3b30', marginLeft: 4, fontSize: 12 }}>({failed})</span>}{interrupted > 0 && <span style={{ color: 'var(--muted)', marginLeft: 4, fontSize: 12 }}>({interrupted})</span>}</>
         )
       },
     },
@@ -307,8 +320,29 @@ export function ExportTaskTable({ onRevealFile }: ExportTaskTableProps) {
       label: '操作',
       render: (task) => {
         const failedItems = task.items.filter((i) => i.status === 'failed')
+        const canResume = task.resumable && ['interrupted', 'failed', 'pending'].includes(task.status)
         return (
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            {canResume && (
+              <Button
+                variant="secondary"
+                size="mini"
+                icon={<RotateCcw size={12} />}
+                disabled={resumingTaskId !== null}
+                onClick={() => {
+                  setResumingTaskId(task.id)
+                  void resumeExportTask(task.id)
+                    .then((started) => {
+                      if (!started) toast.error('任务暂时无法继续')
+                      return loadTasks()
+                    })
+                    .catch((error) => toast.error(error instanceof Error ? error.message : String(error)))
+                    .finally(() => setResumingTaskId(null))
+                }}
+              >
+                {task.status === 'failed' ? '重试' : task.status === 'pending' ? '开始' : '继续'}
+              </Button>
+            )}
             {(task.status === 'exporting' || task.status === 'pending') && (
               <IconButton variant="ghost" icon={<X size={12} />} onClick={() => void handleCancelTask(task.id)} title="取消导出" />
             )}

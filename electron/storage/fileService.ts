@@ -1,6 +1,5 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
-import { createHash } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { localThumbnailUrl, safeName } from '../media/filePathUtils'
@@ -38,32 +37,9 @@ export {
 // watermark 处理已迁移至 Rust compositor
 export { getDownloadedRecords, listDownloadedFiles } from '../media/downloadedLibraryService'
 export { getMediaMetadata, getVideoFrameRate } from '../media/mediaMetadataService'
+export { listExportFiles } from './exportFileListingService'
 export { clearCache, deleteLocalFiles, getCacheStats, openPath, openPhotosApp, revealFile } from './systemFileService'
-
-// listExportFiles — moved from deleted exportService.ts
-export async function listExportFiles(exportDirs: string | string[]): Promise<import('../../src/shared/types').LunaFile[]> {
-  const { readdir, stat } = await import('node:fs/promises')
-  const { join } = await import('node:path')
-  const files: import('../../src/shared/types').LunaFile[] = []
-  for (const exportDir of [...new Set((Array.isArray(exportDirs) ? exportDirs : [exportDirs]).filter(Boolean))]) {
-    try {
-      const entries = await readdir(exportDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.name.startsWith('.') || !entry.isFile()) continue
-        const fullPath = join(exportDir, entry.name)
-        const s = await stat(fullPath)
-        files.push({
-          id: fullPath, name: entry.name, downloadName: entry.name,
-          url: '', sourceUrl: '', kind: 'image',
-          extension: entry.name.split('.').pop() || '',
-          bytes: s.size, width: 0, height: 0,
-          downloadFilePath: fullPath, localPath: fullPath,
-        } as unknown as import('../../src/shared/types').LunaFile)
-      }
-    } catch { /* ignore */ }
-  }
-  return files
-}
+export { extractLivePhotoImage, previewLivePhoto } from './livePhotoPreviewService'
 
 function partialPathFor(destination: string): string {
   return `${destination}.tmp`
@@ -153,62 +129,6 @@ function sourceUrlFor(file: LunaFile): string {
 
 function localPathForPreview(file: LunaFile): string | null {
   return file.downloadFilePath ?? file.localPath ?? file.cacheFilePath ?? null
-}
-
-async function extractEmbeddedLivePhotoVideo(livPath: string, destination: string): Promise<string | null> {
-  const data = await fs.readFile(livPath)
-  const marker = Buffer.from('ftyp', 'ascii')
-  const ftypOffset = data.indexOf(marker)
-  const mp4Offset = ftypOffset - 4
-  if (ftypOffset < 4 || mp4Offset <= 0) return null
-
-  const boxSize = data.readUInt32BE(mp4Offset)
-  if (boxSize < 8 || boxSize > data.length - mp4Offset) return null
-
-  await fs.mkdir(path.dirname(destination), { recursive: true })
-  const partialPath = partialPathFor(destination)
-  await fs.rm(partialPath, { force: true })
-  await fs.writeFile(partialPath, data.subarray(mp4Offset))
-  await fs.rename(partialPath, destination)
-  return destination
-}
-
-async function extractEmbeddedLivePhotoImage(livPath: string, destination: string): Promise<string | null> {
-  const data = await fs.readFile(livPath)
-  const ftypOffset = data.indexOf(Buffer.from('ftyp', 'ascii'))
-  const mp4Offset = ftypOffset - 4
-  if (ftypOffset < 4 || mp4Offset <= 2) return null
-  if (data[mp4Offset - 2] !== 0xFF || data[mp4Offset - 1] !== 0xD9) return null
-
-  const partialPath = partialPathFor(destination)
-  await fs.mkdir(path.dirname(destination), { recursive: true })
-  await fs.rm(partialPath, { force: true })
-  await fs.writeFile(partialPath, data.subarray(0, mp4Offset))
-  try {
-    await fs.rename(partialPath, destination)
-  } catch (error) {
-    if (!(await fileExists(destination))) throw error
-    await fs.rm(partialPath, { force: true })
-  }
-  return destination
-}
-
-export async function extractLivePhotoImage(source: string): Promise<string> {
-  const livePhotoPath = source.startsWith('file:') ? fileURLToPath(source) : source
-  if (!(await fileExists(livePhotoPath))) throw new Error('Live 图文件不存在')
-
-  const stats = await fs.stat(livePhotoPath)
-  const sourceKey = createHash('sha256')
-    .update(`${path.resolve(livePhotoPath)}\0${stats.size}\0${stats.mtimeMs}`)
-    .digest('hex')
-    .slice(0, 16)
-  const cacheDir = await previewCacheDir()
-  const imagePath = path.join(cacheDir, `${safeName(path.basename(livePhotoPath))}.${sourceKey}.live.jpg`)
-  if (await fileExists(imagePath)) return imagePath
-
-  const extractedPath = await extractEmbeddedLivePhotoImage(livePhotoPath, imagePath)
-  if (!extractedPath) throw new Error('无法从 Live 图中提取静态照片')
-  return extractedPath
 }
 
 function logFinalDownloadSuccess(
@@ -474,35 +394,6 @@ export async function cacheFile(file: LunaFile): Promise<string | null> {
     })
   }
   return null
-}
-
-export async function previewLivePhoto(source: string): Promise<PreviewResult> {
-  const livPath = source.startsWith('file:') ? fileURLToPath(source) : source
-  const fileName = path.basename(livPath)
-  const videoName = `${fileName}.live.mp4`
-  const cacheDir = await previewCacheDir()
-  await fs.mkdir(cacheDir, { recursive: true })
-  if (!(await fileExists(livPath))) {
-    return { fileName, kind: 'image', source: null, cachedPath: null, message: 'Live 图文件不存在' }
-  }
-
-  const sourceStats = await fs.stat(livPath)
-  const sourceKey = createHash('sha256')
-    .update(`${path.resolve(livPath)}\0${sourceStats.size}\0${sourceStats.mtimeMs}`)
-    .digest('hex')
-    .slice(0, 16)
-  const embeddedLivePath = path.join(cacheDir, `${safeName(fileName)}.${sourceKey}.live.mp4`)
-
-  if (await fileExists(embeddedLivePath)) {
-    return { fileName: videoName, kind: 'video', source: localThumbnailUrl(embeddedLivePath), cachedPath: embeddedLivePath }
-  }
-
-  const extractedPath = await extractEmbeddedLivePhotoVideo(livPath, embeddedLivePath)
-  if (!extractedPath) {
-    return { fileName, kind: 'image', source: null, cachedPath: null, message: '没有在 Live 图中找到视频片段' }
-  }
-
-  return { fileName: videoName, kind: 'video', source: localThumbnailUrl(extractedPath), cachedPath: extractedPath }
 }
 
 export async function downloadFiles(

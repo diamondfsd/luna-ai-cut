@@ -5,35 +5,17 @@ import {
   resolveExportConfig,
 } from '../../components/previewStageExport'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
+import type { ExportTaskPayload, WorkspaceExportTaskPayload } from '../../shared/types'
 import { logExport } from '../../lib/rendererLogger'
 import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 import { resolveWorkspaceVideoExportRange } from './workspaceExportRange'
 import { resolveLivePhotoCoverTime } from './livePhotoFrameTime'
 import { exportWorkspaceLivePhotoSource, replaceLivePhotoSourceWithVideo } from './workspaceSourceLivePhotoExport'
+import { failUnfinishedExportItems } from '../../lib/exportTaskRecovery'
 
-export interface WorkspaceMixedExportPlanItem {
-  id: string
-  kind: 'video' | 'photo' | 'live'
-  sourcePath: string
-  outputBaseName: string
-  layers: PreviewLayer[]
-  outputSize: { width: number; height: number }
-  sourceDuration?: number
-  startTime?: number
-  endTime?: number
-  time?: number
-  coverTime?: number
-  isLivePhoto?: boolean
-  livePhotoSourcePath?: string
-}
+export type WorkspaceMixedExportPlanItem = WorkspaceExportTaskPayload['entries'][number]['plan']
 
-interface QueueEntry {
-  id: string
-  plan: WorkspaceMixedExportPlanItem
-  format: 'video' | 'photo' | 'live-video' | Exclude<VideoExportFormat, 'video'>
-  outputPath: string
-  label: string
-}
+type QueueEntry = WorkspaceExportTaskPayload['entries'][number]
 
 function joinPath(directory: string, fileName: string): string {
   return `${directory.replace(/[\\/]$/, '')}/${fileName}`
@@ -142,6 +124,16 @@ export async function queueWorkspaceMixedExport(
   }
 
   const taskName = '工作台混合导出'
+  const payload: WorkspaceExportTaskPayload = {
+    version: 1,
+    kind: 'workspace',
+    exportDir,
+    taskName,
+    stamp,
+    entries,
+    config: { ...config, exportFormats: [...config.exportFormats] },
+    adjustableVideoId,
+  }
   const task = await window.luna.exportTask.create(taskName, entries.map((entry) => ({
     id: entry.id,
     sourcePath: entry.format === 'live-video'
@@ -150,7 +142,20 @@ export async function queueWorkspaceMixedExport(
     outputPath: entry.outputPath,
     label: entry.label,
     ...(entry.format === 'apple-live' ? { openTarget: 'photos' as const, previewable: false } : {}),
-  })))
+  })), undefined, payload)
+
+  void runWorkspaceMixedExportTask(task.id, payload).catch((error) => failUnfinishedExportItems(task.id, error))
+  return { taskId: task.id, itemCount: entries.length }
+}
+
+export async function resumeWorkspaceMixedExportTask(taskId: string, payload: ExportTaskPayload): Promise<void> {
+  if (payload.kind !== 'workspace') throw new Error('导出任务类型不匹配')
+  await runWorkspaceMixedExportTask(taskId, payload)
+}
+
+async function runWorkspaceMixedExportTask(taskId: string, payload: WorkspaceExportTaskPayload): Promise<void> {
+  const task = { id: taskId }
+  const { taskName, exportDir, entries, config, stamp, adjustableVideoId } = payload
 
   const report = async (
     entry: QueueEntry,
@@ -180,7 +185,12 @@ export async function queueWorkspaceMixedExport(
     })
   }
 
-  await Promise.all(entries.map((entry, index) => report(entry, index, 0, 'queued')))
+  const queuedItems = await Promise.all(entries.map(async (entry, index) => {
+    const taskRecord = await window.luna.exportTask.get(task.id)
+    const status = taskRecord?.items.find((item) => item.id === entry.id)?.status
+    return status === 'queued' ? report(entry, index, 0, 'queued') : Promise.resolve()
+  }))
+  await Promise.all(queuedItems)
 
   window.setTimeout(() => {
     void (async () => {
@@ -192,6 +202,7 @@ export async function queueWorkspaceMixedExport(
           await report(entry, index, 0, 'canceled')
           continue
         }
+        if (currentStatus === 'done') continue
 
         if (entry.format === 'live-video') {
           try {
@@ -259,7 +270,7 @@ export async function queueWorkspaceMixedExport(
           const liveCandidates = entries.filter((candidate) => candidate.plan.id === entry.plan.id && candidate.plan.kind === 'live')
           const liveTask = await window.luna.exportTask.get(task.id)
           const liveEntries = liveCandidates.filter((candidate) => (
-            liveTask?.items.find((item) => item.id === candidate.id)?.status !== 'canceled'
+            !['canceled', 'done'].includes(liveTask?.items.find((item) => item.id === candidate.id)?.status ?? '')
           ))
           if (liveEntries.length === 0) continue
           const startTime = entry.plan.startTime
@@ -316,7 +327,7 @@ export async function queueWorkspaceMixedExport(
               try {
                 await report(liveEntry, entries.indexOf(liveEntry), 92, 'exporting')
                 const result = await window.luna.workspace.exportRenderedLivePhoto(
-                  `${liveEntry.plan.outputBaseName}_${liveEntry.format === 'apple-live' ? 'apple_live' : 'google_live'}`,
+                  fileName(liveEntry.outputPath).replace(/\.[^.]+$/, ''),
                   tempImagePath,
                   tempVideoPath,
                   liveEntry.format === 'apple-live',
@@ -427,8 +438,10 @@ export async function queueWorkspaceMixedExport(
           await report(entry, index, 100, canceled ? 'canceled' : 'failed', entry.outputPath, canceled ? undefined : message)
         }
       }
-    })().catch((error) => console.error('[WorkspaceMixedExport] queue failed', error))
+    })().catch(async (error) => {
+      console.error('[WorkspaceMixedExport] queue failed', error)
+      await failUnfinishedExportItems(task.id, error)
+    })
   }, 0)
 
-  return { taskId: task.id, itemCount: entries.length }
 }

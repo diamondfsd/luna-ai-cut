@@ -3,8 +3,8 @@ import {
   exportPreviewImage,
   exportPreviewVideo,
   resolveExportConfig,
-  type BatchExportSource,
 } from '../../components/previewStageExport'
+import type { BatchExportSource } from '../../components/localMediaExportQueue'
 import type { PreviewLayer, VideoExportFormat, VideoExportSettings } from '../../shared/types'
 import { createDirectoryExportNameAllocator } from '../../lib/exportNameAllocator'
 import { resolveLivePhotoCoverTime } from './livePhotoFrameTime'
