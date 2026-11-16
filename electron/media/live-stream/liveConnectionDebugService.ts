@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { randomUUID } from 'node:crypto'
 
@@ -11,6 +11,7 @@ import type {
 import { bundledAdbBinary, createAdbForward, createAdbRunner, parseAdbDevices, removeAdbForward } from './androidAdbClient.ts'
 import { bundledHdcBinary, createHdcForward, createHdcRunner, parseHdcTargets, removeHdcForward } from './harmonyHdcClient.ts'
 import { iosUsbToolBinary } from './iosUsbTool'
+import { startDebugProxy, type DebugProxy } from './iosProxyDebug'
 import { parseIdeviceIdOutput } from './iosDeviceDiscovery'
 import { consumeFrames, USB_STREAM_CONTROL_RESULT } from './usbAoaProtocol.ts'
 import { encodeControlFrame } from './usbMediaReceiver.ts'
@@ -86,12 +87,12 @@ function connectLocalPort(port: number, timeoutMs: number): Promise<Socket> {
   })
 }
 
-async function waitForLocalPort(port: number, child?: ChildProcess): Promise<Socket> {
+async function waitForLocalPort(port: number, proxy?: DebugProxy): Promise<Socket> {
   const deadline = Date.now() + 5_000
   let lastError: unknown = null
   while (Date.now() < deadline) {
-    if ((child?.exitCode !== null && child?.exitCode !== undefined) || child?.signalCode) {
-      throw new Error('iproxy 已退出，未能打开本地转发端口')
+    if ((proxy?.child.exitCode !== null && proxy?.child.exitCode !== undefined) || proxy?.child.signalCode) {
+      throw new Error(await proxy!.failureDetail())
     }
     try {
       return await connectLocalPort(port, CONNECT_TIMEOUT_MS)
@@ -255,7 +256,8 @@ export async function diagnoseLiveConnection(target: LiveConnectionDebugTarget, 
 
     const localPort = await run('forward', 'iproxy 转发启动', async () => {
       const port = await allocateLocalPort()
-      const child = spawn(proxyBinary, [`${port}:${PHONE_LIVE_PORT}`, phoneId!], { stdio: 'ignore', windowsHide: true })
+      const proxy = startDebugProxy(proxyBinary, port, PHONE_LIVE_PORT, phoneId!)
+      const { child } = proxy
       try {
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => {
@@ -265,7 +267,7 @@ export async function diagnoseLiveConnection(target: LiveConnectionDebugTarget, 
           child.once('spawn', () => { clearTimeout(timer); resolve() })
           child.once('error', (error) => { clearTimeout(timer); reject(toolSafeError(error, proxyBinary)) })
         })
-        return { value: { port, child }, detail: `iproxy 已启动，转发目标为手机端口 ${PHONE_LIVE_PORT}` }
+        return { value: { port, proxy }, detail: `iproxy 已启动，转发目标为手机端口 ${PHONE_LIVE_PORT}` }
       } catch (error) {
         await stopChild(child)
         throw error
@@ -279,7 +281,7 @@ export async function diagnoseLiveConnection(target: LiveConnectionDebugTarget, 
     let socket: Socket | null = null
     try {
       socket = await run('port', '本机转发端口连通', async () => ({
-        value: await waitForLocalPort(localPort.port, localPort.child),
+        value: await waitForLocalPort(localPort.port, localPort.proxy),
         detail: `本机端口 ${localPort.port} 可连接`,
       }))
       if (!socket) {
@@ -294,7 +296,7 @@ export async function diagnoseLiveConnection(target: LiveConnectionDebugTarget, 
       socket?.destroy()
       const cleanupAt = Date.now()
       try {
-        await stopChild(localPort.child)
+        await stopChild(localPort.proxy.child)
         add('cleanup', '临时连接清理', 'passed', '临时 iPhone 转发已关闭', cleanupAt)
       } catch (error) {
         add('cleanup', '临时连接清理', 'failed', errorText(error), cleanupAt)
